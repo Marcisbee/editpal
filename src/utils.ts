@@ -28,7 +28,14 @@ export function setCaret(id: string, position: number) {
 
 	if (sel.rangeCount > 0) {
 		const element = document.querySelector(`[data-mx-id="${id}"`);
-		const textNode = element?.childNodes?.[0];
+		let textNode = element?.childNodes?.[0];
+
+    // nodeType 3 = text node
+    if (textNode?.nodeType !== 3) {
+      textNode = [].slice
+							.call(element?.childNodes || [], 0)
+							.find((node) => node?.nodeType === 3 || node.nodeName === "BR");
+    }
 
 		if (textNode) {
 			const pos = Math.min(position, textNode.textContent?.length || 0);

@@ -433,7 +433,7 @@ class Model extends Exome {
 
 	public findTextElement(key: string) {
 		let el = this.findElement(key);
-		if (el.type !== "t") {
+		if (el?.type !== "t") {
 			el = el.children[0];
 		}
 		return el;
@@ -539,27 +539,26 @@ class Model extends Exome {
 				return;
 			}
 
-			const prev = this.findPreviousTextElement(parent.key);
-			const prevParent = this.findParent(
-				this.findPreviousTextElement(parent.key)!.key,
-			)!;
+			const prev = this.findPreviousTextElement(parent.key)!;
 			const siblings = parent.children.map(cloneToken);
-			// this.removeElementsBetween(first.id, last.id);
 
-			if (Array.isArray(prevParent.children)) {
-				prevParent.children.push(...siblings);
-			}
-
+			this.insertTokensAfter(siblings, prev);
 			this.removeElementByKey(parent.key);
-			const l = prev!.text.length;
+
+			const prevLength = prev.text.length;
+
 			this.recalculate();
 
+			const prevAfterCalculation = this.findTextElement(prev.key);
+
 			debounceRaf(() => {
-				setCaret(prev!.id, l);
+				if (prevAfterCalculation !== prev) {
+					setCaret(prevAfterCalculation.id, prevLength);
+					return;
+				}
+
+				setCaret(prev.id, prevLength);
 			});
-
-			// console.log("@TODO handle concat blocks");
-
 			return;
 		}
 
@@ -596,12 +595,15 @@ class Model extends Exome {
 			element.type === "t" ? this.findParent(element.key)! : element;
 
 		// console.log(parent.children.indexOf(element));
+		const newTokens = tokens.map(cloneToken);
 
 		parent.children.splice(
 			parent.children.indexOf(element) + 1,
 			0,
-			...tokens.map(cloneToken),
+			...newTokens,
 		);
+
+		return newTokens;
 	}
 
 	public action(type: string, data?: string) {
@@ -631,7 +633,7 @@ class Model extends Exome {
 		} else if (type === "remove") {
 			let element = this.findTextElement(first.key);
 
-			const isFirstChild = first.key?.endsWith(".0") ?? true;
+			const isFirstChild = element.key?.endsWith(".0") ?? true;
 
 			if (first.offset === 1) {
 				element.text = stringSplice(
@@ -642,7 +644,7 @@ class Model extends Exome {
 				);
 
 				if (!isFirstChild) {
-					const prev = this.findPreviousTextElement(first.key);
+					const prev = this.findPreviousTextElement(element.key);
 
 					if (prev) {
 						const l = prev.text?.length;
@@ -656,7 +658,7 @@ class Model extends Exome {
 					if (
 						next &&
 						next.id.replace(/\.[\d]+$/, "") ===
-							first.key.replace(/\.[\d]+$/, "")
+							element.key.replace(/\.[\d]+$/, "")
 					) {
 						debounceRaf(() => {
 							setCaret(next.id, 0);
@@ -712,9 +714,10 @@ class Model extends Exome {
 		// ENTER key
 		if (type === "enter") {
 			let firstElement = this.findTextElement(first.key);
+			let lastElement = this.findTextElement(last.key);
 
-			const siblings: any[] = this.findAllNextSiblings(last.key, true)
-				.filter((e) => e.key >= last.key)
+			const siblings: any[] = this.findAllNextSiblings(lastElement.key, true)
+				.filter((e) => e.key >= lastElement.key)
 				.map(cloneToken);
 			if (siblings[0]?.text) {
 				siblings[0].text = siblings[0].text.slice(last.offset);
@@ -727,9 +730,9 @@ class Model extends Exome {
 				type: "p",
 				children: [...siblings, { id: ranID(), type: "t", text: "" }],
 			};
-			const lastKeyChunks = last.key.split(".");
+			const lastKeyChunks = lastElement.key.split(".");
 			this.removeElementsBetween(
-				first.key,
+				firstElement.key,
 				String(parseInt(lastKeyChunks[0], 10) + 1),
 				false,
 			);
@@ -737,6 +740,7 @@ class Model extends Exome {
 				newToken as any,
 				firstElement,
 			);
+			console.log({ clonedToken });
 			this.recalculate();
 			debounceRaf(() =>
 				setCaret(this.findNextTextElement(clonedToken.key)!.id, 0),
@@ -753,20 +757,29 @@ class Model extends Exome {
 			firstElement.text = firstElement.text.slice(0, first.offset) + data;
 
 			if (firstElement !== lastElement) {
-				const siblings: any[] = this.findAllNextSiblings(last.key, true)
-					.filter((e) => e.key >= last.key)
+				const siblings: any[] = this.findAllNextSiblings(lastElement.key, true)
+					.filter((e) => e.key >= lastElement.key)
 					.map(cloneToken);
 				if (siblings[0]?.text) {
 					siblings[0].text = siblings[0].text.slice(last.offset);
 				}
 
-				const lastKeyChunks = last.key.split(".");
+				const lastKeyChunks = lastElement.key.split(".");
 				this.removeElementsBetween(
-					first.key,
+					firstElement.key,
 					String(parseInt(lastKeyChunks[0], 10) + 1),
 					false,
 				);
+
 				this.insertTokensAfter(siblings, firstElement);
+
+				if (this.selection) {
+					this.selection.anchor = first.key;
+					this.selection.focus = first.key;
+					this.selection.anchorOffset = 0;
+					this.selection.focusOffset = 0;
+				}
+				this.setSelection(this.selection);
 			} else {
 				firstElement.text += lastText.slice(last.offset);
 			}
@@ -781,8 +794,8 @@ class Model extends Exome {
 
 			// Hello {World} 2
 			// ^^^^^^ > backspace
-			if (first.key.endsWith(".0")) {
-				const parent = this.findParent(first.key)!;
+			if (firstElement.key.endsWith(".0")) {
+				const parent = this.findParent(firstElement.key)!;
 
 				debounceRaf(() => setCaret(parent.id, 0));
 				this.recalculate();
@@ -792,7 +805,7 @@ class Model extends Exome {
 
 			// Hello {World} 2
 			//        ^^^^^ > backspace
-			const prev = this.findPreviousTextElement(first.key)!;
+			const prev = this.findPreviousTextElement(firstElement.key)!;
 			const l = prev.text.length || 0;
 			debounceRaf(() => setCaret(prev.id, l));
 			this.recalculate();
