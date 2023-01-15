@@ -406,22 +406,37 @@ class Model extends Exome {
 		lastKey: string,
 		lastIncluded = true,
 	) {
-		Object.values(this.idToKey)
-			.filter((key) => {
-				return (
+		const keys = Object.values(this.idToKey);
+		for (const key of keys.slice(keys.indexOf(firstKey))) {
+			if (key > lastKey) {
+				return;
+			}
+
+			if (
+				!(
 					key > firstKey &&
 					(lastIncluded && firstKey !== lastKey
 						? key <= lastKey
 						: key < lastKey)
-				);
-			})
-			.forEach((key) => {
-				this.removeElementByKey(key);
-			});
+				)
+			) {
+				continue;
+			}
+
+			this.removeElementByKey(key);
+		}
 	}
 
 	public findElement(key: string) {
 		return this._elements[key];
+	}
+
+	public findTextElement(key: string) {
+		let el = this.findElement(key);
+		if (el.type !== "t") {
+			el = el.children[0];
+		}
+		return el;
 	}
 
 	public findParent(currentKey: string): BlockToken | null {
@@ -614,10 +629,7 @@ class Model extends Exome {
 			data = "";
 			first.offset -= 1;
 		} else if (type === "remove") {
-			let element = this.findElement(first.key);
-			if (element.type !== "t") {
-				element = element.children[0];
-			}
+			let element = this.findTextElement(first.key);
 
 			const isFirstChild = first.key?.endsWith(".0") ?? true;
 
@@ -699,15 +711,7 @@ class Model extends Exome {
 
 		// ENTER key
 		if (type === "enter") {
-			let firstElement = this.findElement(first.key);
-			if (firstElement.type !== "t") {
-				firstElement = firstElement.children[0];
-			}
-
-			let lastElement = this.findElement(last.key);
-			if (lastElement.type !== "t") {
-				lastElement = lastElement.children[0];
-			}
+			let firstElement = this.findTextElement(first.key);
 
 			const siblings: any[] = this.findAllNextSiblings(last.key, true)
 				.filter((e) => e.key >= last.key)
@@ -742,15 +746,8 @@ class Model extends Exome {
 
 		// Handle new text being added
 		if (type === "key" && data != null) {
-			let firstElement = this.findElement(first.key);
-			if (firstElement.type !== "t") {
-				firstElement = firstElement.children[0];
-			}
-
-			let lastElement = this.findElement(last.key);
-			if (lastElement.type !== "t") {
-				lastElement = lastElement.children[0];
-			}
+			let firstElement = this.findTextElement(first.key);
+			let lastElement = this.findTextElement(last.key);
 
 			const lastText = lastElement.text;
 			firstElement.text = firstElement.text.slice(0, first.offset) + data;
@@ -763,7 +760,6 @@ class Model extends Exome {
 					siblings[0].text = siblings[0].text.slice(last.offset);
 				}
 
-				// firstElement.text = firstElement.text.slice(0, first.offset);
 				const lastKeyChunks = last.key.split(".");
 				this.removeElementsBetween(
 					first.key,
@@ -775,107 +771,33 @@ class Model extends Exome {
 				firstElement.text += lastText.slice(last.offset);
 			}
 
-			// const newToken = {
-			// 	id: ranID(),
-			// 	type: "p",
-			// 	children: [...siblings, { id: ranID(), type: "t", text: "" }],
-			// };
-			// this.insertTokenAfterParent(newToken as any, firstElement);
+			if (firstElement.text) {
+				debounceRaf(() =>
+					setCaret(firstElement.id, first.offset + data?.length),
+				);
+				this.recalculate();
+				return;
+			}
+
+			// Hello {World} 2
+			// ^^^^^^ > backspace
+			if (first.key.endsWith(".0")) {
+				const parent = this.findParent(first.key)!;
+
+				debounceRaf(() => setCaret(parent.id, 0));
+				this.recalculate();
+				console.log("@TODO");
+				return;
+			}
+
+			// Hello {World} 2
+			//        ^^^^^ > backspace
+			const prev = this.findPreviousTextElement(first.key)!;
+			const l = prev.text.length || 0;
+			debounceRaf(() => setCaret(prev.id, l));
 			this.recalculate();
-			debounceRaf(() => setCaret(firstElement.id, first.offset + data?.length));
 			return;
 		}
-
-		// if (type === "key" && data != null) {
-		// 	// Same element
-		// 	if (first.key === last.key) {
-		// 		let element = this.findElement(first.key);
-		// 		if (element.type !== "t") {
-		// 			element = element.children[0];
-		// 		}
-
-		// 		element.text = stringSplice(
-		// 			element.text,
-		// 			first.offset,
-		// 			last.offset,
-		// 			data,
-		// 		);
-
-		// 		// @TODO handle:
-		// 		// Hello Jupiter!
-		// 		// ^^^^^^^^ - backspace
-		// 		// Cursor dissapears
-		// 		if (!element.text) {
-		// 			const prev = this.findPreviousTextElement(first.key);
-
-		// 			if (prev) {
-		// 				const l = prev.text?.length || 0;
-		// 				debounceRaf(() => {
-		// 					setCaret(prev.id, l);
-		// 				});
-		// 			} else {
-		// 				const next = this.findNextTextElement(last.key);
-
-		// 				if (next) {
-		// 					debounceRaf(() => {
-		// 						setCaret(next.id, 0);
-		// 					});
-		// 				}
-		// 			}
-
-		// 			this.recalculate();
-		// 		} else {
-		// 			debounceRaf(() => {
-		// 				setCaret(element.id, first.offset + data!.length);
-		// 			});
-		// 		}
-
-		// 		// debounceRaf(() => {
-		// 		//   moveCaret(first.offset + data!.length);
-		// 		// });
-
-		// 		return;
-		// 	}
-
-		// 	const parentFirst = this.findParent(first.key)!;
-		// 	const parentLast = this.findParent(last.key)!;
-
-		// 	if (parentFirst !== parentLast) {
-		// 		const siblings = this.findAllNextSiblings(last.key);
-		// 		this.removeElementsBetween(first.key, last.key);
-
-		// 		if (Array.isArray(parentFirst.children)) {
-		// 			parentFirst.children.push(...siblings);
-		// 		}
-		// 	} else {
-		// 		const lastIndex = last.key.split(".");
-		// 		const lastIndexNum = lastIndex.pop()!;
-		// 		const tempKey = `${lastIndex.join(".")}.${
-		// 			parseInt(lastIndexNum, 10) - 1
-		// 		}`;
-		// 		if (first.key < tempKey) {
-		// 			this.removeElementsBetween(first.key, tempKey);
-		// 		}
-		// 	}
-
-		// 	const elementFirst = this.findElement(first.key);
-		// 	elementFirst.text = elementFirst.text.slice(0, first.offset) + data;
-
-		// 	const elementLast = this.findElement(last.key);
-		// 	elementLast.text = elementLast.text.slice(last.offset);
-
-		// 	// @TODO remove last element data + all non-parent elements in between
-		// 	this.recalculate();
-		// 	// this.indexes = this.buildIndexes(this.tokens);
-
-		// 	debounceRaf(() => {
-		// 		setCaret(elementFirst.id, first.offset + data!.length);
-		// 	});
-
-		// 	// console.log(anchor, anchorOffset, focus, focusOffset);
-		// 	return;
-		// }
-		// console.log({ type, data }, this.selection);
 	}
 }
 
