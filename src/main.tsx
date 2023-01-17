@@ -1,7 +1,8 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 
-import { Editpal, Model } from "./editpal";
+import { Editpal } from "./editpal";
+import { Model } from "./model";
 import { ranID } from "./utils";
 import { Debug } from "./debug";
 
