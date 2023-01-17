@@ -21,7 +21,7 @@ const ACTION = {
 
 function RenderText({ id, props, text }: Omit<TextToken, "type" | "key">) {
 	return (
-		<span style={props} data-ep={id}>
+		<span key={id} style={props} data-ep={id}>
 			{text.replace(/ /g, "\u00A0") || <br />}
 		</span>
 	);
@@ -34,7 +34,7 @@ function RenderItem(item: AnyToken) {
 		if (size === 3) {
 			return (
 				<h3 style={style} data-ep={item.id}>
-					<RenderMap items={item.children} />
+					<RenderMap key={item.id} items={item.children} />
 				</h3>
 			);
 		}
@@ -42,14 +42,14 @@ function RenderItem(item: AnyToken) {
 		if (size === 2) {
 			return (
 				<h2 style={style} data-ep={item.id}>
-					<RenderMap items={item.children} />
+					<RenderMap key={item.id} items={item.children} />
 				</h2>
 			);
 		}
 
 		return (
 			<h1 style={style} data-ep={item.id}>
-				<RenderMap items={item.children} />
+				<RenderMap key={item.id} items={item.children} />
 			</h1>
 		);
 	}
@@ -59,7 +59,7 @@ function RenderItem(item: AnyToken) {
 
 		return (
 			<p style={style} data-ep={item.id}>
-				<RenderMap items={item.children} />
+				<RenderMap key={item.id} items={item.children} />
 			</p>
 		);
 	}
@@ -81,10 +81,7 @@ function RenderItem(item: AnyToken) {
 				}}
 				onMouseDown={(e) => e.stopPropagation()}
 			>
-				<span
-					data-ep-todo-check
-					contentEditable={false}
-				>
+				<span data-ep-todo-check contentEditable={false}>
 					<input
 						type="checkbox"
 						readOnly
@@ -94,7 +91,7 @@ function RenderItem(item: AnyToken) {
 						onFocus={preventDefault}
 					/>
 				</span>
-				<RenderMap items={item.children} />
+				<RenderMap key={item.id} items={item.children} />
 				{/* <img
           className="mx-preview-todo-capture"
           src="https://img.strike.lv/avatars/bc7cefc4-2270-4c5c-9cba-7e7b142c8000.png"
@@ -105,27 +102,36 @@ function RenderItem(item: AnyToken) {
 	}
 
 	if (item.type === "t") {
-		return <RenderText {...item} />;
+		return <RenderText {...item} key={item.id} />;
 	}
 
 	return null;
 }
 
-function RenderMap({ items }) {
+interface RenderMapProps {
+	items: AnyToken[];
+}
+
+function RenderMap({ items }: RenderMapProps) {
 	if (!Array.isArray(items)) {
 		return null;
 	}
 
 	return items.map((item) => (
-		<RenderItem {...item} />
+		<RenderItem {...item} key={item.id} />
 	)) as unknown as ReactElement;
 }
 
 export class Model extends Exome {
 	public tokens: TokenRoot;
-	public selection = null;
+	public selection: {
+		anchor: string;
+		anchorOffset: number;
+		focus: string;
+		focusOffset: number;
+	} | null = null;
 
-	public idToKey: Record<string, string> = {};
+	public _idToKey: Record<string, string> = {};
 	public _elements: Record<string, AnyToken> = {};
 	public _elements_temp: Record<string, AnyToken> = {};
 
@@ -135,16 +141,16 @@ export class Model extends Exome {
 		this.tokens = JSON.parse(JSON.stringify(tokens));
 		this.recalculate();
 
-		console.log(this.tokens, this.idToKey);
+		console.log(this.tokens, this._idToKey);
 	}
 
 	public recalculate() {
 		this._elements_temp = {};
-		this.idToKey = this.buildKeys(this.tokens);
+		this._idToKey = this._buildKeys(this.tokens);
 		this._elements = this._elements_temp;
 	}
 
-	private buildKeys(
+	private _buildKeys(
 		tokens: AnyToken | AnyToken[],
 		keys: Record<string, string> = {},
 		key: string[] = [],
@@ -152,7 +158,7 @@ export class Model extends Exome {
 		if (Array.isArray(tokens)) {
 			let i = 0;
 			for (const element of tokens) {
-				this.buildKeys(element, keys, key.concat(i + ""));
+				this._buildKeys(element, keys, key.concat(i + ""));
 				i += 1;
 			}
 
@@ -204,18 +210,18 @@ export class Model extends Exome {
 				last = child;
 			}
 
-			this.buildKeys(tokens.children, keys, key);
+			this._buildKeys(tokens.children, keys, key);
 		}
 
 		return keys;
 	}
 
-	public setSelection(selection: any) {
+	public setSelection(selection: Model["selection"]) {
 		this.selection = selection;
 	}
 
-	public removeElementByKey(key: string) {
-		const parent = this.findParent(key);
+	public remove(key: string) {
+		const parent = this.parent(key);
 
 		// Handle root text nodes
 		if (parent === null) {
@@ -235,12 +241,12 @@ export class Model extends Exome {
 		console.log("🏴‍☠️ REMOVE CHILD", parent.key, key);
 	}
 
-	public removeElementsBetween(
+	public removeBetween(
 		firstKey: string,
 		lastKey: string,
 		lastIncluded = true,
 	) {
-		const keys = Object.values(this.idToKey);
+		const keys = Object.values(this._idToKey);
 		for (const key of keys.slice(keys.indexOf(firstKey))) {
 			if (key > lastKey) {
 				return;
@@ -257,7 +263,7 @@ export class Model extends Exome {
 				continue;
 			}
 
-			this.removeElementByKey(key);
+			this.remove(key);
 		}
 	}
 
@@ -265,7 +271,7 @@ export class Model extends Exome {
 		return this._elements[key];
 	}
 
-	public findTextElement(key: string) {
+	public innerText(key: string) {
 		let el = this.findElement(key);
 		if (el?.type !== "t") {
 			el = el.children[0];
@@ -273,7 +279,7 @@ export class Model extends Exome {
 		return el;
 	}
 
-	public findParent(currentKey: string): BlockToken | null {
+	public parent(currentKey: string): BlockToken | null {
 		const keyChunks = currentKey.split(".");
 		keyChunks.pop();
 		const parentKey = keyChunks.join(".");
@@ -285,13 +291,10 @@ export class Model extends Exome {
 		return this.findElement(parentKey) as BlockToken;
 	}
 
-	public findAllNextSiblings(
-		currentKey: string,
-		selfIncluded = false,
-	): AnyToken[] {
+	public nextSiblings(currentKey: string, selfIncluded = false): AnyToken[] {
 		const selfKey = currentKey.split(".").pop()!;
 
-		const parent = this.findParent(currentKey);
+		const parent = this.parent(currentKey);
 
 		if (!parent?.children) {
 			return [];
@@ -305,8 +308,8 @@ export class Model extends Exome {
 		);
 	}
 
-	public findPreviousTextElement(currentKey: string): TextToken | null {
-		const keys = Object.values(this.idToKey);
+	public previousText(currentKey: string): TextToken | null {
+		const keys = Object.values(this._idToKey);
 		const index = keys.indexOf(currentKey);
 
 		if (index < 1) {
@@ -321,11 +324,11 @@ export class Model extends Exome {
 			return el;
 		}
 
-		return this.findPreviousTextElement(lastKey);
+		return this.previousText(lastKey);
 	}
 
-	public findNextTextElement(currentKey: string): TextToken | null {
-		const keys = Object.values(this.idToKey);
+	public nextText(currentKey: string): TextToken | null {
+		const keys = Object.values(this._idToKey);
 		const index = keys.indexOf(currentKey);
 
 		if (index < 1) {
@@ -340,12 +343,11 @@ export class Model extends Exome {
 			return el;
 		}
 
-		return this.findNextTextElement(lastKey);
+		return this.nextText(lastKey);
 	}
 
-	public handleInitialRemove(element: AnyToken) {
-		const parent =
-			element.type === "t" ? this.findParent(element.key)! : element;
+	private _handleInitialRemove(element: AnyToken) {
+		const parent = element.type === "t" ? this.parent(element.key)! : element;
 
 		if (parent.type === "h") {
 			if (parent.props.size <= 1) {
@@ -363,8 +365,8 @@ export class Model extends Exome {
 			}
 
 			if (parent.children.length === 1 && !parent.children[0].text) {
-				const prev = this.findPreviousTextElement(parent.key);
-				this.removeElementByKey(parent.key);
+				const prev = this.previousText(parent.key);
+				this.remove(parent.key);
 				const l = prev!.text.length;
 				debounceRaf(() => {
 					setCaret(prev!.id, l);
@@ -373,17 +375,22 @@ export class Model extends Exome {
 				return;
 			}
 
-			const prev = this.findPreviousTextElement(parent.key)!;
+			// Don't allow to move past first element & first line
+			if (parent.key === "0") {
+				return;
+			}
+
+			const prev = this.previousText(parent.key)!;
 			const siblings = parent.children.map(cloneToken);
 
-			this.insertTokensAfter(siblings, prev);
-			this.removeElementByKey(parent.key);
+			this.insertAfter(siblings, prev);
+			this.remove(parent.key);
 
 			const prevLength = prev.text.length;
 
 			this.recalculate();
 
-			const prevAfterCalculation = this.findTextElement(prev.key);
+			const prevAfterCalculation = this.innerText(prev.key);
 
 			debounceRaf(() => {
 				if (prevAfterCalculation !== prev) {
@@ -407,16 +414,25 @@ export class Model extends Exome {
 		}
 	}
 
-	public handleTextTransforms(element: AnyToken) {
-		const parent =
-			element.type === "t" ? this.findParent(element.key)! : element;
+	private _handleTextTransforms(element: TextToken, textAdded: string) {
+		console.log({ textAdded });
+		if (textAdded === ")") {
+			element.text = element.text.replace(/\:\)/g, "😄");
+			return;
+		}
 
-		// @TODO handle "-|[space]" => "• |"
+		const parent = this.parent(element.key)!;
+
+		// "-|[space]" => "• |"
+		if (textAdded === " " && parent.type === "p" && element.text === "- ") {
+			parent.type = "todo";
+			element.text = "";
+			return;
+		}
 	}
 
-	public insertTokenAfterParent(token: BlockToken, element: AnyToken) {
-		const parent =
-			element.type === "t" ? this.findParent(element.key)! : element;
+	public insertAfterParent(token: BlockToken, element: AnyToken) {
+		const parent = element.type === "t" ? this.parent(element.key)! : element;
 
 		const clone = cloneToken(token);
 		this.tokens.splice(parseInt(parent.key.split(".")[0], 10) + 1, 0, clone);
@@ -424,9 +440,8 @@ export class Model extends Exome {
 		return clone;
 	}
 
-	public insertTokensAfter(tokens: AnyToken[], element: AnyToken) {
-		const parent =
-			element.type === "t" ? this.findParent(element.key)! : element;
+	public insertAfter(tokens: AnyToken[], element: AnyToken) {
+		const parent = element.type === "t" ? this.parent(element.key)! : element;
 
 		// console.log(parent.children.indexOf(element));
 		const newTokens = tokens.map(cloneToken);
@@ -441,6 +456,10 @@ export class Model extends Exome {
 	}
 
 	public action(type: number, data?: string) {
+		if (!this.selection) {
+			return;
+		}
+
 		const { anchor, anchorOffset, focus, focusOffset } = this.selection;
 
 		const [first, last] = [
@@ -454,6 +473,19 @@ export class Model extends Exome {
 			return a.key > b.key ? 1 : -1;
 		});
 
+		const resetSelection = (key: string, offset: number) => {
+			// this.selection!.anchor = first.key;
+			// this.selection!.focus = first.key;
+			// this.selection!.anchorOffset = 0;
+			// this.selection!.focusOffset = 0;
+			this.setSelection({
+				anchor: key,
+				focus: key,
+				anchorOffset: offset,
+				focusOffset: offset,
+			});
+		};
+
 		if (
 			type === ACTION._Remove &&
 			(first.key !== last.key || first.offset !== last.offset)
@@ -465,7 +497,7 @@ export class Model extends Exome {
 			data = "";
 			first.offset -= 1;
 		} else if (type === ACTION._Remove) {
-			let element = this.findTextElement(first.key);
+			let element = this.innerText(first.key);
 
 			const isFirstChild = element.key?.endsWith(".0") ?? true;
 
@@ -478,7 +510,7 @@ export class Model extends Exome {
 				);
 
 				if (!isFirstChild) {
-					const prev = this.findPreviousTextElement(element.key);
+					const prev = this.previousText(element.key);
 
 					if (prev) {
 						const l = prev.text?.length;
@@ -487,7 +519,7 @@ export class Model extends Exome {
 						});
 					}
 				} else if (!element.text) {
-					const next = this.findNextTextElement(last.key);
+					const next = this.nextText(last.key);
 
 					if (
 						next &&
@@ -496,36 +528,32 @@ export class Model extends Exome {
 					) {
 						debounceRaf(() => {
 							setCaret(next.id, 0);
-							if (this.selection) {
-								this.selection.anchor = next.id;
-								this.selection.focus = next.id;
-								this.selection.anchorOffset = 0;
-								this.selection.focusOffset = 0;
-							}
-							this.setSelection(this.selection);
+							resetSelection(next.id, 0);
 						});
 					} else {
 						// console.log("HEREEE");
 						// Heres the issue
 						debounceRaf(() => {
 							setCaret(this.findElement(last.key).id, 0);
-							if (this.selection) {
-								this.selection.anchorOffset = this.selection.anchorOffset - 1;
-								this.selection.focusOffset = this.selection.focusOffset - 1;
-							}
-							this.setSelection(this.selection);
+							resetSelection(last.key, 0);
+							// if (this.selection) {
+							// 	this.selection.anchorOffset = this.selection.anchorOffset - 1;
+							// 	this.selection.focusOffset = this.selection.focusOffset - 1;
+							// }
+							// this.setSelection(this.selection);
 						});
-						// this.handleInitialRemove(element);
+						// this._handleInitialRemove(element);
 						// return;
 					}
 				} else {
 					debounceRaf(() => {
 						setCaret(element.id, first.offset - 1);
-						if (this.selection) {
-							this.selection.anchorOffset = this.selection.anchorOffset - 1;
-							this.selection.focusOffset = this.selection.focusOffset - 1;
-						}
-						this.setSelection(this.selection);
+						resetSelection(first.key, first.offset - 1);
+						// if (this.selection) {
+						// 	this.selection.anchorOffset = this.selection.anchorOffset - 1;
+						// 	this.selection.focusOffset = this.selection.focusOffset - 1;
+						// }
+						// this.setSelection(this.selection);
 					});
 				}
 
@@ -540,17 +568,17 @@ export class Model extends Exome {
 			//   return;
 			// }
 
-			this.handleInitialRemove(element);
+			this._handleInitialRemove(element);
 
 			return;
 		}
 
 		// ENTER key
 		if (type === ACTION._Enter) {
-			let firstElement = this.findTextElement(first.key);
-			let lastElement = this.findTextElement(last.key);
+			let firstElement = this.innerText(first.key);
+			let lastElement = this.innerText(last.key);
 
-			const siblings: any[] = this.findAllNextSiblings(lastElement.key, true)
+			const siblings: any[] = this.nextSiblings(lastElement.key, true)
 				.filter((e) => e.key >= lastElement.key)
 				.map(cloneToken);
 			if (siblings[0]?.text) {
@@ -565,33 +593,31 @@ export class Model extends Exome {
 				children: [...siblings, { id: ranID(), type: "t", text: "" }],
 			};
 			const lastKeyChunks = lastElement.key.split(".");
-			this.removeElementsBetween(
+			this.removeBetween(
 				firstElement.key,
 				String(parseInt(lastKeyChunks[0], 10) + 1),
 				false,
 			);
-			const clonedToken = this.insertTokenAfterParent(
+			const clonedToken = this.insertAfterParent(
 				newToken as any,
 				firstElement,
 			);
 			console.log({ clonedToken });
 			this.recalculate();
-			debounceRaf(() =>
-				setCaret(this.findNextTextElement(clonedToken.key)!.id, 0),
-			);
+			debounceRaf(() => setCaret(this.nextText(clonedToken.key)!.id, 0));
 			return;
 		}
 
 		// Handle new text being added
 		if (type === ACTION._Key && data != null) {
-			let firstElement = this.findTextElement(first.key);
-			let lastElement = this.findTextElement(last.key);
+			let firstElement = this.innerText(first.key);
+			let lastElement = this.innerText(last.key);
 
 			const lastText = lastElement.text;
 			firstElement.text = firstElement.text.slice(0, first.offset) + data;
 
 			if (firstElement !== lastElement) {
-				const siblings: any[] = this.findAllNextSiblings(lastElement.key, true)
+				const siblings: any[] = this.nextSiblings(lastElement.key, true)
 					.filter((e) => e.key >= lastElement.key)
 					.map(cloneToken);
 				if (siblings[0]?.text) {
@@ -599,28 +625,26 @@ export class Model extends Exome {
 				}
 
 				const lastKeyChunks = lastElement.key.split(".");
-				this.removeElementsBetween(
+				this.removeBetween(
 					firstElement.key,
 					String(parseInt(lastKeyChunks[0], 10) + 1),
 					false,
 				);
 
-				this.insertTokensAfter(siblings, firstElement);
+				this.insertAfter(siblings, firstElement);
 
-				if (this.selection) {
-					this.selection.anchor = first.key;
-					this.selection.focus = first.key;
-					this.selection.anchorOffset = 0;
-					this.selection.focusOffset = 0;
-				}
-				this.setSelection(this.selection);
+				resetSelection(first.key, 0);
 			} else {
 				firstElement.text += lastText.slice(last.offset);
 			}
 
+			if (data && first.key === last.key && first.offset === last.offset) {
+				this._handleTextTransforms(firstElement, data);
+			}
+
 			if (firstElement.text) {
 				debounceRaf(() =>
-					setCaret(firstElement.id, first.offset + data?.length),
+					setCaret(firstElement.id, first.offset + (data?.length as number)),
 				);
 				this.recalculate();
 				return;
@@ -629,17 +653,18 @@ export class Model extends Exome {
 			// Hello {World} 2
 			// ^^^^^^ > backspace
 			if (firstElement.key.endsWith(".0")) {
-				const parent = this.findParent(firstElement.key)!;
+				const parent = this.parent(firstElement.key)!;
 
 				debounceRaf(() => setCaret(parent.id, 0));
 				this.recalculate();
-				console.log("@TODO");
+
+				resetSelection(first.key, 0);
 				return;
 			}
 
 			// Hello {World} 2
 			//        ^^^^^ > backspace
-			const prev = this.findPreviousTextElement(firstElement.key)!;
+			const prev = this.previousText(firstElement.key)!;
 			const l = prev.text.length || 0;
 			debounceRaf(() => setCaret(prev.id, l));
 			this.recalculate();
@@ -699,9 +724,9 @@ export function Editpal({ model }: EditpalProps) {
 			}
 
 			setSelection({
-				anchor: model.idToKey[anchor],
+				anchor: model._idToKey[anchor],
 				anchorOffset: selection.anchorOffset,
-				focus: model.idToKey[focus],
+				focus: model._idToKey[focus],
 				focusOffset: selection.focusOffset,
 			});
 		}
@@ -712,93 +737,94 @@ export function Editpal({ model }: EditpalProps) {
 
 		function onBlur(event) {
 			document.removeEventListener("selectionchange", onSelectionChange);
-			// @TODO handle onblur event  [vscode|chrome] click inside editor > click in vscode > click in browser tab (not in editor) > type
 			setFocus((i) => i + 1);
-			// setSelection(null);
 		}
 
-		ref.current.addEventListener("selectstart", onSelectionStart, {
+		const add = ref.current.addEventListener;
+		const remove = ref.current.removeEventListener;
+
+		add("focus", onSelectionStart, { once: true });
+		add("selectstart", onSelectionStart, {
 			once: true,
 		});
-		ref.current.addEventListener("blur", onBlur, { once: true });
+		add("blur", onBlur, { once: true });
 
 		return () => {
-			document.removeEventListener("selectstart", onSelectionStart);
-			document.removeEventListener("blur", onBlur);
+			remove("focus", onSelectionStart);
+			remove("selectstart", onSelectionStart);
+			remove("blur", onBlur);
 		};
 	}, [focus]);
 
 	return (
-		<>
-			<div
-				ref={ref}
-				suppressContentEditableWarning
-				contentEditable
-				// onFocus={(e) => {
-				//   console.log(e);
-				// }}
-				// onBeforeInput={(e) => {
-				// 	// e.preventDefault();
-				// }}
-				onDrop={preventDefaultAndStop}
-				onDragStart={preventDefaultAndStop}
-				onPaste={(e) => {
-					// @TODO transform before paste
-					// @TODO strip from html
+		<div
+			ref={ref}
+			suppressContentEditableWarning
+			contentEditable
+			// onFocus={(e) => {
+			//   console.log(e);
+			// }}
+			// onBeforeInput={(e) => {
+			// 	// e.preventDefault();
+			// }}
+			onDrop={preventDefaultAndStop}
+			onDragStart={preventDefaultAndStop}
+			onPaste={(e) => {
+				// @TODO transform before paste
+				// @TODO strip from html
+				preventDefault(e);
+				action(ACTION._Paste, "@TODO");
+			}}
+			onKeyDown={(e) => {
+				if (e.key.indexOf("Arrow") === 0) {
+					return;
+				}
+
+				if (e.metaKey) {
+					return;
+				}
+
+				// Single letter
+				if (e.key.length === 1) {
 					preventDefault(e);
-					action(ACTION._Paste, "@TODO");
-				}}
-				onKeyDown={(e) => {
-					if (e.key.indexOf("Arrow") === 0) {
-						return;
-					}
+					action(ACTION._Key, e.key);
+					return;
+				}
 
-					if (e.metaKey) {
-						return;
-					}
-
-					// Single letter
-					if (e.key.length === 1) {
-						preventDefault(e);
-						action(ACTION._Key, e.key);
-						return;
-					}
-
-					if (e.key === "Tab") {
-						preventDefault(e);
-						action(e.shiftKey ? ACTION._ShiftTab : ACTION._Tab);
-						return;
-					}
-
-					if (e.key === "Backspace") {
-						preventDefault(e);
-						action(ACTION._Remove);
-						return;
-					}
-
-					if (e.key === "Enter") {
-						preventDefault(e);
-						action(ACTION._Enter);
-						return;
-					}
-
-					if (e.key === "Delete") {
-						preventDefault(e);
-						action(ACTION._Delete);
-						return;
-					}
-
-					// Allow copy
-					if (e.metaKey && e.key === "c") {
-						return;
-					}
-
+				if (e.key === "Tab") {
 					preventDefault(e);
-				}}
-				data-ep-main
-			>
-				<RenderMap items={tokens} />
-			</div>
-		</>
+					action(e.shiftKey ? ACTION._ShiftTab : ACTION._Tab);
+					return;
+				}
+
+				if (e.key === "Backspace") {
+					preventDefault(e);
+					action(ACTION._Remove);
+					return;
+				}
+
+				if (e.key === "Enter") {
+					preventDefault(e);
+					action(ACTION._Enter);
+					return;
+				}
+
+				if (e.key === "Delete") {
+					preventDefault(e);
+					action(ACTION._Delete);
+					return;
+				}
+
+				// Allow copy
+				if (e.metaKey && e.key === "c") {
+					return;
+				}
+
+				preventDefault(e);
+			}}
+			data-ep-main
+		>
+			<RenderMap items={tokens} />
+		</div>
 	);
 }

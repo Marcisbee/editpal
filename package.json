@@ -5,7 +5,7 @@
   "main": "dist/editpal.js",
   "scripts": {
     "dev": "esbuild src/main.tsx --bundle --outdir=www --watch --servedir=www --sourcemap=inline",
-    "build": "esbuild src/editpal.tsx --bundle --outdir=dist --define:process.env.NODE_ENV=\\\"production\\\" --minify --legal-comments=none --format=esm --platform=browser --external:exome --external:react --external:react-dom --analyze=verbose --mangle-props=^_ --mangle-quoted",
+    "build": "esbuild src/editpal.tsx --bundle --outdir=dist --define:process.env.NODE_ENV=\\\"production\\\" --minify --legal-comments=none --format=esm --platform=browser --external:exome --external:react --external:react-dom --analyze=verbose --mangle-props=^_ --mangle-quoted --pure:console.log",
     "declarations": "tsc src/editpal.tsx --declaration --emitDeclarationOnly --outDir dist --jsx react-jsx"
   },
   "dependencies": {

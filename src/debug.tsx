@@ -57,6 +57,10 @@ function debug(tokens: AnyToken | AnyToken[], indent = 0): string[] {
 		output[0] += (tokens as any).type;
 	}
 
+	if (tokens.props) {
+		output[0] += ' ' + JSON.stringify(tokens.props);
+	}
+
 	if (tokens.children?.length) {
 		output.push(...debug(tokens.children, indent));
 	}

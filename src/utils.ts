@@ -1,10 +1,7 @@
 import type { AnyToken } from "./tokens";
 
 export function ranID() {
-	var now = Date.now();
-	var random = Math.random();
-
-	return (now.toString(36) + random.toString(36).substr(2, 5)).toUpperCase();
+	return Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
 }
 
 export function stringSplice(
@@ -13,14 +10,6 @@ export function stringSplice(
 	end: number,
 	add: string,
 ) {
-	// We cannot pass negative indexes directly to the 2nd slicing operation.
-	if (start < 0) {
-		start = str.length + start;
-		if (start < 0) {
-			start = 0;
-		}
-	}
-
 	return str.slice(0, start) + (add || "") + str.slice(end);
 }
 
