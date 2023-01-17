@@ -7,7 +7,12 @@ export function ranID() {
 	return (now.toString(36) + random.toString(36).substr(2, 5)).toUpperCase();
 }
 
-export function stringSplice(str: string, start: number, end: number, add: string) {
+export function stringSplice(
+	str: string,
+	start: number,
+	end: number,
+	add: string,
+) {
 	// We cannot pass negative indexes directly to the 2nd slicing operation.
 	if (start < 0) {
 		start = str.length + start;
@@ -27,15 +32,15 @@ export function setCaret(id: string, position: number) {
 	}
 
 	if (sel.rangeCount > 0) {
-		const element = document.querySelector(`[data-mx-id="${id}"`);
+		const element = document.querySelector(`[data-ep="${id}"`);
 		let textNode = element?.childNodes?.[0];
 
-    // nodeType 3 = text node
-    if (textNode?.nodeType !== 3) {
-      textNode = [].slice
-							.call(element?.childNodes || [], 0)
-							.find((node) => node?.nodeType === 3 || node.nodeName === "BR");
-    }
+		// nodeType 3 = text node
+		if (textNode?.nodeType !== 3) {
+			textNode = [].slice
+				.call(element?.childNodes || [], 0)
+				.find((node?: Node) => node?.nodeType === 3 || node?.nodeName === "BR");
+		}
 
 		if (textNode) {
 			const pos = Math.min(position, textNode.textContent?.length || 0);

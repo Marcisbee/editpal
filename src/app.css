@@ -1,41 +1,74 @@
-#root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: left;
+[data-ep-main] {
+  user-select: text;
+  border: 1px solid orange;
+  border-radius: 6px;
+  width: 500px;
+  padding: 10px;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+h1[data-ep],
+h2[data-ep],
+h3[data-ep] {
+  display: block;
+  margin: 0;
+  padding: 0 0 15px 0;
 }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+h1[data-ep]::before {
+  display: 'inline';
+  content: '#';
+  opacity: 0.5;
+  margin-right: 0.3em;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
-  }
+h2[data-ep]::before {
+  display: 'inline';
+  content: '##';
+  opacity: 0.5;
+  margin-right: 0.3em;
 }
 
-.card {
-  padding: 2em;
+h3[data-ep]::before {
+  display: 'inline';
+  content: '###';
+  opacity: 0.5;
+  margin-right: 0.3em;
 }
 
-.read-the-docs {
-  color: #888;
+[data-ep-main] p,
+p[data-ep] {
+  display: block;
+  margin: 0;
+  padding: 0 0 15px 0;
 }
+
+p[data-ep-todo] {
+  display: block;
+  position: relative;
+  /* margin: 0; */
+  /* padding: 5px 0; */
+  padding-left: 26px;
+  /* box-shadow: 0 0 0 1px pink; */
+}
+
+[data-ep-todo-check] {
+  user-select: none;
+  position: absolute;
+  margin-left: -26px;
+}
+
+[data-ep-todo-check] input {
+  margin: 5px;
+}
+
+/* 
+img.ep-todo-capture {
+  display: inline-block;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+  position: absolute;
+  opacity: 0.5;
+  pointer-events: none;
+} */

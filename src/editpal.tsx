@@ -1,6 +1,6 @@
 import { Exome } from "exome";
 import { useStore } from "exome/react";
-import { useLayoutEffect, useRef, useState } from "react";
+import { type ReactElement, useLayoutEffect, useRef, useState } from "react";
 
 import type { AnyToken, TokenRoot, BlockToken, TextToken } from "./tokens";
 import { setCaret, cloneToken, ranID, stringSplice } from "./utils";
@@ -9,120 +9,70 @@ import "./app.css";
 
 // @TODO Handle "tab" key
 
-const style = `
-h1.mx-preview-heading,
-h2.mx-preview-heading,
-h3.mx-preview-heading {
-  display: block;
-  margin: 0;
-  padding: 0 0 15px 0;
-}
-h1.mx-preview-heading::before {
-  display: 'inline';
-  content: '#';
-  opacity: 0.5;
-  margin-right: 0.3em;
-}
-h2.mx-preview-heading::before {
-  display: 'inline';
-  content: '##';
-  opacity: 0.5;
-  margin-right: 0.3em;
-}
-h3.mx-preview-heading::before {
-  display: 'inline';
-  content: '###';
-  opacity: 0.5;
-  margin-right: 0.3em;
-}
-p.mx-preview-paragraph {
-  display: block;
-  margin: 0;
-  padding: 0 0 15px 0;
-}
-p.mx-preview-todo {
-  display: block;
-  position: relative;
-  margin: 0;
-  padding: 5px 0;
-}
-img.mx-preview-todo-capture {
-  display: inline-block;
-  width: 100%;
-  height: 100%;
-  top: 0;
-  left: 0;
-  position: absolute;
-  opacity: 0.5;
-  pointer-events: none;
-}
-`;
+const ACTION = {
+	_Key: 0,
+	_Remove: 1,
+	_Enter: 2,
+	_Delete: 3,
+	_Tab: 4,
+	_ShiftTab: 5,
+	_Paste: 6,
+};
 
-function RenderText({ id, props, text }) {
-	const ref = useRef(null);
-	const { ...style } = props || {};
-
+function RenderText({ id, props, text }: Omit<TextToken, "type" | "key">) {
 	return (
-		<span style={style} data-mx-id={id}>
+		<span style={props} data-ep={id}>
 			{text.replace(/ /g, "\u00A0") || <br />}
 		</span>
 	);
 }
 
-function RenderItem({
-	item: { id, type, props, text, children },
-}: {
-	item: AnyToken;
-}) {
-	if (type === "h") {
-		const { size, ...style } = props || {};
+function RenderItem(item: AnyToken) {
+	if (item.type === "h") {
+		const { size, ...style } = item.props || {};
 
 		if (size === 3) {
 			return (
-				<h3 className="mx-preview-heading" style={style} data-mx-id={id}>
-					<RenderMap items={children} />
+				<h3 style={style} data-ep={item.id}>
+					<RenderMap items={item.children} />
 				</h3>
 			);
 		}
 
 		if (size === 2) {
 			return (
-				<h2 className="mx-preview-heading" style={style} data-mx-id={id}>
-					<RenderMap items={children} />
+				<h2 style={style} data-ep={item.id}>
+					<RenderMap items={item.children} />
 				</h2>
 			);
 		}
 
 		return (
-			<h1 className="mx-preview-heading" style={style} data-mx-id={id}>
-				<RenderMap items={children} />
+			<h1 style={style} data-ep={item.id}>
+				<RenderMap items={item.children} />
 			</h1>
 		);
 	}
 
-	if (type === "p") {
-		const { ...style } = props || {};
+	if (item.type === "p") {
+		const { ...style } = item.props || {};
 
 		return (
-			<p className="mx-preview-paragraph" style={style} data-mx-id={id}>
-				<RenderMap items={children} />
+			<p style={style} data-ep={item.id}>
+				<RenderMap items={item.children} />
 			</p>
 		);
 	}
 
-	if (type === "todo") {
-		const { done, ...style } = props || {};
+	if (item.type === "todo") {
+		const { done, ...style } = item.props || {};
 
 		return (
 			<p
-				className="mx-preview-todo"
-				style={{
-					...style,
-					paddingLeft: 26,
-					position: "relative",
-					// boxShadow: '0 0 0 1px pink',
-				}}
-				data-mx-id={id}
+				style={style}
+				data-ep={item.id}
+				data-ep-todo
+				// @TODO figure out if this is needed
 				onKeyDown={(e) => {
 					if (e.key.indexOf("Backspace") === 0) {
 						// e.preventDefault();
@@ -132,7 +82,7 @@ function RenderItem({
 				onMouseDown={(e) => e.stopPropagation()}
 			>
 				<span
-					style={{ userSelect: "none", position: "absolute", marginLeft: -26 }}
+					data-ep-todo-check
 					contentEditable={false}
 				>
 					<input
@@ -140,11 +90,11 @@ function RenderItem({
 						readOnly
 						checked={done}
 						tabIndex={-1}
-						onMouseDown={(e) => e.preventDefault()}
-						onFocus={(e) => e.preventDefault()}
+						onMouseDown={preventDefault}
+						onFocus={preventDefault}
 					/>
 				</span>
-				<RenderMap items={children} />
+				<RenderMap items={item.children} />
 				{/* <img
           className="mx-preview-todo-capture"
           src="https://img.strike.lv/avatars/bc7cefc4-2270-4c5c-9cba-7e7b142c8000.png"
@@ -154,9 +104,11 @@ function RenderItem({
 		);
 	}
 
-	if (type === "t") {
-		return <RenderText id={id} props={props} text={text} />;
+	if (item.type === "t") {
+		return <RenderText {...item} />;
 	}
+
+	return null;
 }
 
 function RenderMap({ items }) {
@@ -164,130 +116,12 @@ function RenderMap({ items }) {
 		return null;
 	}
 
-	return items.map((item) => <RenderItem item={item} />) as any;
+	return items.map((item) => (
+		<RenderItem {...item} />
+	)) as unknown as ReactElement;
 }
 
-const root = [
-	{
-		id: ranID(),
-		type: "h",
-		props: {
-			size: 2,
-		},
-		children: [
-			{
-				id: ranID(),
-				type: "t",
-				text: "Hello ",
-			},
-			{
-				id: ranID(),
-				type: "t",
-				props: {
-					color: "orangered",
-				},
-				text: "Jupiter",
-			},
-			{
-				id: ranID(),
-				type: "t",
-				text: "!",
-			},
-		],
-	},
-	{
-		id: ranID(),
-		type: "h",
-		props: {
-			size: 3,
-		},
-		children: [
-			{
-				id: ranID(),
-				type: "t",
-				text: "Hello ",
-			},
-			{
-				id: ranID(),
-				type: "t",
-				props: {
-					color: "orangered",
-				},
-				text: "Jupiter",
-			},
-			{
-				id: ranID(),
-				type: "t",
-				text: "!",
-			},
-		],
-	},
-	{
-		id: ranID(),
-		type: "todo",
-		props: {
-			done: false,
-		},
-		children: [
-			{
-				id: ranID(),
-				type: "t",
-				props: {
-					color: "orangered",
-				},
-				text: "asd",
-			},
-		],
-	},
-	{
-		id: ranID(),
-		type: "todo",
-		props: {
-			done: true,
-		},
-		children: [
-			{
-				id: ranID(),
-				type: "t",
-				props: {},
-				text: "fdc",
-			},
-		],
-	},
-	{
-		id: ranID(),
-		type: "p",
-		props: {},
-		children: [
-			{
-				id: ranID(),
-				type: "t",
-				props: {
-					color: "orangered",
-				},
-				text: "Hello ",
-			},
-			{
-				id: ranID(),
-				type: "t",
-				props: {
-					fontWeight: "bold",
-				},
-				text: "World",
-			},
-			{
-				id: ranID(),
-				type: "t",
-				props: {
-					color: "orangered",
-				},
-				text: " 2",
-			},
-		],
-	},
-];
-
-class Model extends Exome {
+export class Model extends Exome {
 	public tokens: TokenRoot;
 	public selection = null;
 
@@ -606,7 +440,7 @@ class Model extends Exome {
 		return newTokens;
 	}
 
-	public action(type: string, data?: string) {
+	public action(type: number, data?: string) {
 		const { anchor, anchorOffset, focus, focusOffset } = this.selection;
 
 		const [first, last] = [
@@ -621,16 +455,16 @@ class Model extends Exome {
 		});
 
 		if (
-			type === "remove" &&
+			type === ACTION._Remove &&
 			(first.key !== last.key || first.offset !== last.offset)
 		) {
-			type = "key";
+			type = ACTION._Key;
 			data = "";
-		} else if (type === "remove" && first.offset > 1) {
-			type = "key";
+		} else if (type === ACTION._Remove && first.offset > 1) {
+			type = ACTION._Key;
 			data = "";
 			first.offset -= 1;
-		} else if (type === "remove") {
+		} else if (type === ACTION._Remove) {
 			let element = this.findTextElement(first.key);
 
 			const isFirstChild = element.key?.endsWith(".0") ?? true;
@@ -712,7 +546,7 @@ class Model extends Exome {
 		}
 
 		// ENTER key
-		if (type === "enter") {
+		if (type === ACTION._Enter) {
 			let firstElement = this.findTextElement(first.key);
 			let lastElement = this.findTextElement(last.key);
 
@@ -749,7 +583,7 @@ class Model extends Exome {
 		}
 
 		// Handle new text being added
-		if (type === "key" && data != null) {
+		if (type === ACTION._Key && data != null) {
 			let firstElement = this.findTextElement(first.key);
 			let lastElement = this.findTextElement(last.key);
 
@@ -814,78 +648,30 @@ class Model extends Exome {
 	}
 }
 
-const model = new Model(root as any);
-
 let queued: number;
 function debounceRaf(fn: FrameRequestCallback) {
-	if (queued) cancelAnimationFrame(queued);
+	if (queued) {
+		cancelAnimationFrame(queued);
+	}
 
 	queued = requestAnimationFrame(fn);
 }
 
-function buildIndent(indent: number) {
-	return " ".repeat(indent);
+function preventDefault(e: any) {
+	e.preventDefault();
 }
 
-/**
- root
-  ├ (1) heading  
-  | └ (2) text  "Welcome to the playground"
-  ├ (3) quote  
-  | └ (4) text  "In case you were wondering what the black box at the bottom is – it's the debug view, showing the current state of editor. You can disable it by pressing on the settings control in the bottom-left of your screen and toggling the debug view setting."
-  ├ (5) paragraph  
-  | ├ (6) text  "The playground is a demo environment built with "
-  | ├ (7) text  "@lexical/react" { format: code }
-  | ├ (8) text  ". Try typing in "
-  | ├ (10) text  "some text" { format: bold }
-  | ├ (11) text  " with "
-  | ├ (12) text  "different" { format: italic }
-  | └ (13) text  " formats."
-
- selection: range 
-  ├ anchor { key: 30, offset: 5, type: text }
-  └ focus { key: 38, offset: 4, type: text }
- */
-function debug(tokens: AnyToken | AnyToken[], indent = 0): string[] {
-	let dent = buildIndent(indent);
-
-	if (Array.isArray(tokens)) {
-		if (indent === 0) {
-			return ["root", ...tokens.map((t) => debug(t, indent + 1)).flat()];
-		}
-
-		return tokens.map((t) => debug(t, indent + 1)).flat();
-	}
-
-	dent += `├ (${tokens.key}) `;
-
-	if (tokens.type === "t") {
-		return [
-			`${dent}text ${JSON.stringify(tokens.text)} ${
-				tokens.props ? JSON.stringify(tokens.props) : ""
-			}`,
-		];
-	}
-
-	const output: string[] = [`${dent}`];
-
-	if (tokens.type === "p") {
-		output[0] += "paragraph";
-	} else if (tokens.type === "h") {
-		output[0] += "heading";
-	} else {
-		output[0] += (tokens as any).type;
-	}
-
-	if (tokens.children?.length) {
-		output.push(...debug(tokens.children, indent));
-	}
-
-	return output;
+function preventDefaultAndStop(e: any) {
+	preventDefault(e);
+	e.stopPropagation();
 }
 
-function Editor({ model }: any) {
-	const { tokens, action, selection, setSelection } = useStore(model);
+export interface EditpalProps {
+	model: Model;
+}
+
+export function Editpal({ model }: EditpalProps) {
+	const { tokens, action, setSelection } = useStore(model);
 	const ref = useRef<HTMLDivElement>(null);
 	const [focus, setFocus] = useState(0);
 	// const [selection, setSelection] = useState(null);
@@ -905,9 +691,8 @@ function Editor({ model }: any) {
 
 			// console.log(selection.focusNode?.parentElement);
 			const anchor =
-				selection.anchorNode?.parentElement?.getAttribute("data-mx-id");
-			const focus =
-				selection.focusNode?.parentElement?.getAttribute("data-mx-id");
+				selection.anchorNode?.parentElement?.getAttribute("data-ep");
+			const focus = selection.focusNode?.parentElement?.getAttribute("data-ep");
 
 			if (!anchor || !focus) {
 				return;
@@ -929,7 +714,7 @@ function Editor({ model }: any) {
 			document.removeEventListener("selectionchange", onSelectionChange);
 			// @TODO handle onblur event  [vscode|chrome] click inside editor > click in vscode > click in browser tab (not in editor) > type
 			setFocus((i) => i + 1);
-			setSelection(null);
+			// setSelection(null);
 		}
 
 		ref.current.addEventListener("selectstart", onSelectionStart, {
@@ -952,22 +737,16 @@ function Editor({ model }: any) {
 				// onFocus={(e) => {
 				//   console.log(e);
 				// }}
-				onBeforeInput={(e) => {
-					// e.preventDefault();
-				}}
-				onDrop={(e) => {
-					e.stopPropagation();
-					e.preventDefault();
-				}}
-				onDragStart={(e) => {
-					e.stopPropagation();
-					e.preventDefault();
-				}}
+				// onBeforeInput={(e) => {
+				// 	// e.preventDefault();
+				// }}
+				onDrop={preventDefaultAndStop}
+				onDragStart={preventDefaultAndStop}
 				onPaste={(e) => {
 					// @TODO transform before paste
 					// @TODO strip from html
-					e.preventDefault();
-					action("paste", "@TODO");
+					preventDefault(e);
+					action(ACTION._Paste, "@TODO");
 				}}
 				onKeyDown={(e) => {
 					if (e.key.indexOf("Arrow") === 0) {
@@ -980,32 +759,32 @@ function Editor({ model }: any) {
 
 					// Single letter
 					if (e.key.length === 1) {
-						e.preventDefault();
-						action("key", e.key);
+						preventDefault(e);
+						action(ACTION._Key, e.key);
 						return;
 					}
 
 					if (e.key === "Tab") {
-						e.preventDefault();
-						action(e.shiftKey ? "shifttab" : "tab");
+						preventDefault(e);
+						action(e.shiftKey ? ACTION._ShiftTab : ACTION._Tab);
 						return;
 					}
 
 					if (e.key === "Backspace") {
-						e.preventDefault();
-						action("remove");
+						preventDefault(e);
+						action(ACTION._Remove);
 						return;
 					}
 
 					if (e.key === "Enter") {
-						e.preventDefault();
-						action("enter");
+						preventDefault(e);
+						action(ACTION._Enter);
 						return;
 					}
 
 					if (e.key === "Delete") {
-						e.preventDefault();
-						action("delete");
+						preventDefault(e);
+						action(ACTION._Delete);
 						return;
 					}
 
@@ -1014,55 +793,12 @@ function Editor({ model }: any) {
 						return;
 					}
 
-					e.preventDefault();
+					preventDefault(e);
 				}}
-				style={{
-					userSelect: "text",
-					border: "1px solid orange",
-					borderRadius: 6,
-					width: 500,
-					padding: 10,
-				}}
+				data-ep-main
 			>
 				<RenderMap items={tokens} />
 			</div>
-			<pre
-				style={{
-					position: "absolute",
-					textAlign: "left",
-					fontSize: 12,
-					lineHeight: 1.4,
-				}}
-			>
-				{debug(tokens).flat(Number.POSITIVE_INFINITY).join("\n")}
-				{`\n\nselection\n`}
-				{selection ? (
-					<>
-						{` ├ anchor ${JSON.stringify({
-							key: selection.anchor,
-							offset: selection.anchorOffset,
-						})}\n`}
-						{` └ focus ${JSON.stringify({
-							key: selection.focus,
-							offset: selection.focusOffset,
-						})}\n`}
-					</>
-				) : (
-					" └ null"
-				)}
-			</pre>
 		</>
-	);
-}
-
-export function App() {
-	return (
-		<div className="App">
-			<style>{style}</style>
-			<h1>Text Editor</h1>
-			<div>
-				<Editor model={model} />
-			</div>
-		</div>
 	);
 }
