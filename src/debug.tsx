@@ -1,6 +1,6 @@
 import { useStore } from "exome/react";
 
-import type { Model } from "./editpal";
+import { Model } from "./editpal";
 import { AnyToken } from "./tokens";
 
 function buildIndent(indent: number) {
