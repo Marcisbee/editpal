@@ -31,26 +31,18 @@ function RenderItem(item: AnyToken) {
 	if (item.type === "h") {
 		const { size, ...style } = item.props || {};
 
-		if (size === 3) {
-			return (
-				<h3 style={style} data-ep={item.id}>
-					<RenderMap key={item.id} items={item.children} />
-				</h3>
-			);
-		}
+		let HEADING: "h1" | "h2" | "h3" = "h1";
 
-		if (size === 2) {
-			return (
-				<h2 style={style} data-ep={item.id}>
-					<RenderMap key={item.id} items={item.children} />
-				</h2>
-			);
+		if (size === 3) {
+			HEADING = "h3";
+		} else if (size === 2) {
+			HEADING = "h2";
 		}
 
 		return (
-			<h1 style={style} data-ep={item.id}>
+			<HEADING style={style} data-ep={item.id}>
 				<RenderMap key={item.id} items={item.children} />
-			</h1>
+			</HEADING>
 		);
 	}
 
@@ -241,11 +233,7 @@ export class Model extends Exome {
 		console.log("🏴‍☠️ REMOVE CHILD", parent.key, key);
 	}
 
-	public removeBetween(
-		firstKey: string,
-		lastKey: string,
-		lastIncluded = true,
-	) {
+	public removeBetween(firstKey: string, lastKey: string, lastIncluded = true) {
 		const keys = Object.values(this._idToKey);
 		for (const key of keys.slice(keys.indexOf(firstKey))) {
 			if (key > lastKey) {
@@ -598,10 +586,7 @@ export class Model extends Exome {
 				String(parseInt(lastKeyChunks[0], 10) + 1),
 				false,
 			);
-			const clonedToken = this.insertAfterParent(
-				newToken as any,
-				firstElement,
-			);
+			const clonedToken = this.insertAfterParent(newToken as any, firstElement);
 			console.log({ clonedToken });
 			this.recalculate();
 			debounceRaf(() => setCaret(this.nextText(clonedToken.key)!.id, 0));
@@ -744,9 +729,7 @@ export function Editpal({ model }: EditpalProps) {
 		const remove = ref.current.removeEventListener;
 
 		add("focus", onSelectionStart, { once: true });
-		add("selectstart", onSelectionStart, {
-			once: true,
-		});
+		add("selectstart", onSelectionStart, { once: true });
 		add("blur", onBlur, { once: true });
 
 		return () => {
