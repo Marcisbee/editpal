@@ -39,8 +39,8 @@ strong[data-ep-h="6"]::before { content: '######'; }
 [data-ep-main] p,
 p[data-ep] {
   display: block;
-  margin: 0;
-  padding: 0 0 0.5em 0;
+  padding: 0;
+  margin: 0 0 0.4em 0;
 }
 
 p[data-ep-todo] {

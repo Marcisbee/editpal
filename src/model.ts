@@ -45,7 +45,7 @@ function dotSize(value: string): number {
 }
 
 function keySize(key: string): number {
-	return parseInt(key.split(".").join(""), 10);
+	return key.split(".").reduce((acc, v) => acc + parseInt(v, 10), 0);
 }
 
 function handleTab(
@@ -94,7 +94,6 @@ function handleTab(
 }
 
 export class Model extends Exome {
-	public tokens: TokenRoot;
 	public selection: {
 		anchor: string;
 		anchorOffset: number;
@@ -106,7 +105,7 @@ export class Model extends Exome {
 	public _elements: Record<string, AnyToken> = {};
 	public _elements_temp: Record<string, AnyToken> = {};
 
-	constructor(tokens: TokenRoot) {
+	constructor(public tokens: TokenRoot) {
 		super();
 
 		this.tokens = JSON.parse(JSON.stringify(tokens));
@@ -146,7 +145,7 @@ export class Model extends Exome {
 
 		keys[tokens.id] = tokens.key;
 
-		if (Array.isArray(tokens.children)) {
+		if (tokens.type !== "t" && Array.isArray(tokens.children)) {
 			let last;
 			let i = -1;
 
@@ -414,20 +413,16 @@ export class Model extends Exome {
 		}
 	}
 
-	public insertAfterParent(token: BlockToken, element: AnyToken) {
-		const parent = element.type === "t" ? this.parent(element.key)! : element;
-
-		const clone = cloneToken(token);
-		this.tokens.splice(parseInt(parent.key.split(".")[0], 10) + 1, 0, clone);
-
-		return clone;
-	}
-
 	public insertAfter(tokens: AnyToken[], element: AnyToken) {
-		const parent = element.type === "t" ? this.parent(element.key)! : element;
+		const parent = this.parent(element.key);
 
-		// console.log(parent.children.indexOf(element));
 		const newTokens = tokens.map(cloneToken);
+
+		if (!parent) {
+			this.tokens.splice(this.tokens.indexOf(element) + 1, 0, ...newTokens);
+
+			return newTokens;
+		}
 
 		parent.children.splice(
 			parent.children.indexOf(element) + 1,
@@ -453,7 +448,7 @@ export class Model extends Exome {
 				return a.offset > b.offset ? 1 : -1;
 			}
 
-			return keySize(a.key) > keySize(b.key) ? 1 : -1;
+			return a.key.localeCompare(b.key, undefined, { numeric: true });
 		});
 
 		const resetSelection = (key: string, offset: number) => {
@@ -595,13 +590,12 @@ export class Model extends Exome {
 				String(parseInt(lastKeyChunks[0], 10) + 1),
 				false,
 			);
-			const clonedToken = this.insertAfterParent(newToken as any, firstElement);
-			// console.log({ clonedToken });
+			const clonedTokens = this.insertAfter([newToken] as any, firstParent);
 			this.recalculate();
-			debounceRaf(() => setCaret(this.nextText(clonedToken.key)!.id, 0));
+			debounceRaf(() => setCaret(this.nextText(clonedTokens[0].key)!.id, 0));
 
 			if (firstParent === lastParent) {
-				handleEnter(firstParent, clonedToken, this);
+				handleEnter(firstParent, clonedTokens[0] as any, this);
 			}
 
 			return;

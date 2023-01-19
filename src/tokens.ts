@@ -1,4 +1,10 @@
-interface Token {
+export interface PluginToken {
+	type: string;
+	id: string;
+	props: Record<string, any>;
+	children: any[];
+}
+export interface Token {
 	id: string;
 	key: string;
 	props: Record<string, any>;
