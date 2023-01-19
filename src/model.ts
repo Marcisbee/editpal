@@ -33,8 +33,8 @@ function handleEnter(
 	if (fromParent.type === "l") {
 		toParent.type = fromParent.type as any;
 		toParent.props = {
-			indent: fromParent.props?.indent,
-			type: fromParent.props?.type || 'ul',
+			indent: fromParent.props?.indent || 0,
+			type: fromParent.props?.type || "ul",
 		};
 		return;
 	}
@@ -45,7 +45,7 @@ function dotSize(value: string): number {
 }
 
 function keySize(key: string): number {
-  return parseInt(key.split(".").join(""), 10)
+	return parseInt(key.split(".").join(""), 10);
 }
 
 function handleTab(
@@ -85,7 +85,10 @@ function handleTab(
 				continue;
 			}
 
-			element.props.indent = Math.max(0, (element.props.indent || 0) + mod);
+			element.props.indent = Math.max(
+				0,
+				Math.min((element.props.indent || 0) + mod, 4),
+			);
 		}
 	}
 }
@@ -403,10 +406,10 @@ export class Model extends Exome {
 		if (textAdded === " " && parent.type === "p" && element.text === "1. ") {
 			parent.type = "l";
 			element.text = "";
-      parent.props = {
-        ...parent.props,
-        type: 'ol',
-      };
+			parent.props = {
+				...parent.props,
+				type: "ol",
+			};
 			return;
 		}
 	}

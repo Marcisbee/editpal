@@ -78,31 +78,58 @@ p[data-ep]:not([data-ep-l="ol"]) {
     list-number-1
     list-number-2
     list-number-3
-    list-number-4;
+    list-number-4
+    list-number-5;
+}
+
+p[data-ep][data-ep-l="ol"]:not([data-ep-i]),
+p[data-ep][data-ep-l="ol"][data-ep-i="0"] {
+  counter-reset: 
+    list-number-1
+    list-number-2
+    list-number-3
+    list-number-4
+    list-number-5;
+}
+
+p[data-ep][data-ep-l="ol"][data-ep-i="1"] {
+  counter-reset: 
+    list-number-2
+    list-number-3
+    list-number-4
+    list-number-5;
 }
 
 p[data-ep][data-ep-l="ol"][data-ep-i="2"] {
-  counter-reset: list-number-1;
+  counter-reset: 
+    list-number-3
+    list-number-4
+    list-number-5;
 }
 
 p[data-ep][data-ep-l="ol"][data-ep-i="3"] {
-  counter-reset: list-number-2;
+  counter-reset: 
+    list-number-4
+    list-number-5;
 }
 
 p[data-ep][data-ep-l="ol"][data-ep-i="4"] {
-  counter-reset: list-number-3;
+  counter-reset: 
+    list-number-5;
 }
 
 p[data-ep][data-ep-l="ol"][data-ep-i="5"] {
-  counter-reset: list-number-4;
+  /* counter-reset: list-number-5; */
 }
 
 p[data-ep-l] {
   padding-left: 30px;
 }
 
-p[data-ep-l="ol"]:before {
+p[data-ep-l="ol"] {
   counter-increment: list-number;
+}
+p[data-ep-l="ol"]:before {
   position: absolute;
   margin-left: -24px;
   font-size: 0.9em;
@@ -111,23 +138,31 @@ p[data-ep-l="ol"]:before {
   pointer-events: none;
 }
 
-p[data-ep-l="ol"][data-ep-i="1"]:before {
+p[data-ep-l="ol"][data-ep-i="1"] {
   counter-increment: list-number-1;
+}
+p[data-ep-l="ol"][data-ep-i="1"]:before {
   content: counter(list-number-1, upper-alpha) '.';
 }
 
-p[data-ep-l="ol"][data-ep-i="2"]:before {
+p[data-ep-l="ol"][data-ep-i="2"] {
   counter-increment: list-number-2;
+}
+p[data-ep-l="ol"][data-ep-i="2"]:before {
   content: counter(list-number-2, lower-alpha) '.';
 }
 
-p[data-ep-l="ol"][data-ep-i="3"]:before {
+p[data-ep-l="ol"][data-ep-i="3"] {
   counter-increment: list-number-3;
+}
+p[data-ep-l="ol"][data-ep-i="3"]:before {
   content: counter(list-number-3, upper-roman) '.';
 }
 
-p[data-ep-l="ol"][data-ep-i="4"]:before {
+p[data-ep-l="ol"][data-ep-i="4"] {
   counter-increment: list-number-4;
+}
+p[data-ep-l="ol"][data-ep-i="4"]:before {
   content: counter(list-number-4, lower-roman) '.';
 }
 
