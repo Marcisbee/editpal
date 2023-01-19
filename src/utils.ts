@@ -45,7 +45,7 @@ export function setCaret(id: string, position: number) {
 
 export function cloneToken<T = AnyToken>(token: T): T {
 	return JSON.parse(JSON.stringify(token), (key, value) => {
-		if (value?.id) {
+		if (value.type && value?.id) {
 			return {
 				...value,
 				id: ranID(),

@@ -125,10 +125,16 @@ export interface EditpalProps {
 }
 
 export function Editpal({ model }: EditpalProps) {
-	const { tokens, action, setSelection } = useStore(model);
+	const { tokens, stack, action, setSelection } = useStore(model);
 	const ref = useRef<HTMLDivElement>(null);
 	const [focus, setFocus] = useState(0);
 	// const [selection, setSelection] = useState(null);
+
+	useLayoutEffect(() => {
+		console.log('every time', stack);
+		stack.splice(0).pop()?.();
+		// stack.splice(0).forEach((p) => p());
+	});
 
 	useLayoutEffect(() => {
 		if (!ref.current) {
@@ -136,7 +142,7 @@ export function Editpal({ model }: EditpalProps) {
 		}
 
 		function onSelectionChange(event) {
-			// console.log('🔵 SELECTION', event);
+			console.log('🔵 SELECTION', event);
 			const selection = document.getSelection();
 
 			if (!selection) {
@@ -211,6 +217,12 @@ export function Editpal({ model }: EditpalProps) {
 					return;
 				}
 
+				// @TODO handle 'a => ā
+				if (e.key === "Dead") {
+					preventDefaultAndStop(e);
+					return false;
+				}
+
 				// Single letter
 				if (e.key.length === 1) {
 					preventDefault(e);
@@ -246,6 +258,8 @@ export function Editpal({ model }: EditpalProps) {
 				if (e.metaKey && e.key === "c") {
 					return;
 				}
+
+				console.log('key', e.key);
 
 				preventDefault(e);
 			}}

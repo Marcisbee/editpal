@@ -44,10 +44,6 @@ function dotSize(value: string): number {
 	return value.split(".").length;
 }
 
-function keySize(key: string): number {
-	return key.split(".").reduce((acc, v) => acc + parseInt(v, 10), 0);
-}
-
 function handleTab(
 	firstParent: BlockToken,
 	lastParent: BlockToken,
@@ -94,6 +90,7 @@ function handleTab(
 }
 
 export class Model extends Exome {
+  public tokens: TokenRoot;
 	public selection: {
 		anchor: string;
 		anchorOffset: number;
@@ -104,11 +101,12 @@ export class Model extends Exome {
 	public _idToKey: Record<string, string> = {};
 	public _elements: Record<string, AnyToken> = {};
 	public _elements_temp: Record<string, AnyToken> = {};
+  public stack: Function[] = [];
 
-	constructor(public tokens: TokenRoot) {
+	constructor(tokens: TokenRoot) {
 		super();
 
-		this.tokens = JSON.parse(JSON.stringify(tokens));
+		this.tokens = cloneToken(tokens);
 		this.recalculate();
 
 		console.log(this.tokens, this._idToKey);
@@ -339,7 +337,7 @@ export class Model extends Exome {
 				const prev = this.previousText(parent.key);
 				this.remove(parent.key);
 				const l = prev!.text.length;
-				debounceRaf(() => {
+				this.stack.push(() => {
 					setCaret(prev!.id, l);
 				});
 				this.recalculate();
@@ -363,7 +361,7 @@ export class Model extends Exome {
 
 			const prevAfterCalculation = this.innerText(prev.key);
 
-			debounceRaf(() => {
+			this.stack.push(() => {
 				if (prevAfterCalculation !== prev) {
 					setCaret(prevAfterCalculation.id, prevLength);
 					return;
@@ -491,10 +489,11 @@ export class Model extends Exome {
 					const prev = this.previousText(element.key);
 
 					if (prev) {
-						const l = prev.text?.length;
-						debounceRaf(() => {
-							setCaret(prev.id, l);
-						});
+						// const l = prev.text?.length;
+						this.select(this.findElement(prev.key)!, prev.text?.length);
+						// this.stack.push(() => {
+						// 	setCaret(prev.id, l);
+						// });
 					}
 				} else if (!element.text) {
 					const next = this.nextText(last.key);
@@ -504,40 +503,43 @@ export class Model extends Exome {
 						next.id.replace(/\.[\d]+$/, "") ===
 							element.key.replace(/\.[\d]+$/, "")
 					) {
-						debounceRaf(() => {
-							setCaret(next.id, 0);
-							resetSelection(next.id, 0);
-						});
+						this.select(this.findElement(next.key)!, 0);
+						// this.stack.push(() => {
+						// 	setCaret(next.id, 0);
+						// 	resetSelection(next.id, 0);
+						// });
 					} else {
 						// console.log("HEREEE");
 						// Heres the issue
-						debounceRaf(() => {
-							setCaret(this.findElement(last.key).id, 0);
-							resetSelection(last.key, 0);
-							// if (this.selection) {
-							// 	this.selection.anchorOffset = this.selection.anchorOffset - 1;
-							// 	this.selection.focusOffset = this.selection.focusOffset - 1;
-							// }
-							// this.setSelection(this.selection);
-						});
+						this.select(this.findElement(last.key)!, 0);
+						// this.stack.push(() => {
+						// 	setCaret(this.findElement(last.key).id, 0);
+						// 	resetSelection(last.key, 0);
+						// 	// if (this.selection) {
+						// 	// 	this.selection.anchorOffset = this.selection.anchorOffset - 1;
+						// 	// 	this.selection.focusOffset = this.selection.focusOffset - 1;
+						// 	// }
+						// 	// this.setSelection(this.selection);
+						// });
 						// this._handleInitialRemove(element);
 						// return;
 					}
 				} else {
-					debounceRaf(() => {
-						setCaret(element.id, first.offset - 1);
-						resetSelection(first.key, first.offset - 1);
-						// if (this.selection) {
-						// 	this.selection.anchorOffset = this.selection.anchorOffset - 1;
-						// 	this.selection.focusOffset = this.selection.focusOffset - 1;
-						// }
-						// this.setSelection(this.selection);
-					});
+					this.select(element, first.offset - 1);
+					// this.stack.push(() => {
+					// 	setCaret(element.id, first.offset - 1);
+					// 	resetSelection(first.key, first.offset - 1);
+					// 	// if (this.selection) {
+					// 	// 	this.selection.anchorOffset = this.selection.anchorOffset - 1;
+					// 	// 	this.selection.focusOffset = this.selection.focusOffset - 1;
+					// 	// }
+					// 	// this.setSelection(this.selection);
+					// });
 				}
 
-				if (!element.text) {
+				// if (!element.text) {
 					this.recalculate();
-				}
+				// }
 
 				return;
 			}
@@ -592,7 +594,8 @@ export class Model extends Exome {
 			);
 			const clonedTokens = this.insertAfter([newToken] as any, firstParent);
 			this.recalculate();
-			debounceRaf(() => setCaret(this.nextText(clonedTokens[0].key)!.id, 0));
+			this.select(this.nextText(clonedTokens[0].key)!, 0);
+			// this.stack.push(() => setCaret(this.nextText(clonedTokens[0].key)!.id, 0));
 
 			if (firstParent === lastParent) {
 				handleEnter(firstParent, clonedTokens[0] as any, this);
@@ -608,6 +611,8 @@ export class Model extends Exome {
 
 			const lastText = lastElement.text;
 			firstElement.text = firstElement.text.slice(0, first.offset) + data;
+
+			const firstText = firstElement.text;
 
 			if (firstElement !== lastElement) {
 				const siblings: any[] = this.nextSiblings(lastElement.key, true)
@@ -626,9 +631,12 @@ export class Model extends Exome {
 
 				this.insertAfter(siblings, firstElement);
 
-				resetSelection(first.key, 0);
+				this.recalculate();
+				// resetSelection(first.key, 0);
+				this.select(firstElement, 0);
 			} else {
 				firstElement.text += lastText.slice(last.offset);
+        // this.select(firstElement, firstText.length);
 			}
 
 			if (data && first.key === last.key && first.offset === last.offset) {
@@ -636,10 +644,11 @@ export class Model extends Exome {
 			}
 
 			if (firstElement.text) {
-				debounceRaf(() =>
-					setCaret(firstElement.id, first.offset + (data?.length as number)),
-				);
-				this.recalculate();
+        this.select(firstElement, firstText.length);
+				// this.stack.push(() =>
+				// 	setCaret(firstElement.id, first.offset + (data?.length as number)),
+				// );
+				// this.recalculate();
 				return;
 			}
 
@@ -648,29 +657,40 @@ export class Model extends Exome {
 			if (firstElement.key.endsWith(".0")) {
 				const parent = this.parent(firstElement.key)!;
 
-				debounceRaf(() => setCaret(parent.id, 0));
+				// this.stack.push(() => setCaret(parent.id, 0));
+        this.select(parent, 0);
 				this.recalculate();
 
-				resetSelection(first.key, 0);
+				// resetSelection(first.key, 0);
 				return;
 			}
 
 			// Hello {World} 2
 			//        ^^^^^ > backspace
 			const prev = this.previousText(firstElement.key)!;
-			const l = prev.text.length || 0;
-			debounceRaf(() => setCaret(prev.id, l));
+			this.select(prev, prev.text.length || 0);
 			this.recalculate();
 			return;
 		}
 	}
+
+  public select(first: AnyToken, start: number = 0) {
+    this.stack.push(() => setCaret(first.id, start));
+
+		this.setSelection({
+			anchor: first.key,
+			focus: first.key,
+			anchorOffset: start,
+			focusOffset: start,
+		});
+  }
 }
 
-let queued: number;
-function debounceRaf(fn: FrameRequestCallback) {
-	if (queued) {
-		cancelAnimationFrame(queued);
-	}
+// let queued: number;
+// function debounceRaf(fn: FrameRequestCallback) {
+// 	if (queued) {
+// 		cancelAnimationFrame(queued);
+// 	}
 
-	queued = requestAnimationFrame(fn);
-}
+// 	queued = requestAnimationFrame(fn);
+// }
