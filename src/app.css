@@ -3,43 +3,44 @@
   border: 1px solid orange;
   border-radius: 6px;
   width: 500px;
-  padding: 10px;
+  padding: 10px 10px 0 10px;
 }
 
-h1[data-ep],
-h2[data-ep],
-h3[data-ep] {
+strong[data-ep-h] {
   display: block;
   margin: 0;
   padding: 0 0 15px 0;
+  font-size: 2em;
+  line-height: 1.1em;
 }
 
-h1[data-ep]::before {
+strong[data-ep-h]::before {
   display: 'inline';
   content: '#';
   opacity: 0.5;
   margin-right: 0.3em;
 }
 
-h2[data-ep]::before {
-  display: 'inline';
-  content: '##';
-  opacity: 0.5;
-  margin-right: 0.3em;
-}
+strong[data-ep-h="2"] { font-size: 1.9em; }
+strong[data-ep-h="2"]::before { content: '##'; }
 
-h3[data-ep]::before {
-  display: 'inline';
-  content: '###';
-  opacity: 0.5;
-  margin-right: 0.3em;
-}
+strong[data-ep-h="3"] { font-size: 1.8em; }
+strong[data-ep-h="3"]::before { content: '###'; }
+
+strong[data-ep-h="4"] { font-size: 1.7em; }
+strong[data-ep-h="4"]::before { content: '####'; }
+
+strong[data-ep-h="5"] { font-size: 1.6em; }
+strong[data-ep-h="5"]::before { content: '#####'; }
+
+strong[data-ep-h="6"] { font-size: 1.5em; }
+strong[data-ep-h="6"]::before { content: '######'; }
 
 [data-ep-main] p,
 p[data-ep] {
   display: block;
   margin: 0;
-  padding: 0 0 15px 0;
+  padding: 0 0 0.5em 0;
 }
 
 p[data-ep-todo] {
@@ -59,6 +60,94 @@ p[data-ep-todo] {
 
 [data-ep-todo-check] input {
   margin: 5px;
+}
+
+p[data-ep-i="1"] { margin-left: calc(1 * 30px); }
+p[data-ep-i="2"] { margin-left: calc(2 * 30px); }
+p[data-ep-i="3"] { margin-left: calc(3 * 30px); }
+p[data-ep-i="4"] { margin-left: calc(4 * 30px); }
+p[data-ep-i="5"] { margin-left: calc(5 * 30px); }
+p[data-ep-i="5"] { margin-left: calc(6 * 30px); }
+p[data-ep-i="6"] { margin-left: calc(7 * 30px); }
+p[data-ep-i="7"] { margin-left: calc(8 * 30px); }
+p[data-ep-i="8"] { margin-left: calc(9 * 30px); }
+p[data-ep-i="9"] { margin-left: calc(10 * 30px); }
+
+p[data-ep]:not([data-ep-l="ol"]) {
+  counter-reset: list-number
+    list-number-1
+    list-number-2
+    list-number-3
+    list-number-4;
+}
+
+p[data-ep][data-ep-l="ol"][data-ep-i="2"] {
+  counter-reset: list-number-1;
+}
+
+p[data-ep][data-ep-l="ol"][data-ep-i="3"] {
+  counter-reset: list-number-2;
+}
+
+p[data-ep][data-ep-l="ol"][data-ep-i="4"] {
+  counter-reset: list-number-3;
+}
+
+p[data-ep][data-ep-l="ol"][data-ep-i="5"] {
+  counter-reset: list-number-4;
+}
+
+p[data-ep-l] {
+  padding-left: 30px;
+}
+
+p[data-ep-l="ol"]:before {
+  counter-increment: list-number;
+  position: absolute;
+  margin-left: -24px;
+  font-size: 0.9em;
+  /* color: gray; */
+  content: counter(list-number, decimal) '.';
+  pointer-events: none;
+}
+
+p[data-ep-l="ol"][data-ep-i="1"]:before {
+  counter-increment: list-number-1;
+  content: counter(list-number-1, upper-alpha) '.';
+}
+
+p[data-ep-l="ol"][data-ep-i="2"]:before {
+  counter-increment: list-number-2;
+  content: counter(list-number-2, lower-alpha) '.';
+}
+
+p[data-ep-l="ol"][data-ep-i="3"]:before {
+  counter-increment: list-number-3;
+  content: counter(list-number-3, upper-roman) '.';
+}
+
+p[data-ep-l="ol"][data-ep-i="4"]:before {
+  counter-increment: list-number-4;
+  content: counter(list-number-4, lower-roman) '.';
+}
+
+
+p[data-ep-l="ul"]:before {
+  position: absolute;
+  margin-left: -23px;
+  font-size: 1em;
+  /* color: gray; */
+  content: '•';
+  pointer-events: none;
+}
+p[data-ep-l="ul"][data-ep-i="1"]:before {
+  content: '◼';
+}
+p[data-ep-l="ul"][data-ep-i="2"]:before {
+  content: '◻';
+}
+p[data-ep-l="ul"][data-ep-i="3"]:before {
+  content: '○';
 }
 
 /* 

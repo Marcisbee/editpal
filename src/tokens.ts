@@ -9,15 +9,34 @@ export interface TextToken extends Token {
 }
 interface ParagraphToken extends Token {
 	type: "p";
+	props: {
+		indent?: number;
+	};
 	children: TextToken[];
 }
 interface HeadingToken extends Token {
 	type: "h";
 	props: {
-		size: 1 | 2 | 3 | 4 | 5 | 6;
+		size: number;
 	};
 	children: TextToken[];
 }
-export type BlockToken = ParagraphToken | HeadingToken;
+interface ListToken extends Token {
+	type: "l";
+	props: {
+		type: string;
+		indent?: number;
+	};
+	children: TextToken[];
+}
+interface TodoToken extends Token {
+	type: "todo";
+	props: {
+		indent?: number;
+		done?: boolean;
+	};
+	children: TextToken[];
+}
+export type BlockToken = ParagraphToken | HeadingToken | TodoToken | ListToken;
 export type AnyToken = TextToken | BlockToken;
 export type TokenRoot = BlockToken[];

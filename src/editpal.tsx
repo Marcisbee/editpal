@@ -2,11 +2,11 @@ import { useStore } from "exome/react";
 import { type ReactElement, useLayoutEffect, useRef, useState } from "react";
 
 import type { AnyToken, TextToken } from "./tokens";
-import { ACTION, Model } from "./model";
+import { ACTION, Model as EditorModel } from "./model";
 
 import "./app.css";
 
-// @TODO Handle "tab" key
+export const Model = EditorModel;
 
 function RenderText({ id, props, text }: Omit<TextToken, "type" | "key">) {
 	return (
@@ -20,39 +20,47 @@ function RenderItem(item: AnyToken) {
 	if (item.type === "h") {
 		const { size, ...style } = item.props || {};
 
-		let HEADING: "h1" | "h2" | "h3" = "h1";
-
-		if (size === 3) {
-			HEADING = "h3";
-		} else if (size === 2) {
-			HEADING = "h2";
-		}
-
 		return (
-			<HEADING style={style} data-ep={item.id}>
+			<strong style={style} data-ep-h={size} data-ep={item.id}>
 				<RenderMap key={item.id} items={item.children} />
-			</HEADING>
+			</strong>
 		);
 	}
 
 	if (item.type === "p") {
-		const { ...style } = item.props || {};
+		const { indent, ...style } = item.props || {};
 
 		return (
-			<p style={style} data-ep={item.id}>
+			<p style={style} data-ep={item.id} data-ep-i={indent}>
+				<RenderMap key={item.id} items={item.children} />
+			</p>
+		);
+	}
+
+	if (item.type === "l") {
+		const { indent, type, ...style } = item.props || {};
+
+		return (
+			<p
+				style={style}
+				data-ep={item.id}
+				data-ep-l={type || "ul"}
+				data-ep-i={indent}
+			>
 				<RenderMap key={item.id} items={item.children} />
 			</p>
 		);
 	}
 
 	if (item.type === "todo") {
-		const { done, ...style } = item.props || {};
+		const { indent, done, ...style } = item.props || {};
 
 		return (
 			<p
 				style={style}
 				data-ep={item.id}
 				data-ep-todo
+				data-ep-i={indent}
 				// @TODO figure out if this is needed
 				onKeyDown={(e) => {
 					if (e.key.indexOf("Backspace") === 0) {
@@ -113,7 +121,7 @@ function preventDefaultAndStop(e: any) {
 }
 
 export interface EditpalProps {
-	model: Model;
+	model: EditorModel;
 }
 
 export function Editpal({ model }: EditpalProps) {

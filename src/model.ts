@@ -13,6 +13,83 @@ export const ACTION = {
 	_Paste: 6,
 };
 
+function handleEnter(
+	fromParent: BlockToken,
+	toParent: BlockToken,
+	model: Model,
+) {
+	if (toParent.type === fromParent.type) {
+		return;
+	}
+
+	if (fromParent.type === "todo") {
+		toParent.type = fromParent.type as any;
+		toParent.props = {
+			indent: fromParent.props?.indent,
+		};
+		return;
+	}
+
+	if (fromParent.type === "l") {
+		toParent.type = fromParent.type as any;
+		toParent.props = {
+			indent: fromParent.props?.indent,
+			type: fromParent.props?.type || 'ul',
+		};
+		return;
+	}
+}
+
+function dotSize(value: string): number {
+	return value.split(".").length;
+}
+
+function keySize(key: string): number {
+  return parseInt(key.split(".").join(""), 10)
+}
+
+function handleTab(
+	firstParent: BlockToken,
+	lastParent: BlockToken,
+	model: Model,
+	shift: boolean,
+) {
+	const len = dotSize(firstParent.key);
+	const keys = model
+		.keysBetween(firstParent.key, lastParent.key)
+		.filter((key) => dotSize(key) === len);
+
+	for (const key of keys) {
+		const element = model.findElement(key);
+
+		const mod = shift ? -1 : 1;
+
+		if (!element.props) {
+			element.props = {};
+		}
+
+		if (element.type === "h") {
+			if (mod === -1 && !element.props.size) {
+				(element as any).type = "p";
+				(element as any).props = null;
+				continue;
+			}
+
+			element.props.size = Math.max(
+				1,
+				Math.min((element.props.size || 0) + mod, 6),
+			);
+		} else {
+			if (mod === -1 && !element.props.indent) {
+				element.type = "p";
+				continue;
+			}
+
+			element.props.indent = Math.max(0, (element.props.indent || 0) + mod);
+		}
+	}
+}
+
 export class Model extends Exome {
 	public tokens: TokenRoot;
 	public selection: {
@@ -130,6 +207,11 @@ export class Model extends Exome {
 		const index = parent.children.findIndex((c) => c.key === key);
 		parent.children.splice(index, 1);
 		console.log("🏴‍☠️ REMOVE CHILD", parent.key, key);
+	}
+
+	public keysBetween(firstKey: string, lastKey: string) {
+		const keys = Object.values(this._idToKey);
+		return keys.slice(keys.indexOf(firstKey), keys.indexOf(lastKey) + 1);
 	}
 
 	public removeBetween(firstKey: string, lastKey: string, lastIncluded = true) {
@@ -312,8 +394,19 @@ export class Model extends Exome {
 
 		// "-|[space]" => "• |"
 		if (textAdded === " " && parent.type === "p" && element.text === "- ") {
-			parent.type = "todo";
+			parent.type = "l";
 			element.text = "";
+			return;
+		}
+
+		// "1.|[space]" => "1. |"
+		if (textAdded === " " && parent.type === "p" && element.text === "1. ") {
+			parent.type = "l";
+			element.text = "";
+      parent.props = {
+        ...parent.props,
+        type: 'ol',
+      };
 			return;
 		}
 	}
@@ -357,7 +450,7 @@ export class Model extends Exome {
 				return a.offset > b.offset ? 1 : -1;
 			}
 
-			return a.key > b.key ? 1 : -1;
+			return keySize(a.key) > keySize(b.key) ? 1 : -1;
 		});
 
 		const resetSelection = (key: string, offset: number) => {
@@ -460,10 +553,24 @@ export class Model extends Exome {
 			return;
 		}
 
+		// TAB key
+		if (type === ACTION._Tab || type === ACTION._ShiftTab) {
+			let firstElement = this.innerText(first.key);
+			let firstParent = this.parent(firstElement.key)!;
+			let lastElement = this.innerText(last.key);
+			let lastParent = this.parent(lastElement.key)!;
+
+			handleTab(firstParent, lastParent, this, type === ACTION._ShiftTab);
+
+			return;
+		}
+
 		// ENTER key
 		if (type === ACTION._Enter) {
 			let firstElement = this.innerText(first.key);
+			let firstParent = this.parent(firstElement.key)!;
 			let lastElement = this.innerText(last.key);
+			let lastParent = this.parent(lastElement.key)!;
 
 			const siblings: any[] = this.nextSiblings(lastElement.key, true)
 				.filter((e) => e.key >= lastElement.key)
@@ -486,9 +593,14 @@ export class Model extends Exome {
 				false,
 			);
 			const clonedToken = this.insertAfterParent(newToken as any, firstElement);
-			console.log({ clonedToken });
+			// console.log({ clonedToken });
 			this.recalculate();
 			debounceRaf(() => setCaret(this.nextText(clonedToken.key)!.id, 0));
+
+			if (firstParent === lastParent) {
+				handleEnter(firstParent, clonedToken, this);
+			}
+
 			return;
 		}
 

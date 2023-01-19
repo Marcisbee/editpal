@@ -97,6 +97,103 @@ const root = [
 	},
 	{
 		id: ranID(),
+		type: "l",
+		props: {
+			type: "ul",
+		},
+		children: [
+			{
+				id: ranID(),
+				type: "t",
+				text: "Bullet",
+			},
+		],
+	},
+	{
+		id: ranID(),
+		type: "l",
+		props: {
+			type: "ol",
+		},
+		children: [
+			{
+				id: ranID(),
+				type: "t",
+				text: "First",
+			},
+		],
+	},
+	{
+		id: ranID(),
+		type: "l",
+		props: {
+			type: "ol",
+			indent: 1,
+		},
+		children: [
+			{
+				id: ranID(),
+				type: "t",
+				text: "First of first",
+			},
+		],
+	},
+	{
+		id: ranID(),
+		type: "l",
+		props: {
+			type: "ol",
+			indent: 1,
+		},
+		children: [
+			{
+				id: ranID(),
+				type: "t",
+				text: "Second of first",
+			},
+		],
+	},
+	{
+		id: ranID(),
+		type: "l",
+		props: {
+			type: "ol",
+		},
+		children: [
+			{
+				id: ranID(),
+				type: "t",
+				text: "Second",
+			},
+		],
+	},
+	{
+		id: ranID(),
+		type: "p",
+		children: [
+			{
+				id: ranID(),
+				type: "t",
+				text: "Unrelated",
+			},
+		],
+	},
+	{
+		id: ranID(),
+		type: "l",
+		props: {
+			type: "ol",
+		},
+		children: [
+			{
+				id: ranID(),
+				type: "t",
+				text: "First again",
+			},
+		],
+	},
+	{
+		id: ranID(),
 		type: "p",
 		props: {},
 		children: [
