@@ -232,7 +232,10 @@ export class Model extends Exome {
 		keys.shift();
 
 		if (!lastIncluded) {
-			keys.pop();
+			const index = keys.indexOf(lastKey);
+			if (index > -1) {
+				keys.splice(index, 1);
+			}
 		}
 
 		for (const key of keys) {
