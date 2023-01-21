@@ -1,6 +1,12 @@
 import { Exome } from "exome";
 
-import { AnyToken, BlockToken, TextToken, TokenRoot } from "./tokens";
+import {
+	AnyToken,
+	BlockToken,
+	InlineToken,
+	TextToken,
+	TokenRoot,
+} from "./tokens";
 import { setCaret, cloneToken, stringSplice, ranID } from "./utils";
 
 export const ACTION = {
@@ -90,7 +96,7 @@ function handleTab(
 }
 
 export class Model extends Exome {
-  public tokens: TokenRoot;
+	public tokens: TokenRoot;
 	public selection: {
 		anchor: string;
 		anchorOffset: number;
@@ -101,7 +107,7 @@ export class Model extends Exome {
 	public _idToKey: Record<string, string> = {};
 	public _elements: Record<string, AnyToken> = {};
 	public _elements_temp: Record<string, AnyToken> = {};
-  public stack: Function[] = [];
+	public stack: Function[] = [];
 
 	constructor(tokens: TokenRoot) {
 		super();
@@ -209,46 +215,56 @@ export class Model extends Exome {
 		console.log("🏴‍☠️ REMOVE CHILD", parent.key, key);
 	}
 
-	public keysBetween(firstKey: string, lastKey: string) {
+	public keysBetween = (firstKey: string, lastKey: string) => {
 		const keys = Object.values(this._idToKey);
-		return keys.slice(keys.indexOf(firstKey), keys.indexOf(lastKey) + 1);
-	}
+		const li = keys.indexOf(lastKey);
+
+		if (li === -1) {
+			return keys.slice(keys.indexOf(firstKey));
+		}
+
+		return keys.slice(keys.indexOf(firstKey), li + 1);
+	};
 
 	public removeBetween(firstKey: string, lastKey: string, lastIncluded = true) {
-		const keys = Object.values(this._idToKey);
-		for (const key of keys.slice(keys.indexOf(firstKey))) {
-			if (key > lastKey) {
-				return;
-			}
+		const keys = this.keysBetween(firstKey, lastKey);
 
-			if (
-				!(
-					key > firstKey &&
-					(lastIncluded && firstKey !== lastKey
-						? key <= lastKey
-						: key < lastKey)
-				)
-			) {
-				continue;
-			}
+		keys.shift();
 
+		if (!lastIncluded) {
+			keys.pop();
+		}
+
+		for (const key of keys) {
 			this.remove(key);
 		}
 	}
 
-	public findElement(key: string) {
+	public findElement = (key: string) => {
 		return this._elements[key];
-	}
+	};
 
-	public innerText(key: string) {
-		let el = this.findElement(key);
-		if (el?.type !== "t") {
+	public innerNode = (key: string): InlineToken => {
+		let el = this.findElement(key) as any;
+
+		if (el?.children) {
 			el = el.children[0];
 		}
-		return el;
-	}
 
-	public parent(currentKey: string): BlockToken | null {
+		return el;
+	};
+
+	public innerText = (key: string) => {
+		let el = this.innerNode(key);
+
+		if (el.type !== "t") {
+			return;
+		}
+
+		return el;
+	};
+
+	public parent = (currentKey: string): BlockToken | null => {
 		const keyChunks = currentKey.split(".");
 		keyChunks.pop();
 		const parentKey = keyChunks.join(".");
@@ -258,9 +274,12 @@ export class Model extends Exome {
 		}
 
 		return this.findElement(parentKey) as BlockToken;
-	}
+	};
 
-	public nextSiblings(currentKey: string, selfIncluded = false): AnyToken[] {
+	public nextSiblings = (
+		currentKey: string,
+		selfIncluded = false,
+	): AnyToken[] => {
 		const selfKey = currentKey.split(".").pop()!;
 
 		const parent = this.parent(currentKey);
@@ -275,9 +294,9 @@ export class Model extends Exome {
 		return parent.children.slice(
 			parseInt(selfKey, 10) + (selfIncluded ? 0 : +1),
 		);
-	}
+	};
 
-	public previousText(currentKey: string): TextToken | null {
+	public previousText = (currentKey: string): TextToken | null => {
 		const keys = Object.values(this._idToKey);
 		const index = keys.indexOf(currentKey);
 
@@ -294,9 +313,9 @@ export class Model extends Exome {
 		}
 
 		return this.previousText(lastKey);
-	}
+	};
 
-	public nextText(currentKey: string): TextToken | null {
+	public nextText = (currentKey: string): TextToken | null => {
 		const keys = Object.values(this._idToKey);
 		const index = keys.indexOf(currentKey);
 
@@ -313,10 +332,13 @@ export class Model extends Exome {
 		}
 
 		return this.nextText(lastKey);
-	}
+	};
 
 	private _handleInitialRemove(element: AnyToken) {
-		const parent = element.type === "t" ? this.parent(element.key)! : element;
+		const parent =
+			element.type === "t" || element.type === "img"
+				? this.parent(element.key)!
+				: element;
 
 		if (parent.type === "h") {
 			if (parent.props.size <= 1) {
@@ -449,19 +471,6 @@ export class Model extends Exome {
 			return a.key.localeCompare(b.key, undefined, { numeric: true });
 		});
 
-		const resetSelection = (key: string, offset: number) => {
-			// this.selection!.anchor = first.key;
-			// this.selection!.focus = first.key;
-			// this.selection!.anchorOffset = 0;
-			// this.selection!.focusOffset = 0;
-			this.setSelection({
-				anchor: key,
-				focus: key,
-				anchorOffset: offset,
-				focusOffset: offset,
-			});
-		};
-
 		if (
 			type === ACTION._Remove &&
 			(first.key !== last.key || first.offset !== last.offset)
@@ -473,7 +482,7 @@ export class Model extends Exome {
 			data = "";
 			first.offset -= 1;
 		} else if (type === ACTION._Remove) {
-			let element = this.innerText(first.key);
+			let element = this.innerNode(first.key);
 
 			const isFirstChild = element.key?.endsWith(".0") ?? true;
 
@@ -538,7 +547,7 @@ export class Model extends Exome {
 				}
 
 				// if (!element.text) {
-					this.recalculate();
+				this.recalculate();
 				// }
 
 				return;
@@ -555,9 +564,9 @@ export class Model extends Exome {
 
 		// TAB key
 		if (type === ACTION._Tab || type === ACTION._ShiftTab) {
-			let firstElement = this.innerText(first.key);
+			let firstElement = this.innerNode(first.key);
 			let firstParent = this.parent(firstElement.key)!;
-			let lastElement = this.innerText(last.key);
+			let lastElement = this.innerNode(last.key);
 			let lastParent = this.parent(lastElement.key)!;
 
 			handleTab(firstParent, lastParent, this, type === ACTION._ShiftTab);
@@ -568,12 +577,33 @@ export class Model extends Exome {
 		// ENTER key
 		if (type === ACTION._Enter) {
 			let firstElement = this.innerText(first.key);
-			let firstParent = this.parent(firstElement.key)!;
 			let lastElement = this.innerText(last.key);
+
+			if (!firstElement || !lastElement) {
+				const key = !firstElement ? first.key : last.key;
+				const el = this.findElement(key);
+				const parent = this.parent(key);
+
+				if (parent?.type === "p") {
+					parent.children = [
+						{
+							id: el.id,
+							key: el.key,
+							type: "t",
+							props: {},
+							text: "",
+						},
+					];
+					this.recalculate();
+				}
+				return;
+			}
+
+			let firstParent = this.parent(firstElement.key)!;
 			let lastParent = this.parent(lastElement.key)!;
 
 			const siblings: any[] = this.nextSiblings(lastElement.key, true)
-				.filter((e) => e.key >= lastElement.key)
+				.filter((e) => e.key >= lastElement!.key)
 				.map(cloneToken);
 			if (siblings[0]?.text) {
 				siblings[0].text = siblings[0].text.slice(last.offset);
@@ -606,8 +636,33 @@ export class Model extends Exome {
 
 		// Handle new text being added
 		if (type === ACTION._Key && data != null) {
-			let firstElement = this.innerText(first.key);
-			let lastElement = this.innerText(last.key);
+			let firstElement = this.innerText(first.key)!;
+			let lastElement = this.innerText(last.key)!;
+
+			if (!firstElement || !lastElement) {
+				const key = !firstElement ? first.key : last.key;
+				const el = this.findElement(key);
+				const parent = this.parent(key);
+
+				if (parent?.type === "p") {
+					parent.children = [
+						{
+							id: el.id,
+							key: el.key,
+							type: "t",
+							props: {},
+							text: "",
+						},
+					];
+					this.recalculate();
+					firstElement = this.innerText(first.key) as any;
+					lastElement = this.innerText(last.key) as any;
+				}
+			}
+
+			if (!firstElement && !lastElement) {
+				return;
+			}
 
 			const lastText = lastElement.text;
 			firstElement.text = firstElement.text.slice(0, first.offset) + data;
@@ -636,7 +691,7 @@ export class Model extends Exome {
 				this.select(firstElement, 0);
 			} else {
 				firstElement.text += lastText.slice(last.offset);
-        // this.select(firstElement, firstText.length);
+				// this.select(firstElement, firstText.length);
 			}
 
 			if (data && first.key === last.key && first.offset === last.offset) {
@@ -644,7 +699,7 @@ export class Model extends Exome {
 			}
 
 			if (firstElement.text) {
-        this.select(firstElement, firstText.length);
+				this.select(firstElement, firstText.length);
 				// this.stack.push(() =>
 				// 	setCaret(firstElement.id, first.offset + (data?.length as number)),
 				// );
@@ -658,7 +713,7 @@ export class Model extends Exome {
 				const parent = this.parent(firstElement.key)!;
 
 				// this.stack.push(() => setCaret(parent.id, 0));
-        this.select(parent, 0);
+				this.select(parent, 0);
 				this.recalculate();
 
 				// resetSelection(first.key, 0);
@@ -674,8 +729,8 @@ export class Model extends Exome {
 		}
 	}
 
-  public select(first: AnyToken, start: number = 0) {
-    this.stack.push(() => setCaret(first.id, start));
+	public select(first: AnyToken, start: number = 0) {
+		this.stack.push(() => setCaret(first.id, start));
 
 		this.setSelection({
 			anchor: first.key,
@@ -683,7 +738,7 @@ export class Model extends Exome {
 			anchorOffset: start,
 			focusOffset: start,
 		});
-  }
+	}
 }
 
 // let queued: number;

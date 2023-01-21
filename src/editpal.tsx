@@ -1,5 +1,13 @@
 import { useStore } from "exome/react";
-import { type ReactElement, useLayoutEffect, useRef, useState } from "react";
+import {
+	type ReactElement,
+	useLayoutEffect,
+	useRef,
+	useState,
+	createContext,
+	RefObject,
+	useContext,
+} from "react";
 
 import type { AnyToken, TextToken } from "./tokens";
 import { ACTION, Model as EditorModel } from "./model";
@@ -16,7 +24,9 @@ function RenderText({ id, props, text }: Omit<TextToken, "type" | "key">) {
 	);
 }
 
-function RenderItem(item: AnyToken) {
+function RenderItem(item: AnyToken & { k: string }) {
+	const { editor, model } = useContext(EditorContext);
+
 	if (item.type === "h") {
 		const { size, ...style } = item.props || {};
 
@@ -90,6 +100,36 @@ function RenderItem(item: AnyToken) {
 		);
 	}
 
+	if (item.type === "img") {
+		const a = model.selection?.anchor;
+		const f = model.selection?.focus;
+		return (
+			<span
+				key={item.id}
+				data-ep={item.id}
+				data-ep-img
+				data-ep-s={
+					(a &&
+						f &&
+						[...model.keysBetween(a, f), ...model.keysBetween(f, a)].indexOf(
+							item.k,
+						) > -1) ||
+					undefined
+				}
+				// If pointerEvents, then this is needed
+				// onMouseDown={(e) => {
+				// 	document.execCommand("selectAll", false, null);
+				// 	model.select(model.findElement(item.k)!, 0);
+				// }}
+			>
+				<br />
+				<span contentEditable={false}>
+					<img src={item.src} alt={"@TODO"} />
+				</span>
+			</span>
+		);
+	}
+
 	if (item.type === "t") {
 		return <RenderText {...item} key={item.id} />;
 	}
@@ -107,7 +147,7 @@ function RenderMap({ items }: RenderMapProps) {
 	}
 
 	return items.map((item) => (
-		<RenderItem {...item} key={item.id} />
+		<RenderItem {...item} k={item.key} key={item.id} />
 	)) as unknown as ReactElement;
 }
 
@@ -124,6 +164,11 @@ export interface EditpalProps {
 	model: EditorModel;
 }
 
+const EditorContext = createContext<{
+	model: EditorModel;
+	editor: RefObject<HTMLDivElement>;
+}>({} as any);
+
 export function Editpal({ model }: EditpalProps) {
 	const { tokens, stack, action, setSelection } = useStore(model);
 	const ref = useRef<HTMLDivElement>(null);
@@ -131,9 +176,7 @@ export function Editpal({ model }: EditpalProps) {
 	// const [selection, setSelection] = useState(null);
 
 	useLayoutEffect(() => {
-		console.log('every time', stack);
 		stack.splice(0).pop()?.();
-		// stack.splice(0).forEach((p) => p());
 	});
 
 	useLayoutEffect(() => {
@@ -141,27 +184,59 @@ export function Editpal({ model }: EditpalProps) {
 			return;
 		}
 
+		// const observer = new MutationObserver((mutations) => {
+		// 	mutations.forEach(({ type, target, ...rest }) => {
+		// 		if (type === 'characterData') {
+		// 			const key = target.parentElement?.getAttribute("data-ep");
+		// 			const content = target.textContent;
+		// 			console.log("🍏 CHARACTER", { key, content }, rest);
+		// 			return;
+		// 		}
+
+		// 		console.log('🍎 MUTATION', type, target);
+		// 		// const targetDOM = mutation.target;
+		// 		// if (mutation.type === 'childList') {
+		// 		//   const listValues = Array.from(targetNode.children)
+		// 		//       .map(node => node.innerHTML)
+		// 		//       .filter(html => html !== '<br>');
+		// 		//   console.log(listValues);
+		// 		// }
+		// 	});
+		// });
+
+		// observer.observe(ref.current, {
+		// 	characterData: true,
+		// 	childList: true,
+		// 	subtree: true,
+		// });
+
 		function onSelectionChange(event) {
-			console.log('🔵 SELECTION', event);
 			const selection = document.getSelection();
 
 			if (!selection) {
 				return;
 			}
 
-			// console.log(selection.focusNode?.parentElement);
 			const anchor =
-				selection.anchorNode?.parentElement?.getAttribute("data-ep");
-			const focus = selection.focusNode?.parentElement?.getAttribute("data-ep");
+				selection.anchorNode?.parentElement?.getAttribute("data-ep") ||
+				selection.anchorNode?.getAttribute?.("data-ep");
+			const focus =
+				selection.focusNode?.parentElement?.getAttribute("data-ep") ||
+				selection.focusNode?.getAttribute?.("data-ep");
 
 			if (!anchor || !focus) {
 				return;
 			}
 
+			// console.log("🔵 SELECTION", selection.type, selection);
+
+			let a = model._idToKey[anchor];
+			let f = model._idToKey[focus];
+
 			setSelection({
-				anchor: model._idToKey[anchor],
+				anchor: /\./.test(a) ? a : `${a}.0`,
 				anchorOffset: selection.anchorOffset,
-				focus: model._idToKey[focus],
+				focus: /\./.test(f) ? f : `${f}.0`,
 				focusOffset: selection.focusOffset,
 			});
 		}
@@ -190,82 +265,105 @@ export function Editpal({ model }: EditpalProps) {
 	}, [focus]);
 
 	return (
-		<div
-			ref={ref}
-			suppressContentEditableWarning
-			contentEditable
-			// onFocus={(e) => {
-			//   console.log(e);
-			// }}
-			// onBeforeInput={(e) => {
-			// 	// e.preventDefault();
-			// }}
-			onDrop={preventDefaultAndStop}
-			onDragStart={preventDefaultAndStop}
-			onPaste={(e) => {
-				// @TODO transform before paste
-				// @TODO strip from html
-				preventDefault(e);
-				action(ACTION._Paste, "@TODO");
+		<EditorContext.Provider
+			value={{
+				model,
+				editor: ref,
 			}}
-			onKeyDown={(e) => {
-				if (e.key.indexOf("Arrow") === 0) {
-					return;
-				}
-
-				if (e.metaKey) {
-					return;
-				}
-
-				// @TODO handle 'a => ā
-				if (e.key === "Dead") {
-					preventDefaultAndStop(e);
-					return false;
-				}
-
-				// Single letter
-				if (e.key.length === 1) {
-					preventDefault(e);
-					action(ACTION._Key, e.key);
-					return;
-				}
-
-				if (e.key === "Tab") {
-					preventDefault(e);
-					action(e.shiftKey ? ACTION._ShiftTab : ACTION._Tab);
-					return;
-				}
-
-				if (e.key === "Backspace") {
-					preventDefault(e);
-					action(ACTION._Remove);
-					return;
-				}
-
-				if (e.key === "Enter") {
-					preventDefault(e);
-					action(ACTION._Enter);
-					return;
-				}
-
-				if (e.key === "Delete") {
-					preventDefault(e);
-					action(ACTION._Delete);
-					return;
-				}
-
-				// Allow copy
-				if (e.metaKey && e.key === "c") {
-					return;
-				}
-
-				console.log('key', e.key);
-
-				preventDefault(e);
-			}}
-			data-ep-main
 		>
-			<RenderMap items={tokens} />
-		</div>
+			<div
+				ref={ref}
+				suppressContentEditableWarning
+				contentEditable
+				// onFocus={(e) => {
+				//   console.log(e);
+				// }}
+				// onBeforeInput={(e) => {
+				// 	// e.preventDefault();
+				// }}
+				onDrop={preventDefaultAndStop}
+				onDragStart={preventDefaultAndStop}
+				onPaste={(e) => {
+					// @TODO transform before paste
+					// @TODO strip from html
+					preventDefault(e);
+					action(ACTION._Paste, "@TODO");
+				}}
+				// onKeyUp={(e) => {
+				// 	preventDefaultAndStop(e);
+				// 	console.log(e);
+
+				// 	if (e.key === "Dead") {
+				// 		console.log(e);
+				// 		preventDefault(e);
+				// 		// ref.current.contentEditable = "true";
+				// 		// ref.current?.focus();
+				// 		// action(ACTION._Key, String.fromCharCode(e.code));
+				// 		return false;
+				// 	}
+				// }}
+				// onInput={(e) => {
+				// 		preventDefaultAndStop(e);
+				// }}
+				onKeyDown={(e) => {
+					if (e.key.indexOf("Arrow") === 0) {
+						return;
+					}
+
+					if (e.metaKey) {
+						return;
+					}
+
+					// @TODO handle 'a => ā
+					// if (e.key === "Dead") {
+					// 	preventDefault(e);
+					// 	return;
+					// }
+
+					// Single letter
+					if (e.key.length === 1) {
+						preventDefault(e);
+						action(ACTION._Key, e.key);
+						return;
+					}
+
+					if (e.key === "Tab") {
+						preventDefault(e);
+						action(e.shiftKey ? ACTION._ShiftTab : ACTION._Tab);
+						return;
+					}
+
+					if (e.key === "Backspace") {
+						preventDefault(e);
+						action(ACTION._Remove);
+						return;
+					}
+
+					if (e.key === "Enter") {
+						preventDefault(e);
+						action(ACTION._Enter);
+						return;
+					}
+
+					if (e.key === "Delete") {
+						preventDefault(e);
+						action(ACTION._Delete);
+						return;
+					}
+
+					// Allow copy
+					if (e.metaKey && e.key === "c") {
+						return;
+					}
+
+					console.log("key", e.key);
+
+					preventDefault(e);
+				}}
+				data-ep-main
+			>
+				<RenderMap items={tokens} />
+			</div>
+		</EditorContext.Provider>
 	);
 }

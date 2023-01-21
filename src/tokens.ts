@@ -13,19 +13,23 @@ export interface TextToken extends Token {
 	type: "t";
 	text: string;
 }
+export interface ImgToken extends Token {
+	type: "img";
+	src: string;
+}
 interface ParagraphToken extends Token {
 	type: "p";
 	props: {
 		indent?: number;
 	};
-	children: TextToken[];
+	children: InlineToken[];
 }
 interface HeadingToken extends Token {
 	type: "h";
 	props: {
 		size: number;
 	};
-	children: TextToken[];
+	children: InlineToken[];
 }
 interface ListToken extends Token {
 	type: "l";
@@ -33,7 +37,7 @@ interface ListToken extends Token {
 		type: string;
 		indent?: number;
 	};
-	children: TextToken[];
+	children: InlineToken[];
 }
 interface TodoToken extends Token {
 	type: "todo";
@@ -41,8 +45,9 @@ interface TodoToken extends Token {
 		indent?: number;
 		done?: boolean;
 	};
-	children: TextToken[];
+	children: InlineToken[];
 }
 export type BlockToken = ParagraphToken | HeadingToken | TodoToken | ListToken;
-export type AnyToken = TextToken | BlockToken;
+export type InlineToken = TextToken | ImgToken;
+export type AnyToken = InlineToken | BlockToken;
 export type TokenRoot = BlockToken[];

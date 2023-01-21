@@ -185,6 +185,34 @@ p[data-ep-l="ul"][data-ep-i="3"]:before {
   content: '○';
 }
 
+[data-ep-img] {
+  display: block;
+  border-radius: 4px;
+  cursor: default;
+}
+[data-ep-main]:focus [data-ep-img][data-ep-s] {
+  box-shadow: 0 0 0 2px #98c9ff;
+}
+[data-ep-img] br {
+  line-height: 0;
+  font-size: 0;
+  color: transparent;
+}
+[data-ep-img] > span {
+  display: block;
+  user-select: none;
+  margin-top: -1.5em;
+  outline: none;
+  pointer-events: none;
+}
+[data-ep-img] img {
+  border-radius: 4px;
+  max-width: 100%;
+  font-size: 0;
+  line-height: 0;
+  vertical-align: middle;
+}
+
 /* 
 img.ep-todo-capture {
   display: inline-block;

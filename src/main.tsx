@@ -180,6 +180,17 @@ const root = [
 	},
 	{
 		id: ranID(),
+		type: "p",
+		children: [
+			{
+				id: ranID(),
+				type: "img",
+				src: "https://img.strike.lv/photos/7110acef-3ad0-4382-a88f-93e854128be8.jpeg",
+			},
+		],
+	},
+	{
+		id: ranID(),
 		type: "l",
 		props: {
 			type: "ol",
