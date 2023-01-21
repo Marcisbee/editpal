@@ -17,6 +17,7 @@ export const ACTION = {
 	_Tab: 4,
 	_ShiftTab: 5,
 	_Paste: 6,
+	_Compose: 7,
 };
 
 function handleEnter(
@@ -93,6 +94,8 @@ function handleTab(
 			);
 		}
 	}
+
+	model.update();
 }
 
 export class Model extends Exome {
@@ -117,6 +120,8 @@ export class Model extends Exome {
 
 		console.log(this.tokens, this._idToKey);
 	}
+
+	public update() {}
 
 	public recalculate() {
 		this._elements_temp = {};
@@ -267,8 +272,8 @@ export class Model extends Exome {
 		return el;
 	};
 
-	public parent = (currentKey: string): BlockToken | null => {
-		const keyChunks = currentKey.split(".");
+	public parent = (key: string): BlockToken | null => {
+		const keyChunks = key.split(".");
 		keyChunks.pop();
 		const parentKey = keyChunks.join(".");
 
@@ -279,29 +284,23 @@ export class Model extends Exome {
 		return this.findElement(parentKey) as BlockToken;
 	};
 
-	public nextSiblings = (
-		currentKey: string,
-		selfIncluded = false,
-	): AnyToken[] => {
-		const selfKey = currentKey.split(".").pop()!;
+	public nextSiblings = (key: string, selfIncluded = false): AnyToken[] => {
+		const selfKey = key.split(".").pop()!;
 
-		const parent = this.parent(currentKey);
+		const parent = this.parent(key);
 
 		if (!parent?.children) {
 			return [];
 		}
 
-		console.log(
-			parent.children.slice(parseInt(selfKey, 10) + (selfIncluded ? 0 : +1)),
-		);
 		return parent.children.slice(
 			parseInt(selfKey, 10) + (selfIncluded ? 0 : +1),
 		);
 	};
 
-	public previousText = (currentKey: string): TextToken | null => {
+	public previousText = (key: string): TextToken | null => {
 		const keys = Object.values(this._idToKey);
-		const index = keys.indexOf(currentKey);
+		const index = keys.indexOf(key);
 
 		if (index < 1) {
 			return null;
@@ -456,7 +455,7 @@ export class Model extends Exome {
 		return newTokens;
 	}
 
-	public action(type: number, data?: string) {
+	public action = (type: number, data?: string) => {
 		if (!this.selection) {
 			return;
 		}
@@ -637,6 +636,25 @@ export class Model extends Exome {
 			return;
 		}
 
+		// Handle new text being added after Dead key
+		if (type === ACTION._Compose && data != null) {
+			let el = this.innerText(first.key)!;
+
+			if (!el) {
+				return;
+			}
+
+			el.text = stringSplice(
+				el.text,
+				first.offset - 1,
+				first.offset - 1,
+				data,
+			);
+
+			this._selectSilent(el, first.offset - 1 + data.length);
+			return;
+		}
+
 		// Handle new text being added
 		if (type === ACTION._Key && data != null) {
 			let firstElement = this.innerText(first.key)!;
@@ -732,8 +750,12 @@ export class Model extends Exome {
 		}
 	}
 
-	public select(first: AnyToken, start: number = 0) {
+	private _selectSilent = (first: AnyToken, start: number = 0) => {
 		this.stack.push(() => setCaret(first.id, start));
+	}
+
+	public select(first: AnyToken, start: number = 0) {
+		this._selectSilent(first, start);
 
 		this.setSelection({
 			anchor: first.key,

@@ -18,7 +18,12 @@ export const Model = EditorModel;
 
 function RenderText({ id, props, text }: Omit<TextToken, "type" | "key">) {
 	return (
-		<span key={id} style={props} data-ep={id}>
+		<span
+			// Handle dead key insertion
+			key={`${id}-${text}`}
+			style={props}
+			data-ep={id}
+		>
 			{text.replace(/ /g, "\u00A0") || <br />}
 		</span>
 	);
@@ -305,6 +310,10 @@ export function Editpal({ model }: EditpalProps) {
 				// onInput={(e) => {
 				// 		preventDefaultAndStop(e);
 				// }}
+				onCompositionEnd={(e) => {
+					// Handle ('a => ā) & ('b => 'b)
+					action(ACTION._Compose, e.data);
+				}}
 				onKeyDown={(e) => {
 					if (e.key.indexOf("Arrow") === 0) {
 						return;
@@ -314,11 +323,19 @@ export function Editpal({ model }: EditpalProps) {
 						return;
 					}
 
-					// @TODO handle 'a => ā
-					// if (e.key === "Dead") {
-					// 	preventDefault(e);
-					// 	return;
-					// }
+					// Handle dead key https://en.wikipedia.org/wiki/Dead_key
+					if (e.key === "Dead") {
+						preventDefault(e);
+						action(ACTION._Key, "");
+						return;
+					}
+
+					// Don't do anything when composing
+					if (e.nativeEvent.isComposing) {
+						console.log("key", e.key);
+						preventDefault(e);
+						return;
+					}
 
 					// Single letter
 					if (e.key.length === 1) {
