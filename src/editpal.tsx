@@ -184,6 +184,111 @@ export function Editpal({ model }: EditpalProps) {
 		stack.splice(0).pop()?.();
 	});
 
+	function select(
+		first: Node,
+		last: Node,
+		anchorOffset: number,
+		focusOffset: number,
+	) {
+		const anchor =
+			first?.parentElement?.getAttribute("data-ep") ||
+			first?.getAttribute?.("data-ep");
+		const focus =
+			last?.parentElement?.getAttribute("data-ep") ||
+			last?.getAttribute?.("data-ep");
+
+		if (!anchor || !focus) {
+			return;
+		}
+
+		let a = model._idToKey[anchor];
+		let f = model._idToKey[focus];
+
+		setSelection({
+			anchor: /\./.test(a) ? a : `${a}.0`,
+			anchorOffset,
+			focus: /\./.test(f) ? f : `${f}.0`,
+			focusOffset,
+		});
+	}
+
+	function onSelect(event: MouseEvent) {
+		// ref.current?.focus();
+
+		let range: Range | null;
+		if (document.caretRangeFromPoint) {
+			// edge, chrome, android
+			range = document.caretRangeFromPoint(event.clientX, event.clientY);
+		} else {
+			// firefox
+			const pos = [event.rangeParent, event.rangeOffset] as const;
+			range = document.createRange();
+			range.setStart(...pos);
+			range.setEnd(...pos);
+		}
+
+		if (!range) {
+			return;
+		}
+
+		select(
+			range.startContainer,
+			range.endContainer,
+			range.startOffset,
+			range.endOffset,
+		);
+	}
+
+	// @TODO this doesn't get fired in FireFox
+	// Arrow keys doesn't update selection in FireFox
+	function onSelectionStart(event) {
+		// onSelect(event);
+		// console.log("start");
+		const selection = document.getSelection();
+		// document.execCommand("selectAll", false, null);
+		// console.log(Object.keys(model._idToKey)[0]);
+		// setCaret(model._idToKey[0], 0);
+		selection?.collapse(ref.current, 0);
+		document.addEventListener("selectionchange", onSelectionChange);
+	}
+
+	function onSelectionChange(event) {
+		const selection = document.getSelection();
+
+		console.log("SELEEEECT", selection);
+
+		if (!selection) {
+			return;
+		}
+
+		select(
+			selection.anchorNode!,
+			selection.focusNode!,
+			selection.anchorOffset,
+			selection.focusOffset,
+		);
+	}
+
+	function onBlur(event) {
+		document.removeEventListener("selectionchange", onSelectionChange);
+		setFocus((i) => i + 1);
+	}
+
+	function onDrop(event: DragEvent) {
+		preventDefaultAndStop(event);
+
+		onSelect(event);
+
+		for (const item of event.dataTransfer!.items) {
+			if (item.kind === "string" && item.type.match(/^text\/plain/)) {
+				// This item is the target node
+				item.getAsString((s) => {
+					model.action(ACTION._Key, s);
+				});
+			}
+		}
+	}
+
 	useLayoutEffect(() => {
 		if (!ref.current) {
 			return;
@@ -215,57 +320,23 @@ export function Editpal({ model }: EditpalProps) {
 		// 	subtree: true,
 		// });
 
-		function onSelectionChange(event) {
-			const selection = document.getSelection();
-
-			if (!selection) {
-				return;
-			}
-
-			const anchor =
-				selection.anchorNode?.parentElement?.getAttribute("data-ep") ||
-				selection.anchorNode?.getAttribute?.("data-ep");
-			const focus =
-				selection.focusNode?.parentElement?.getAttribute("data-ep") ||
-				selection.focusNode?.getAttribute?.("data-ep");
-
-			if (!anchor || !focus) {
-				return;
-			}
-
-			// console.log("🔵 SELECTION", selection.type, selection);
-
-			let a = model._idToKey[anchor];
-			let f = model._idToKey[focus];
-
-			setSelection({
-				anchor: /\./.test(a) ? a : `${a}.0`,
-				anchorOffset: selection.anchorOffset,
-				focus: /\./.test(f) ? f : `${f}.0`,
-				focusOffset: selection.focusOffset,
-			});
-		}
-
-		function onSelectionStart(event) {
-			document.addEventListener("selectionchange", onSelectionChange, false);
-		}
-
-		function onBlur(event) {
-			document.removeEventListener("selectionchange", onSelectionChange);
-			setFocus((i) => i + 1);
-		}
+		// onSelectionStart();
 
 		const add = ref.current.addEventListener;
 		const remove = ref.current.removeEventListener;
 
 		add("focus", onSelectionStart, { once: true });
 		add("selectstart", onSelectionStart, { once: true });
-		add("blur", onBlur, { once: true });
+		add("mousedown", onSelect);
+		add("blur", onBlur);
+		add("drop", onDrop);
 
 		return () => {
 			remove("focus", onSelectionStart);
 			remove("selectstart", onSelectionStart);
+			remove("mousedown", onSelect);
 			remove("blur", onBlur);
+			remove("drop", onDrop);
 		};
 	}, [focus]);
 
@@ -280,13 +351,15 @@ export function Editpal({ model }: EditpalProps) {
 				ref={ref}
 				suppressContentEditableWarning
 				contentEditable
-				// onFocus={(e) => {
-				//   console.log(e);
+				tabIndex={-1}
+				onFocus={onSelectionChange}
+				// onDrop={(e) => {
+				// 	preventDefaultAndStop(e);
+
+				// 	e.dataTransfer.items[0].getAsString((data) => {
+				// 		console.log(data);
+				// 	});
 				// }}
-				// onBeforeInput={(e) => {
-				// 	// e.preventDefault();
-				// }}
-				onDrop={preventDefaultAndStop}
 				onDragStart={preventDefaultAndStop}
 				onPaste={(e) => {
 					// @TODO transform before paste
@@ -294,22 +367,6 @@ export function Editpal({ model }: EditpalProps) {
 					preventDefault(e);
 					action(ACTION._Paste, "@TODO");
 				}}
-				// onKeyUp={(e) => {
-				// 	preventDefaultAndStop(e);
-				// 	console.log(e);
-
-				// 	if (e.key === "Dead") {
-				// 		console.log(e);
-				// 		preventDefault(e);
-				// 		// ref.current.contentEditable = "true";
-				// 		// ref.current?.focus();
-				// 		// action(ACTION._Key, String.fromCharCode(e.code));
-				// 		return false;
-				// 	}
-				// }}
-				// onInput={(e) => {
-				// 		preventDefaultAndStop(e);
-				// }}
 				onCompositionEnd={(e) => {
 					// Handle ('a => ā) & ('b => 'b)
 					action(ACTION._Compose, e.data);
@@ -332,7 +389,6 @@ export function Editpal({ model }: EditpalProps) {
 
 					// Don't do anything when composing
 					if (e.nativeEvent.isComposing) {
-						console.log("key", e.key);
 						preventDefault(e);
 						return;
 					}
