@@ -11,7 +11,7 @@
   border-color: #98c9ff;
 }
 
-strong[data-ep-h] {
+[data-ep-h] {
   display: block;
   margin: 0;
   padding: 0 0 15px 0;
@@ -19,27 +19,27 @@ strong[data-ep-h] {
   line-height: 1.1em;
 }
 
-strong[data-ep-h]::before {
+[data-ep-h]::before {
   display: 'inline';
   content: '#';
   opacity: 0.5;
   margin-right: 0.3em;
 }
 
-strong[data-ep-h="2"] { font-size: 1.9em; }
-strong[data-ep-h="2"]::before { content: '##'; }
+[data-ep-h="2"] { font-size: 1.9em; }
+[data-ep-h="2"]::before { content: '##'; }
 
-strong[data-ep-h="3"] { font-size: 1.8em; }
-strong[data-ep-h="3"]::before { content: '###'; }
+[data-ep-h="3"] { font-size: 1.8em; }
+[data-ep-h="3"]::before { content: '###'; }
 
-strong[data-ep-h="4"] { font-size: 1.7em; }
-strong[data-ep-h="4"]::before { content: '####'; }
+[data-ep-h="4"] { font-size: 1.7em; }
+[data-ep-h="4"]::before { content: '####'; }
 
-strong[data-ep-h="5"] { font-size: 1.6em; }
-strong[data-ep-h="5"]::before { content: '#####'; }
+[data-ep-h="5"] { font-size: 1.6em; }
+[data-ep-h="5"]::before { content: '#####'; }
 
-strong[data-ep-h="6"] { font-size: 1.5em; }
-strong[data-ep-h="6"]::before { content: '######'; }
+[data-ep-h="6"] { font-size: 1.5em; }
+[data-ep-h="6"]::before { content: '######'; }
 
 [data-ep-main] p,
 p[data-ep] {
@@ -72,11 +72,10 @@ p[data-ep-i="2"] { margin-left: calc(2 * 30px); }
 p[data-ep-i="3"] { margin-left: calc(3 * 30px); }
 p[data-ep-i="4"] { margin-left: calc(4 * 30px); }
 p[data-ep-i="5"] { margin-left: calc(5 * 30px); }
-p[data-ep-i="5"] { margin-left: calc(6 * 30px); }
-p[data-ep-i="6"] { margin-left: calc(7 * 30px); }
-p[data-ep-i="7"] { margin-left: calc(8 * 30px); }
-p[data-ep-i="8"] { margin-left: calc(9 * 30px); }
-p[data-ep-i="9"] { margin-left: calc(10 * 30px); }
+p[data-ep-i="6"] { margin-left: calc(6 * 30px); }
+/* p[data-ep-i="7"] { margin-left: calc(7 * 30px); }
+p[data-ep-i="8"] { margin-left: calc(8 * 30px); }
+p[data-ep-i="9"] { margin-left: calc(9 * 30px); } */
 
 p[data-ep]:not([data-ep-l="ol"]) {
   counter-reset: list-number
