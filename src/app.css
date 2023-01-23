@@ -221,6 +221,18 @@ li[data-ep-l="ul"][data-ep-i="3"]:before {
   vertical-align: middle;
 }
 
+[data-debug]::before {
+  content: attr(data-debug);
+  color: orange;
+  font-size: 8px;
+  margin-right: 5px;
+  position: absolute;
+  margin-top: -1.4em;
+  pointer-events: none;
+  font-weight: normal;
+  font-style: normal;
+}
+
 /* 
 img.ep-todo-capture {
   display: inline-block;

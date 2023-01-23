@@ -16,13 +16,14 @@ import "./app.css";
 
 export const Model = EditorModel;
 
-function RenderText({ id, props, text }: Omit<TextToken, "type" | "key">) {
+function RenderText({ id, props, text, k }: Omit<TextToken, "type" | "key">) {
 	return (
 		<span
 			// Handle dead key insertion
 			key={`${id}-${text}`}
 			style={props}
 			data-ep={id}
+			data-debug={`${k}-${text}`}
 		>
 			{text.replace(/ /g, "\u00A0") || <br />}
 		</span>
