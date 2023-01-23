@@ -24,9 +24,10 @@ function RenderText({ id, props, text, k }: Omit<TextToken, "type" | "key">) {
 			style={props}
 			data-ep={id}
 			data-debug={k}
-		>
-			{text.replace(/ /g, "\u00A0") || <br />}
-		</span>
+			dangerouslySetInnerHTML={{
+				__html: text.replace(/ /g, "\u00A0") || '<br />'
+			}}
+		/>
 	);
 }
 
