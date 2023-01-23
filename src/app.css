@@ -68,17 +68,17 @@ p[data-ep-todo] {
   margin: 5px;
 }
 
-p[data-ep-i="1"] { margin-left: calc(1 * 30px); }
-p[data-ep-i="2"] { margin-left: calc(2 * 30px); }
-p[data-ep-i="3"] { margin-left: calc(3 * 30px); }
-p[data-ep-i="4"] { margin-left: calc(4 * 30px); }
-p[data-ep-i="5"] { margin-left: calc(5 * 30px); }
-p[data-ep-i="6"] { margin-left: calc(6 * 30px); }
+[data-ep-i="1"] { margin-left: calc(1 * 30px); }
+[data-ep-i="2"] { margin-left: calc(2 * 30px); }
+[data-ep-i="3"] { margin-left: calc(3 * 30px); }
+[data-ep-i="4"] { margin-left: calc(4 * 30px); }
+[data-ep-i="5"] { margin-left: calc(5 * 30px); }
+[data-ep-i="6"] { margin-left: calc(6 * 30px); }
 /* p[data-ep-i="7"] { margin-left: calc(7 * 30px); }
 p[data-ep-i="8"] { margin-left: calc(8 * 30px); }
 p[data-ep-i="9"] { margin-left: calc(9 * 30px); } */
 
-p[data-ep]:not([data-ep-l="ol"]) {
+li[data-ep]:not([data-ep-l="ol"]) {
   counter-reset: list-number
     list-number-1
     list-number-2
@@ -87,8 +87,8 @@ p[data-ep]:not([data-ep-l="ol"]) {
     list-number-5;
 }
 
-p[data-ep][data-ep-l="ol"]:not([data-ep-i]),
-p[data-ep][data-ep-l="ol"][data-ep-i="0"] {
+li[data-ep][data-ep-l="ol"]:not([data-ep-i]),
+li[data-ep][data-ep-l="ol"][data-ep-i="0"] {
   counter-reset: 
     list-number-1
     list-number-2
@@ -97,7 +97,7 @@ p[data-ep][data-ep-l="ol"][data-ep-i="0"] {
     list-number-5;
 }
 
-p[data-ep][data-ep-l="ol"][data-ep-i="1"] {
+li[data-ep][data-ep-l="ol"][data-ep-i="1"] {
   counter-reset: 
     list-number-2
     list-number-3
@@ -105,36 +105,38 @@ p[data-ep][data-ep-l="ol"][data-ep-i="1"] {
     list-number-5;
 }
 
-p[data-ep][data-ep-l="ol"][data-ep-i="2"] {
+li[data-ep][data-ep-l="ol"][data-ep-i="2"] {
   counter-reset: 
     list-number-3
     list-number-4
     list-number-5;
 }
 
-p[data-ep][data-ep-l="ol"][data-ep-i="3"] {
+li[data-ep][data-ep-l="ol"][data-ep-i="3"] {
   counter-reset: 
     list-number-4
     list-number-5;
 }
 
-p[data-ep][data-ep-l="ol"][data-ep-i="4"] {
+li[data-ep][data-ep-l="ol"][data-ep-i="4"] {
   counter-reset: 
     list-number-5;
 }
 
-p[data-ep][data-ep-l="ol"][data-ep-i="5"] {
+li[data-ep][data-ep-l="ol"][data-ep-i="5"] {
   /* counter-reset: list-number-5; */
 }
 
-p[data-ep-l] {
+li[data-ep-l] {
   padding-left: 30px;
+  display: block;
+  list-style: none;
 }
 
-p[data-ep-l="ol"] {
+li[data-ep-l="ol"] {
   counter-increment: list-number;
 }
-p[data-ep-l="ol"]:before {
+li[data-ep-l="ol"]:before {
   position: absolute;
   margin-left: -24px;
   font-size: 0.9em;
@@ -143,36 +145,36 @@ p[data-ep-l="ol"]:before {
   pointer-events: none;
 }
 
-p[data-ep-l="ol"][data-ep-i="1"] {
+li[data-ep-l="ol"][data-ep-i="1"] {
   counter-increment: list-number-1;
 }
-p[data-ep-l="ol"][data-ep-i="1"]:before {
+li[data-ep-l="ol"][data-ep-i="1"]:before {
   content: counter(list-number-1, upper-alpha) '.';
 }
 
-p[data-ep-l="ol"][data-ep-i="2"] {
+li[data-ep-l="ol"][data-ep-i="2"] {
   counter-increment: list-number-2;
 }
-p[data-ep-l="ol"][data-ep-i="2"]:before {
+li[data-ep-l="ol"][data-ep-i="2"]:before {
   content: counter(list-number-2, lower-alpha) '.';
 }
 
-p[data-ep-l="ol"][data-ep-i="3"] {
+li[data-ep-l="ol"][data-ep-i="3"] {
   counter-increment: list-number-3;
 }
-p[data-ep-l="ol"][data-ep-i="3"]:before {
+li[data-ep-l="ol"][data-ep-i="3"]:before {
   content: counter(list-number-3, upper-roman) '.';
 }
 
-p[data-ep-l="ol"][data-ep-i="4"] {
+li[data-ep-l="ol"][data-ep-i="4"] {
   counter-increment: list-number-4;
 }
-p[data-ep-l="ol"][data-ep-i="4"]:before {
+li[data-ep-l="ol"][data-ep-i="4"]:before {
   content: counter(list-number-4, lower-roman) '.';
 }
 
 
-p[data-ep-l="ul"]:before {
+li[data-ep-l="ul"]:before {
   position: absolute;
   margin-left: -23px;
   font-size: 1em;
@@ -180,13 +182,13 @@ p[data-ep-l="ul"]:before {
   content: '•';
   pointer-events: none;
 }
-p[data-ep-l="ul"][data-ep-i="1"]:before {
+li[data-ep-l="ul"][data-ep-i="1"]:before {
   content: '◼';
 }
-p[data-ep-l="ul"][data-ep-i="2"]:before {
+li[data-ep-l="ul"][data-ep-i="2"]:before {
   content: '◻';
 }
-p[data-ep-l="ul"][data-ep-i="3"]:before {
+li[data-ep-l="ul"][data-ep-i="3"]:before {
   content: '○';
 }
 

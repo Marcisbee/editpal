@@ -56,14 +56,14 @@ function RenderItem(item: AnyToken & { k: string }) {
 		const { indent, type, ...style } = item.props || {};
 
 		return (
-			<p
+			<li
 				style={style}
 				data-ep={item.id}
 				data-ep-l={type || "ul"}
 				data-ep-i={indent}
 			>
 				<RenderMap key={item.id} items={item.children} />
-			</p>
+			</li>
 		);
 	}
 
