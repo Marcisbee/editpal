@@ -24,8 +24,9 @@ function RenderText({ id, props, text, k }: Omit<TextToken, "type" | "key">) {
 			style={props}
 			data-ep={id}
 			data-debug={k}
+			// rome-ignore lint/security/noDangerouslySetInnerHtml: <explanation>
 			dangerouslySetInnerHTML={{
-				__html: text.replace(/ /g, "\u00A0") || '<br />'
+				__html: text.replace(/ /g, "\u00A0") || "<br />",
 			}}
 		/>
 	);
@@ -38,7 +39,7 @@ function RenderItem(item: AnyToken & { k: string }) {
 		const { size, ...style } = item.props || {};
 
 		return (
-			// @TODO Firefox issue 
+			// @TODO Firefox issue
 			//    Hello Jupiter!
 			// 1. ^^^^^^^^^^^^^^ ' + a + b => āāb
 			// 2. ^^^^^^^^^^^^^^ Backspace + ' + a + b => āāb
