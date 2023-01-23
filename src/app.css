@@ -60,7 +60,8 @@ p[data-ep-todo] {
 [data-ep-todo-check] {
   user-select: none;
   position: absolute;
-  margin-left: -26px;
+  left: 0;
+  top: 0;
 }
 
 [data-ep-todo-check] input {

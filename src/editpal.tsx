@@ -85,6 +85,7 @@ function RenderItem(item: AnyToken & { k: string }) {
 				}}
 				onMouseDown={(e) => e.stopPropagation()}
 			>
+				<RenderMap key={item.id} items={item.children} />
 				<span data-ep-todo-check contentEditable={false}>
 					<input
 						type="checkbox"
@@ -95,7 +96,6 @@ function RenderItem(item: AnyToken & { k: string }) {
 						onFocus={preventDefault}
 					/>
 				</span>
-				<RenderMap key={item.id} items={item.children} />
 				{/* <img
           className="mx-preview-todo-capture"
           src="https://img.strike.lv/avatars/bc7cefc4-2270-4c5c-9cba-7e7b142c8000.png"
