@@ -23,7 +23,7 @@ function RenderText({ id, props, text, k }: Omit<TextToken, "type" | "key">) {
 			key={`${id}-${text}`}
 			style={props}
 			data-ep={id}
-			data-debug={`${k}-${text}`}
+			data-debug={k}
 		>
 			{text.replace(/ /g, "\u00A0") || <br />}
 		</span>
@@ -37,6 +37,11 @@ function RenderItem(item: AnyToken & { k: string }) {
 		const { size, ...style } = item.props || {};
 
 		return (
+			// @TODO Firefox issue 
+			//    Hello Jupiter!
+			// 1. ^^^^^^^^^^^^^^ ' + a + b => āāb
+			// 2. ^^^^^^^^^^^^^^ Backspace + ' + a + b => āāb
+			// Potential fix: key={JSON.stringify(item.children)}
 			<strong style={style} data-ep-h={size} data-ep={item.id}>
 				<RenderMap key={item.id} items={item.children} />
 			</strong>
@@ -78,12 +83,12 @@ function RenderItem(item: AnyToken & { k: string }) {
 				data-ep-todo
 				data-ep-i={indent}
 				// @TODO figure out if this is needed
-				onKeyDown={(e) => {
-					if (e.key.indexOf("Backspace") === 0) {
-						// e.preventDefault();
-						return;
-					}
-				}}
+				// onKeyDown={(e) => {
+				// 	if (e.key.indexOf("Backspace") === 0) {
+				// 		// e.preventDefault();
+				// 		return;
+				// 	}
+				// }}
 				onMouseDown={(e) => e.stopPropagation()}
 			>
 				<RenderMap key={item.id} items={item.children} />
@@ -368,10 +373,25 @@ export function Editpal({ model }: EditpalProps) {
 					preventDefault(e);
 					action(ACTION._Paste, "@TODO");
 				}}
+				onCompositionStart={(e) => {
+					model._isComposing = true;
+				}}
 				onCompositionEnd={(e) => {
 					// Handle ('a => ā) & ('b => 'b)
-					action(ACTION._Compose, e.data);
+					// onSelectionChange();
+					// action(ACTION._Key, "");
+					// action(ACTION._Compose, e.data);
+					onSelectionChange(e);
+
+					// Safari fires this event before onkeydown event
+					requestAnimationFrame(() => {
+						model._isComposing = false;
+						action(ACTION._Compose, e.data);
+						onSelectionChange(e);
+					});
 				}}
+				// Fixes firefox issue where onselectionchange doesn't work
+				onKeyUp={onSelectionChange}
 				onKeyDown={(e) => {
 					if (e.key.indexOf("Arrow") === 0) {
 						return;
@@ -389,10 +409,15 @@ export function Editpal({ model }: EditpalProps) {
 					}
 
 					// Don't do anything when composing
-					if (e.nativeEvent.isComposing) {
-						preventDefault(e);
+					if (model._isComposing) {
+						preventDefaultAndStop(e);
 						return;
 					}
+					// This doesn't work on Safari
+					// if (e.nativeEvent.isComposing) {
+					// 	preventDefault(e);
+					// 	return;
+					// }
 
 					// Single letter
 					if (e.key.length === 1) {

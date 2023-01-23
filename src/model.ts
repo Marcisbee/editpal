@@ -111,6 +111,7 @@ export class Model extends Exome {
 	public _elements: Record<string, AnyToken> = {};
 	public _elements_temp: Record<string, AnyToken> = {};
 	public stack: Function[] = [];
+	public _isComposing = false;
 
 	constructor(tokens: TokenRoot) {
 		super();
@@ -123,17 +124,22 @@ export class Model extends Exome {
 
 	public update() {}
 
-	public recalculate() {
+	public recalculate = () => {
+		if (this._isComposing) {
+			return;
+		}
+
 		this._elements_temp = {};
 		this._idToKey = this._buildKeys(this.tokens);
 		this._elements = this._elements_temp;
-	}
+		this.update();
+	};
 
-	private _buildKeys(
+	private _buildKeys = (
 		tokens: AnyToken | AnyToken[],
 		keys: Record<string, string> = {},
 		key: string[] = [],
-	) {
+	) => {
 		if (Array.isArray(tokens)) {
 			let i = 0;
 			for (const element of tokens) {
@@ -193,13 +199,13 @@ export class Model extends Exome {
 		}
 
 		return keys;
-	}
+	};
 
-	public setSelection(selection: Model["selection"]) {
+	public setSelection = (selection: Model["selection"]) => {
 		this.selection = selection;
-	}
+	};
 
-	public remove(key: string) {
+	public remove = (key: string) => {
 		const parent = this.parent(key);
 
 		// Handle root text nodes
@@ -218,7 +224,7 @@ export class Model extends Exome {
 		const index = parent.children.findIndex((c) => c.key === key);
 		parent.children.splice(index, 1);
 		console.log("🏴‍☠️ REMOVE CHILD", parent.key, key);
-	}
+	};
 
 	public keysBetween = (firstKey: string, lastKey: string) => {
 		const keys = Object.values(this._idToKey);
@@ -231,7 +237,11 @@ export class Model extends Exome {
 		return keys.slice(keys.indexOf(firstKey), li + 1);
 	};
 
-	public removeBetween(firstKey: string, lastKey: string, lastIncluded = true) {
+	public removeBetween = (
+		firstKey: string,
+		lastKey: string,
+		lastIncluded = true,
+	) => {
 		const keys = this.keysBetween(firstKey, lastKey);
 
 		keys.shift();
@@ -246,7 +256,7 @@ export class Model extends Exome {
 		for (const key of keys) {
 			this.remove(key);
 		}
-	}
+	};
 
 	public findElement = (key: string) => {
 		return this._elements[key];
@@ -336,7 +346,7 @@ export class Model extends Exome {
 		return this.nextText(lastKey);
 	};
 
-	private _handleInitialRemove(element: AnyToken) {
+	private _handleInitialRemove = (element: AnyToken) => {
 		const parent =
 			element.type === "t" || element.type === "img"
 				? this.parent(element.key)!
@@ -405,9 +415,9 @@ export class Model extends Exome {
 			element.type = "p";
 			(element as any).props = undefined;
 		}
-	}
+	};
 
-	private _handleTextTransforms(element: TextToken, textAdded: string) {
+	private _handleTextTransforms = (element: TextToken, textAdded: string) => {
 		console.log({ textAdded });
 		if (textAdded === ")") {
 			element.text = element.text.replace(/\:\)/g, "😄");
@@ -433,9 +443,9 @@ export class Model extends Exome {
 			};
 			return;
 		}
-	}
+	};
 
-	public insertAfter(tokens: AnyToken[], element: AnyToken) {
+	public insertAfter = (tokens: AnyToken[], element: AnyToken) => {
 		const parent = this.parent(element.key);
 
 		const newTokens = tokens.map(cloneToken);
@@ -453,7 +463,7 @@ export class Model extends Exome {
 		);
 
 		return newTokens;
-	}
+	};
 
 	public action = (type: number, data?: string) => {
 		if (!this.selection) {
@@ -644,12 +654,7 @@ export class Model extends Exome {
 				return;
 			}
 
-			el.text = stringSplice(
-				el.text,
-				first.offset - 1,
-				first.offset - 1,
-				data,
-			);
+			el.text = stringSplice(el.text, first.offset - 1, first.offset - 1, data);
 
 			this._selectSilent(el, first.offset - 1 + data.length);
 			return;
@@ -748,13 +753,18 @@ export class Model extends Exome {
 			this.recalculate();
 			return;
 		}
-	}
+	};
 
 	private _selectSilent = (first: AnyToken, start: number = 0) => {
-		this.stack.push(() => setCaret(first.id, start));
-	}
+		if (this._isComposing) {
+			return;
+		}
 
-	public select(first: AnyToken, start: number = 0) {
+		this.stack.push(() => setCaret(first.id, start));
+		this.update();
+	};
+
+	public select = (first: AnyToken, start: number = 0) => {
 		this._selectSilent(first, start);
 
 		this.setSelection({
@@ -763,7 +773,8 @@ export class Model extends Exome {
 			anchorOffset: start,
 			focusOffset: start,
 		});
-	}
+		// this.update();
+	};
 }
 
 // let queued: number;
