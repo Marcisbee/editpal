@@ -214,6 +214,7 @@ export class Model extends Exome {
 			const index = this.tokens.indexOf(element);
 			this.tokens.splice(index, 1);
 			console.log("🏴‍☠️ REMOVE ROOT", index);
+
 			return;
 		}
 
@@ -374,7 +375,6 @@ export class Model extends Exome {
 				this.stack.push(() => {
 					setCaret(prev!.id, l);
 				});
-				this.recalculate();
 				return;
 			}
 
@@ -570,6 +570,7 @@ export class Model extends Exome {
 			// }
 
 			this._handleInitialRemove(element);
+			this.recalculate();
 
 			return;
 		}
