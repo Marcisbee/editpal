@@ -1,4 +1,5 @@
-import { useStore } from "exome/react";
+import { h, Fragment } from "preact";
+import { useStore } from "exome/preact";
 
 import { Model } from "./model";
 import { AnyToken } from "./tokens";

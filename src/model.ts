@@ -774,15 +774,5 @@ export class Model extends Exome {
 			anchorOffset: start,
 			focusOffset: start,
 		});
-		// this.update();
 	};
 }
-
-// let queued: number;
-// function debounceRaf(fn: FrameRequestCallback) {
-// 	if (queued) {
-// 		cancelAnimationFrame(queued);
-// 	}
-
-// 	queued = requestAnimationFrame(fn);
-// }

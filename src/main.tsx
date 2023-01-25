@@ -1,5 +1,4 @@
-import React from "react";
-import ReactDOM from "react-dom/client";
+import { h, render } from "preact";
 
 import { Editpal } from "./editpal";
 import { Model } from "./model";
@@ -250,8 +249,4 @@ function App() {
 	);
 }
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
-	<React.StrictMode>
-		<App />
-	</React.StrictMode>,
-);
+render(<App />, document.getElementById("root")!);

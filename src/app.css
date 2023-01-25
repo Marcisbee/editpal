@@ -11,7 +11,7 @@
   border-color: #98c9ff;
 }
 
-[data-ep-h] {
+[data-ep-main] > [data-ep-h] {
   display: block;
   margin: 0;
   padding: 0 0 15px 0;
@@ -19,27 +19,29 @@
   line-height: 1.1em;
 }
 
-[data-ep-h]::before {
+[data-ep-main] > [data-ep-h]::before {
   display: 'inline';
   content: '#';
   opacity: 0.5;
   margin-right: 0.3em;
+  pointer-events: none;
+  user-select: none;
 }
 
-[data-ep-h="2"] { font-size: 1.9em; }
-[data-ep-h="2"]::before { content: '##'; }
+[data-ep-main] > [data-ep-h="2"] { font-size: 1.9em; }
+[data-ep-main] > [data-ep-h="2"]::before { content: '##'; }
 
-[data-ep-h="3"] { font-size: 1.8em; }
-[data-ep-h="3"]::before { content: '###'; }
+[data-ep-main] > [data-ep-h="3"] { font-size: 1.8em; }
+[data-ep-main] > [data-ep-h="3"]::before { content: '###'; }
 
-[data-ep-h="4"] { font-size: 1.7em; }
-[data-ep-h="4"]::before { content: '####'; }
+[data-ep-main] > [data-ep-h="4"] { font-size: 1.7em; }
+[data-ep-main] > [data-ep-h="4"]::before { content: '####'; }
 
-[data-ep-h="5"] { font-size: 1.6em; }
-[data-ep-h="5"]::before { content: '#####'; }
+[data-ep-main] > [data-ep-h="5"] { font-size: 1.6em; }
+[data-ep-main] > [data-ep-h="5"]::before { content: '#####'; }
 
-[data-ep-h="6"] { font-size: 1.5em; }
-[data-ep-h="6"]::before { content: '######'; }
+[data-ep-main] > [data-ep-h="6"] { font-size: 1.5em; }
+[data-ep-main] > [data-ep-h="6"]::before { content: '######'; }
 
 [data-ep-main] p,
 li[data-ep],
@@ -69,27 +71,27 @@ p[data-ep-todo] {
   margin: 5px;
 }
 
-li[data-ep-i="1"],
+p[data-ep-i="1"],
 li[data-ep-i="1"] {
   margin-left: calc(1 * 30px);
 }
-li[data-ep-i="2"],
+p[data-ep-i="2"],
 li[data-ep-i="2"] {
   margin-left: calc(2 * 30px);
 }
-li[data-ep-i="3"],
+p[data-ep-i="3"],
 li[data-ep-i="3"] {
   margin-left: calc(3 * 30px);
 }
-li[data-ep-i="4"],
+p[data-ep-i="4"],
 li[data-ep-i="4"] {
   margin-left: calc(4 * 30px);
 }
-li[data-ep-i="5"],
+p[data-ep-i="5"],
 li[data-ep-i="5"] {
   margin-left: calc(5 * 30px);
 }
-li[data-ep-i="6"],
+p[data-ep-i="6"],
 li[data-ep-i="6"] {
   margin-left: calc(6 * 30px);
 }

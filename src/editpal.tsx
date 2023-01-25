@@ -1,13 +1,6 @@
-import { useStore } from "exome/react";
-import {
-	type ReactElement,
-	useLayoutEffect,
-	useRef,
-	useState,
-	createContext,
-	RefObject,
-	useContext,
-} from "react";
+import { useStore } from "exome/preact";
+import { h, Fragment, createContext, RefObject } from "preact";
+import { useLayoutEffect, useRef, useState, useContext } from "preact/hooks";
 
 import type { AnyToken, TextToken } from "./tokens";
 import { ACTION, Model as EditorModel } from "./model";
@@ -24,11 +17,9 @@ function RenderText({ id, props, text, k }: Omit<TextToken, "type" | "key">) {
 			style={props}
 			data-ep={id}
 			data-debug={k}
-			// rome-ignore lint/security/noDangerouslySetInnerHtml: <explanation>
-			dangerouslySetInnerHTML={{
-				__html: text.replace(/ /g, "\u00A0") || "<br />",
-			}}
-		/>
+		>
+			{text.replace(/ /g, "\u00A0") || <br />}
+		</span>
 	);
 }
 
@@ -39,12 +30,7 @@ function RenderItem(item: AnyToken & { k: string }) {
 		const { size, ...style } = item.props || {};
 
 		return (
-			// @TODO Firefox issue
-			//    Hello Jupiter!
-			// 1. ^^^^^^^^^^^^^^ ' + a + b => āāb
-			// 2. ^^^^^^^^^^^^^^ Backspace + ' + a + b => āāb
-			// Potential fix: key={JSON.stringify(item.children)}
-			<strong style={style} data-ep-h={size} data-ep={item.id}>
+			<strong key={item.id} style={style} data-ep-h={size} data-ep={item.id}>
 				<RenderMap key={item.id} items={item.children} />
 			</strong>
 		);
@@ -161,13 +147,15 @@ function RenderMap({ items }: RenderMapProps) {
 
 	return items.map((item) => (
 		<RenderItem {...item} k={item.key} key={item.id} />
-	)) as unknown as ReactElement;
+	)) as unknown as JSX.Element;
 }
 
+// rome-ignore lint/suspicious/noExplicitAny: <explanation>
 function preventDefault(e: any) {
 	e.preventDefault();
 }
 
+// rome-ignore lint/suspicious/noExplicitAny: <explanation>
 function preventDefaultAndStop(e: any) {
 	preventDefault(e);
 	e.stopPropagation();
@@ -175,6 +163,10 @@ function preventDefaultAndStop(e: any) {
 
 export interface EditpalProps {
 	model: EditorModel;
+}
+
+function increment(i: number) {
+	return i + 1;
 }
 
 const EditorContext = createContext<{
@@ -186,7 +178,7 @@ export function Editpal({ model }: EditpalProps) {
 	const { tokens, stack, action, setSelection } = useStore(model);
 	const ref = useRef<HTMLDivElement>(null);
 	const [focus, setFocus] = useState(0);
-	// const [selection, setSelection] = useState(null);
+	const [reload, setReload] = useState(0);
 
 	useLayoutEffect(() => {
 		stack.splice(0).pop()?.();
@@ -247,16 +239,8 @@ export function Editpal({ model }: EditpalProps) {
 		);
 	}
 
-	// @TODO this doesn't get fired in FireFox
 	// Arrow keys doesn't update selection in FireFox
 	function onSelectionStart(event) {
-		// onSelect(event);
-		// console.log("start");
-		const selection = document.getSelection();
-		// document.execCommand("selectAll", false, null);
-		// console.log(Object.keys(model._idToKey)[0]);
-		// setCaret(model._idToKey[0], 0);
-		selection?.collapse(ref.current, 0);
 		document.addEventListener("selectionchange", onSelectionChange);
 	}
 
@@ -279,7 +263,7 @@ export function Editpal({ model }: EditpalProps) {
 
 	function onBlur(event) {
 		document.removeEventListener("selectionchange", onSelectionChange);
-		setFocus((i) => i + 1);
+		setFocus(increment);
 	}
 
 	function onDrop(event: DragEvent) {
@@ -295,6 +279,30 @@ export function Editpal({ model }: EditpalProps) {
 				});
 			}
 		}
+	}
+
+	function onCompositionStart() {
+		model._isComposing = true;
+	}
+
+	function onCompositionEnd(e: CompositionEvent) {
+		const fn = () => {
+			model._isComposing = false;
+			action(ACTION._Compose, e.data);
+			onSelectionChange(e);
+			setReload(increment);
+		};
+
+		// (Chrome) isTrusted === false
+		// (Firefox) isTrusted === true
+		// (Safari) isTrusted === true
+		if (e.isTrusted) {
+			stack.push(fn);
+		} else {
+			fn();
+		}
+
+		setFocus(increment);
 	}
 
 	useLayoutEffect(() => {
@@ -333,6 +341,8 @@ export function Editpal({ model }: EditpalProps) {
 		const add = ref.current.addEventListener;
 		const remove = ref.current.removeEventListener;
 
+		add("compositionstart", onCompositionStart);
+		add("compositionend", onCompositionEnd);
 		add("focus", onSelectionStart, { once: true });
 		add("selectstart", onSelectionStart, { once: true });
 		add("mousedown", onSelect);
@@ -340,6 +350,8 @@ export function Editpal({ model }: EditpalProps) {
 		add("drop", onDrop);
 
 		return () => {
+			remove("compositionstart", onCompositionStart);
+			remove("compositionend", onCompositionEnd);
 			remove("focus", onSelectionStart);
 			remove("selectstart", onSelectionStart);
 			remove("mousedown", onSelect);
@@ -357,17 +369,9 @@ export function Editpal({ model }: EditpalProps) {
 		>
 			<div
 				ref={ref}
-				suppressContentEditableWarning
+				// suppressContentEditableWarning
 				contentEditable
-				tabIndex={-1}
-				onFocus={onSelectionChange}
-				// onDrop={(e) => {
-				// 	preventDefaultAndStop(e);
-
-				// 	e.dataTransfer.items[0].getAsString((data) => {
-				// 		console.log(data);
-				// 	});
-				// }}
+				tabIndex={0}
 				onDragStart={preventDefaultAndStop}
 				onPaste={(e) => {
 					// @TODO transform before paste
@@ -375,25 +379,6 @@ export function Editpal({ model }: EditpalProps) {
 					preventDefault(e);
 					action(ACTION._Paste, "@TODO");
 				}}
-				onCompositionStart={(e) => {
-					model._isComposing = true;
-				}}
-				onCompositionEnd={(e) => {
-					// Handle ('a => ā) & ('b => 'b)
-					// onSelectionChange();
-					// action(ACTION._Key, "");
-					// action(ACTION._Compose, e.data);
-					onSelectionChange(e);
-
-					// Safari fires this event before onkeydown event
-					requestAnimationFrame(() => {
-						model._isComposing = false;
-						action(ACTION._Compose, e.data);
-						onSelectionChange(e);
-					});
-				}}
-				// Fixes firefox issue where onselectionchange doesn't work
-				onKeyUp={onSelectionChange}
 				onKeyDown={(e) => {
 					if (e.key.indexOf("Arrow") === 0) {
 						return;
@@ -406,6 +391,7 @@ export function Editpal({ model }: EditpalProps) {
 					// Handle dead key https://en.wikipedia.org/wiki/Dead_key
 					if (e.key === "Dead") {
 						preventDefault(e);
+						model._isComposing = true;
 						action(ACTION._Key, "");
 						return;
 					}
@@ -415,11 +401,6 @@ export function Editpal({ model }: EditpalProps) {
 						preventDefaultAndStop(e);
 						return;
 					}
-					// This doesn't work on Safari
-					// if (e.nativeEvent.isComposing) {
-					// 	preventDefault(e);
-					// 	return;
-					// }
 
 					// Single letter
 					if (e.key.length === 1) {
@@ -457,13 +438,13 @@ export function Editpal({ model }: EditpalProps) {
 						return;
 					}
 
-					console.log("key", e.key);
+					// console.log("key", e.key);
 
 					preventDefault(e);
 				}}
 				data-ep-main
 			>
-				<RenderMap items={tokens} />
+				<RenderMap key={`root-${reload}`} items={tokens} />
 			</div>
 		</EditorContext.Provider>
 	);
