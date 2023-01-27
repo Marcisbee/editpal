@@ -185,7 +185,7 @@ const root = [
 				id: ranID(),
 				type: "img",
 				props: {
-					alt: 'Genji cyberdemon skin'
+					alt: "Genji cyberdemon skin",
 				},
 				src: "https://img.strike.lv/photos/7110acef-3ad0-4382-a88f-93e854128be8.jpeg",
 			},
@@ -243,8 +243,13 @@ const model = new Model(root as any);
 function App() {
 	return (
 		<div className="App">
-			<h1>Text Editor</h1>
-			<div>
+			<div
+				style={{
+					width: 800,
+					maxWidth: "100%",
+					margin: "0 auto",
+				}}
+			>
 				<Editpal model={model} />
 				<Debug model={model} />
 			</div>

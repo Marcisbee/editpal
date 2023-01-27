@@ -242,7 +242,7 @@ li[data-ep-l="ul"][data-ep-i="3"]:before {
 }
 [data-ep-img] img {
   border-radius: 4px;
-  max-width: 100%;
+  width: 100%;
   font-size: 0;
   line-height: 0;
   vertical-align: middle;
