@@ -53,8 +53,9 @@
 li[data-ep],
 p[data-ep] {
   display: block;
-  padding: 0;
-  margin: 0 0 0.4em 0;
+  padding: 0 0 0.4em 0;
+  margin: 0;
+  line-height: 1.5em;
 }
 
 p[data-ep-todo] {
