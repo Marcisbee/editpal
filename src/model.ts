@@ -85,12 +85,10 @@ function handleTab(
 		} else {
 			if (mod === -1 && !element.props.indent) {
 				element.type = "p";
-				if (model.selection) {
-					model.select(
-						model.findElement(model.selection.anchor),
-						model.selection.anchorOffset || 0,
-					);
-				}
+				model.select(
+					model.findElement(model.selection.first[0]),
+					model.selection.first[1],
+				);
 				continue;
 			}
 
@@ -104,14 +102,43 @@ function handleTab(
 	model.update();
 }
 
+export class ModelSelection extends Exome {
+	public first: [string, number] = ["0.0", 0];
+	public last: [string, number] = this.first;
+
+	public setSelection(
+		anchor: string,
+		anchorOffset: number,
+		focus: string,
+		focusOffset: number,
+	) {
+		const [first, last] = (
+			[
+				[anchor, anchorOffset],
+				[focus, focusOffset],
+			] as [string, number][]
+		).sort((a, b) => {
+			if (a[0] === b[0]) {
+				return a[1] > b[1] ? 1 : -1;
+			}
+
+			return a[0].localeCompare(b[0], undefined, { numeric: true });
+		});
+
+		this.first = first;
+		this.last = last;
+	}
+}
+
 export class Model extends Exome {
 	public tokens: TokenRoot;
-	public selection: {
-		anchor: string;
-		anchorOffset: number;
-		focus: string;
-		focusOffset: number;
-	} | null = null;
+	// public selection: {
+	// 	anchor: string;
+	// 	anchorOffset: number;
+	// 	focus: string;
+	// 	focusOffset: number;
+	// } | null = null;
+	public selection = new ModelSelection();
 
 	public _idToKey: Record<string, string> = {};
 	public _elements: Record<string, AnyToken> = {};
@@ -205,10 +232,6 @@ export class Model extends Exome {
 		}
 
 		return keys;
-	};
-
-	public setSelection = (selection: Model["selection"]) => {
-		this.selection = selection;
 	};
 
 	public remove = (key: string) => {
@@ -474,43 +497,31 @@ export class Model extends Exome {
 	};
 
 	public action = (type: number, data?: string) => {
-		if (!this.selection) {
-			return;
-		}
-
-		const { anchor, anchorOffset, focus, focusOffset } = this.selection;
-
-		const [first, last] = [
-			{ key: anchor, offset: anchorOffset },
-			{ key: focus, offset: focusOffset },
-		].sort((a, b) => {
-			if (a.key === b.key) {
-				return a.offset > b.offset ? 1 : -1;
-			}
-
-			return a.key.localeCompare(b.key, undefined, { numeric: true });
-		});
+		let {
+			first: [firstKey, firstOffset],
+			last: [lastKey, lastOffset],
+		} = this.selection;
 
 		if (
 			type === ACTION._Remove &&
-			(first.key !== last.key || first.offset !== last.offset)
+			(firstKey !== lastKey || firstOffset !== lastOffset)
 		) {
 			type = ACTION._Key;
 			data = "";
-		} else if (type === ACTION._Remove && first.offset > 1) {
+		} else if (type === ACTION._Remove && firstOffset > 1) {
 			type = ACTION._Key;
 			data = "";
-			first.offset -= 1;
+			firstOffset -= 1;
 		} else if (type === ACTION._Remove) {
-			let element = this.innerNode(first.key);
+			let element = this.innerNode(firstKey);
 
 			const isFirstChild = element.key?.endsWith(".0") ?? true;
 
-			if (first.offset === 1) {
+			if (firstOffset === 1) {
 				element.text = stringSplice(
 					element.text,
-					first.offset - 1,
-					first.offset,
+					firstOffset - 1,
+					firstOffset,
 					"",
 				);
 
@@ -525,7 +536,7 @@ export class Model extends Exome {
 						// });
 					}
 				} else if (!element.text) {
-					const next = this.nextText(last.key);
+					const next = this.nextText(lastKey);
 
 					if (
 						next &&
@@ -540,10 +551,10 @@ export class Model extends Exome {
 					} else {
 						// console.log("HEREEE");
 						// Heres the issue
-						this.select(this.findElement(last.key)!, 0);
+						this.select(this.findElement(lastKey)!, 0);
 						// this.stack.push(() => {
-						// 	setCaret(this.findElement(last.key).id, 0);
-						// 	resetSelection(last.key, 0);
+						// 	setCaret(this.findElement(lastKey).id, 0);
+						// 	resetSelection(lastKey, 0);
 						// 	// if (this.selection) {
 						// 	// 	this.selection.anchorOffset = this.selection.anchorOffset - 1;
 						// 	// 	this.selection.focusOffset = this.selection.focusOffset - 1;
@@ -554,10 +565,10 @@ export class Model extends Exome {
 						// return;
 					}
 				} else {
-					this.select(element, first.offset - 1);
+					this.select(element, firstOffset - 1);
 					// this.stack.push(() => {
-					// 	setCaret(element.id, first.offset - 1);
-					// 	resetSelection(first.key, first.offset - 1);
+					// 	setCaret(element.id, firstOffset - 1);
+					// 	resetSelection(firstKey, firstOffset - 1);
 					// 	// if (this.selection) {
 					// 	// 	this.selection.anchorOffset = this.selection.anchorOffset - 1;
 					// 	// 	this.selection.focusOffset = this.selection.focusOffset - 1;
@@ -585,9 +596,9 @@ export class Model extends Exome {
 
 		// TAB key
 		if (type === ACTION._Tab || type === ACTION._ShiftTab) {
-			let firstElement = this.innerNode(first.key);
+			let firstElement = this.innerNode(firstKey);
 			let firstParent = this.parent(firstElement.key)!;
-			let lastElement = this.innerNode(last.key);
+			let lastElement = this.innerNode(lastKey);
 			let lastParent = this.parent(lastElement.key)!;
 
 			handleTab(firstParent, lastParent, this, type === ACTION._ShiftTab);
@@ -597,11 +608,11 @@ export class Model extends Exome {
 
 		// ENTER key
 		if (type === ACTION._Enter) {
-			let firstElement = this.innerText(first.key);
-			let lastElement = this.innerText(last.key);
+			let firstElement = this.innerText(firstKey);
+			let lastElement = this.innerText(lastKey);
 
 			if (!firstElement || !lastElement) {
-				const key = !firstElement ? first.key : last.key;
+				const key = !firstElement ? firstKey : lastKey;
 				const el = this.findElement(key);
 				const parent = this.parent(key);
 
@@ -627,10 +638,10 @@ export class Model extends Exome {
 				.filter((e) => e.key >= lastElement!.key)
 				.map(cloneToken);
 			if (siblings[0]?.text) {
-				siblings[0].text = siblings[0].text.slice(last.offset);
+				siblings[0].text = siblings[0].text.slice(lastOffset);
 			}
 
-			firstElement.text = firstElement.text.slice(0, first.offset);
+			firstElement.text = firstElement.text.slice(0, firstOffset);
 
 			const newToken = {
 				id: ranID(),
@@ -657,25 +668,26 @@ export class Model extends Exome {
 
 		// Handle new text being added after Dead key
 		if (type === ACTION._Compose && data != null) {
-			let el = this.innerText(first.key)!;
+			let el = this.innerText(firstKey)!;
 
 			if (!el) {
 				return;
 			}
 
-			el.text = stringSplice(el.text, first.offset - 1, first.offset - 1, data);
+			el.text = stringSplice(el.text, firstOffset - 1, firstOffset - 1, data);
 
-			this._selectSilent(el, first.offset - 1 + data.length);
+			this.recalculate();
+			this.select(el, firstOffset - 1 + data.length);
 			return;
 		}
 
 		// Handle new text being added
 		if (type === ACTION._Key && data != null) {
-			let firstElement = this.innerText(first.key)!;
-			let lastElement = this.innerText(last.key)!;
+			let firstElement = this.innerText(firstKey)!;
+			let lastElement = this.innerText(lastKey)!;
 
 			if (!firstElement || !lastElement) {
-				const key = !firstElement ? first.key : last.key;
+				const key = !firstElement ? firstKey : lastKey;
 				const el = this.findElement(key);
 				const parent = this.parent(key);
 
@@ -690,8 +702,8 @@ export class Model extends Exome {
 						},
 					];
 					this.recalculate();
-					firstElement = this.innerText(first.key) as any;
-					lastElement = this.innerText(last.key) as any;
+					firstElement = this.innerText(firstKey) as any;
+					lastElement = this.innerText(lastKey) as any;
 				}
 			}
 
@@ -700,7 +712,7 @@ export class Model extends Exome {
 			}
 
 			const lastText = lastElement.text;
-			firstElement.text = firstElement.text.slice(0, first.offset) + data;
+			firstElement.text = firstElement.text.slice(0, firstOffset) + data;
 
 			const firstText = firstElement.text;
 
@@ -709,7 +721,7 @@ export class Model extends Exome {
 					.filter((e) => e.key >= lastElement.key)
 					.map(cloneToken);
 				if (siblings[0]?.text) {
-					siblings[0].text = siblings[0].text.slice(last.offset);
+					siblings[0].text = siblings[0].text.slice(lastOffset);
 				}
 
 				const lastKeyChunks = lastElement.key.split(".");
@@ -722,21 +734,21 @@ export class Model extends Exome {
 				this.insertAfter(siblings, firstElement);
 
 				this.recalculate();
-				// resetSelection(first.key, 0);
+				// resetSelection(firstKey, 0);
 				this.select(firstElement, 0);
 			} else {
-				firstElement.text += lastText.slice(last.offset);
+				firstElement.text += lastText.slice(lastOffset);
 				// this.select(firstElement, firstText.length);
 			}
 
-			if (data && first.key === last.key && first.offset === last.offset) {
+			if (data && firstKey === lastKey && firstOffset === lastOffset) {
 				this._handleTextTransforms(firstElement, data);
 			}
 
 			if (firstElement.text) {
 				this.select(firstElement, firstText.length);
 				// this.stack.push(() =>
-				// 	setCaret(firstElement.id, first.offset + (data?.length as number)),
+				// 	setCaret(firstElement.id, firstOffset + (data?.length as number)),
 				// );
 				// this.recalculate();
 				return;
@@ -751,7 +763,7 @@ export class Model extends Exome {
 				this.select(parent, 0);
 				this.recalculate();
 
-				// resetSelection(first.key, 0);
+				// resetSelection(firstKey, 0);
 				return;
 			}
 
@@ -764,23 +776,24 @@ export class Model extends Exome {
 		}
 	};
 
-	private _selectSilent = (first: AnyToken, start: number = 0) => {
+	// private _selectSilent = (first: AnyToken, start: number = 0) => {
+	// 	if (this._isComposing) {
+	// 		return;
+	// 	}
+
+	// 	this.stack.push(() => setCaret(first.id, start));
+	// 	this.update();
+	// };
+
+	public select = (first: AnyToken, start: number = 0) => {
 		if (this._isComposing) {
 			return;
 		}
 
+		// this._selectSilent(first, start);
 		this.stack.push(() => setCaret(first.id, start));
+		
 		this.update();
-	};
-
-	public select = (first: AnyToken, start: number = 0) => {
-		this._selectSilent(first, start);
-
-		this.setSelection({
-			anchor: first.key,
-			focus: first.key,
-			anchorOffset: start,
-			focusOffset: start,
-		});
+		this.selection.setSelection(first.key, start, first.key, start);
 	};
 }

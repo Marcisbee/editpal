@@ -11,6 +11,10 @@
   border-color: #98c9ff;
 }
 
+[data-ep-main] * {
+  box-sizing: border-box;
+}
+
 [data-ep-main] > [data-ep-h] {
   display: block;
   margin: 0;
@@ -218,7 +222,7 @@ li[data-ep-l="ul"][data-ep-i="3"]:before {
   border-radius: 4px;
   cursor: default;
 }
-[data-ep-main]:focus-within [data-ep-img][data-ep-s],
+/* [data-ep-main]:focus-within [data-ep-img][data-ep-s], */
 [data-ep-main]:focus [data-ep-img][data-ep-s] {
   box-shadow: 0 0 0 2px #98c9ff;
 }
@@ -240,6 +244,18 @@ li[data-ep-l="ul"][data-ep-i="3"]:before {
   font-size: 0;
   line-height: 0;
   vertical-align: middle;
+}
+[data-ep-img] input {
+  display: block;
+  width: 100%;
+  padding: 8px 4px;
+  background-color: transparent;
+  border: 0;
+  text-align: center;
+  opacity: 0.5;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-top: 0;
+  border-radius: 0 0 5px 5px;
 }
 
 [data-debug] {

@@ -2,23 +2,81 @@ import { useStore } from "exome/preact";
 import { h, Fragment, createContext, RefObject } from "preact";
 import { useLayoutEffect, useRef, useState, useContext } from "preact/hooks";
 
-import type { AnyToken, TextToken } from "./tokens";
+import type { AnyToken, ImgToken, TextToken } from "./tokens";
 import { ACTION, Model as EditorModel } from "./model";
 
 import "./app.css";
 
 export const Model = EditorModel;
 
-function RenderText({ id, props, text, k }: Omit<TextToken, "type" | "key">) {
+function RenderText({ id, props, text, k }: TextToken & { k: string }) {
 	return (
 		<span
 			// Handle dead key insertion
 			key={`${id}-${text}`}
 			style={props}
 			data-ep={id}
-			data-debug={k}
+			// data-debug={k}
 		>
 			{text.replace(/ /g, "\u00A0") || <br />}
+		</span>
+	);
+}
+
+function RenderImage(item: ImgToken & { k: string }) {
+	const { id, src, k } = item;
+	const { model } = useContext(EditorContext);
+	const {
+		first: [first],
+		last: [last],
+	} = useStore(model.selection);
+	const inputRef = useRef<HTMLInputElement>(null);
+
+	useLayoutEffect(() => {
+		const handler = (e: any) => preventDefaultAndStop(e);
+
+		inputRef.current?.addEventListener("compositionstart", handler);
+		inputRef.current?.addEventListener("compositionend", handler);
+
+		return () => {
+			inputRef.current?.removeEventListener("compositionstart", handler);
+			inputRef.current?.removeEventListener("compositionend", handler);
+		};
+	}, []);
+
+	return (
+		<span
+			data-ep={id}
+			data-ep-img
+			data-ep-s={
+				[
+					...model.keysBetween(first, last),
+					...model.keysBetween(last, first),
+				].indexOf(k) > -1 || undefined
+			}
+			// If pointerEvents, then this is needed
+			// onMouseDown={(e) => {
+			// 	document.execCommand("selectAll", false, null);
+			// 	model.select(model.findElement(item.k)!, 0);
+			// }}
+		>
+			<br />
+			<span contentEditable={false}>
+				<img src={src} alt={"@TODO"} />
+				<input
+					ref={inputRef}
+					type="text"
+					style={{ userSelect: "auto", pointerEvents: "auto" }}
+					onKeyDown={(e) => {
+						e.stopPropagation();
+					}}
+					placeholder="Type caption here..."
+					defaultValue={item.props.alt}
+					onInput={(e) => {
+						item.props.alt = e.target.value;
+					}}
+				/>
+			</span>
 		</span>
 	);
 }
@@ -31,7 +89,7 @@ function RenderItem(item: AnyToken & { k: string }) {
 
 		return (
 			<strong key={item.id} style={style} data-ep-h={size} data-ep={item.id}>
-				<RenderMap key={item.id} items={item.children} />
+				<RenderMap items={item.children} />
 			</strong>
 		);
 	}
@@ -40,8 +98,8 @@ function RenderItem(item: AnyToken & { k: string }) {
 		const { indent, ...style } = item.props || {};
 
 		return (
-			<p style={style} data-ep={item.id} data-ep-i={indent}>
-				<RenderMap key={item.id} items={item.children} />
+			<p key={item.id} style={style} data-ep={item.id} data-ep-i={indent}>
+				<RenderMap items={item.children} />
 			</p>
 		);
 	}
@@ -51,12 +109,13 @@ function RenderItem(item: AnyToken & { k: string }) {
 
 		return (
 			<li
+				key={item.id}
 				style={style}
 				data-ep={item.id}
 				data-ep-l={type || "ul"}
 				data-ep-i={indent}
 			>
-				<RenderMap key={item.id} items={item.children} />
+				<RenderMap items={item.children} />
 			</li>
 		);
 	}
@@ -66,6 +125,7 @@ function RenderItem(item: AnyToken & { k: string }) {
 
 		return (
 			<p
+				key={item.id}
 				style={style}
 				data-ep={item.id}
 				data-ep-todo
@@ -79,7 +139,7 @@ function RenderItem(item: AnyToken & { k: string }) {
 				// }}
 				onMouseDown={(e) => e.stopPropagation()}
 			>
-				<RenderMap key={item.id} items={item.children} />
+				<RenderMap items={item.children} />
 				<span data-ep-todo-check contentEditable={false}>
 					<input
 						type="checkbox"
@@ -100,33 +160,7 @@ function RenderItem(item: AnyToken & { k: string }) {
 	}
 
 	if (item.type === "img") {
-		const a = model.selection?.anchor;
-		const f = model.selection?.focus;
-		return (
-			<span
-				key={item.id}
-				data-ep={item.id}
-				data-ep-img
-				data-ep-s={
-					(a &&
-						f &&
-						[...model.keysBetween(a, f), ...model.keysBetween(f, a)].indexOf(
-							item.k,
-						) > -1) ||
-					undefined
-				}
-				// If pointerEvents, then this is needed
-				// onMouseDown={(e) => {
-				// 	document.execCommand("selectAll", false, null);
-				// 	model.select(model.findElement(item.k)!, 0);
-				// }}
-			>
-				<br />
-				<span contentEditable={false}>
-					<img src={item.src} alt={"@TODO"} />
-				</span>
-			</span>
-		);
+		return <RenderImage {...item} key={item.id} />;
 	}
 
 	if (item.type === "t") {
@@ -175,7 +209,7 @@ const EditorContext = createContext<{
 }>({} as any);
 
 export function Editpal({ model }: EditpalProps) {
-	const { tokens, stack, action, setSelection } = useStore(model);
+	const { tokens, stack, action, selection } = useStore(model);
 	const ref = useRef<HTMLDivElement>(null);
 	const [focus, setFocus] = useState(0);
 	const [reload, setReload] = useState(0);
@@ -204,12 +238,12 @@ export function Editpal({ model }: EditpalProps) {
 		let a = model._idToKey[anchor];
 		let f = model._idToKey[focus];
 
-		setSelection({
-			anchor: /\./.test(a) ? a : `${a}.0`,
+		selection.setSelection(
+			/\./.test(a) ? a : `${a}.0`,
 			anchorOffset,
-			focus: /\./.test(f) ? f : `${f}.0`,
+			/\./.test(f) ? f : `${f}.0`,
 			focusOffset,
-		});
+		);
 	}
 
 	function onSelect(event: MouseEvent) {
@@ -259,6 +293,10 @@ export function Editpal({ model }: EditpalProps) {
 			selection.anchorOffset,
 			selection.focusOffset,
 		);
+	}
+
+	function onFocus(event) {
+		onSelectionStart(event);
 	}
 
 	function onBlur(event) {
@@ -338,25 +376,24 @@ export function Editpal({ model }: EditpalProps) {
 
 		// onSelectionStart();
 
-		const add = ref.current.addEventListener;
-		const remove = ref.current.removeEventListener;
+		const e = ref.current;
 
-		add("compositionstart", onCompositionStart);
-		add("compositionend", onCompositionEnd);
-		add("focus", onSelectionStart, { once: true });
-		add("selectstart", onSelectionStart, { once: true });
-		add("mousedown", onSelect);
-		add("blur", onBlur);
-		add("drop", onDrop);
+		e.addEventListener("compositionstart", onCompositionStart);
+		e.addEventListener("compositionend", onCompositionEnd);
+		e.addEventListener("focus", onFocus);
+		e.addEventListener("selectstart", onSelectionStart, { once: true });
+		e.addEventListener("mousedown", onSelect);
+		e.addEventListener("blur", onBlur);
+		e.addEventListener("drop", onDrop);
 
 		return () => {
-			remove("compositionstart", onCompositionStart);
-			remove("compositionend", onCompositionEnd);
-			remove("focus", onSelectionStart);
-			remove("selectstart", onSelectionStart);
-			remove("mousedown", onSelect);
-			remove("blur", onBlur);
-			remove("drop", onDrop);
+			e.removeEventListener("compositionstart", onCompositionStart);
+			e.removeEventListener("compositionend", onCompositionEnd);
+			e.removeEventListener("focus", onFocus);
+			e.removeEventListener("selectstart", onSelectionStart);
+			e.removeEventListener("mousedown", onSelect);
+			e.removeEventListener("blur", onBlur);
+			e.removeEventListener("drop", onDrop);
 		};
 	}, [focus]);
 

@@ -59,7 +59,7 @@ function debug(tokens: AnyToken | AnyToken[], indent = 0): string[] {
 	}
 
 	if (tokens.props) {
-		output[0] += ' ' + JSON.stringify(tokens.props);
+		output[0] += " " + JSON.stringify(tokens.props);
 	}
 
 	if (tokens.children?.length) {
@@ -71,6 +71,7 @@ function debug(tokens: AnyToken | AnyToken[], indent = 0): string[] {
 
 export function Debug({ model }: { model: Model }) {
 	const { tokens, selection } = useStore(model);
+	const { first, last } = useStore(selection);
 
 	return (
 		<pre
@@ -79,24 +80,33 @@ export function Debug({ model }: { model: Model }) {
 				textAlign: "left",
 				fontSize: 12,
 				lineHeight: 1.4,
+				height: 300,
+				overflowX: "hidden",
+				overflowY: "scroll",
+				width: "90%",
+				border: "1px solid #ccc",
+				borderRadius: 6,
+				padding: 10,
 			}}
 		>
-			{debug(tokens).flat(Number.POSITIVE_INFINITY).join("\n")}
-			{`\n\nselection\n`}
+			{`selection\n`}
 			{selection ? (
 				<>
-					{` ├ anchor ${JSON.stringify({
-						key: selection.anchor,
-						offset: selection.anchorOffset,
+					{` ├ first ${JSON.stringify({
+						key: first[0],
+						offset: first[1],
 					})}\n`}
-					{` └ focus ${JSON.stringify({
-						key: selection.focus,
-						offset: selection.focusOffset,
+					{` └ last ${JSON.stringify({
+						key: last[0],
+						offset: last[1],
 					})}\n`}
 				</>
 			) : (
 				" └ null"
 			)}
+			{"\n"}
+			{debug(tokens).flat(Number.POSITIVE_INFINITY).join("\n")}
+			{"\n"}
 		</pre>
 	);
 }

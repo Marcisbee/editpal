@@ -184,6 +184,9 @@ const root = [
 			{
 				id: ranID(),
 				type: "img",
+				props: {
+					alt: 'Genji cyberdemon skin'
+				},
 				src: "https://img.strike.lv/photos/7110acef-3ad0-4382-a88f-93e854128be8.jpeg",
 			},
 		],
