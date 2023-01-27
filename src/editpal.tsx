@@ -1,6 +1,6 @@
 import { useStore } from "exome/preact";
 import { h, createContext, RefObject } from "preact";
-import { useLayoutEffect, useRef, useState } from "preact/hooks";
+import { useContext, useLayoutEffect, useRef, useState } from "preact/hooks";
 
 import type { AnyToken, TextToken } from "./tokens";
 import { ACTION, Model as EditorModel } from "./model";
@@ -144,6 +144,77 @@ export const EditorContext = createContext<{
 	editor: RefObject<HTMLDivElement>;
 }>({} as any);
 
+function Toolbar() {
+	const { model } = useContext(EditorContext);
+	const { action, selection } = useStore(model);
+	const { format } = useStore(selection);
+
+	return (
+		<div
+			style={{
+				marginBottom: 10,
+			}}
+		>
+			<button
+				type="button"
+				style={{
+					padding: "10px 14px",
+					border: 0,
+					borderRadius: 5,
+					fontWeight: "bold",
+					backgroundColor: format.fontWeight === "bold" ? "#555555" : "#353535",
+					color: format.fontWeight === "bold" ? "#fff" : "#ccc",
+					marginRight: 5,
+					width: 40,
+				}}
+				onMouseDown={preventDefaultAndStop}
+				onClick={(e) => {
+					preventDefaultAndStop(e);
+					const type =
+						format.fontWeight === "bold"
+							? ACTION._FormatRemove
+							: ACTION._FormatAdd;
+					action(type, ['fontWeight', "bold"]);
+				}}
+			>
+				B
+			</button>
+			<button
+				type="button"
+				style={{
+					padding: "10px 14px",
+					border: 0,
+					borderRadius: 5,
+					fontWeight: "bold",
+					backgroundColor:
+						format.fontStyle === "italic" ? "#555555" : "#353535",
+					color: format.fontStyle === "italic" ? "#fff" : "#ccc",
+					marginRight: 5,
+					width: 40,
+				}}
+			>
+				<i>I</i>
+			</button>
+			<button
+				type="button"
+				style={{
+					padding: "10px 14px",
+					border: 0,
+					borderRadius: 5,
+					fontWeight: "bold",
+					backgroundColor:
+						format.textDecoration === "underline" ? "#555555" : "#353535",
+					color: format.textDecoration === "underline" ? "#fff" : "#ccc",
+					marginRight: 5,
+					width: 40,
+				}}
+			>
+				<u>U</u>
+			</button>
+		</div>
+	);
+}
+
 export function Editpal({ model }: EditpalProps) {
 	const { tokens, stack, action, selection } = useStore(model);
 	const ref = useRef<HTMLDivElement>(null);
@@ -180,6 +251,13 @@ export function Editpal({ model }: EditpalProps) {
 			/\./.test(f) ? f : `${f}.0`,
 			focusOffset,
 		);
+		if (a === f) {
+			selection.setFormat({
+				...model.findElement(a).props,
+			});
+		} else {
+			selection.setFormat({});
+		}
 	}
 
 	function onSelect(event: MouseEvent) {
@@ -312,6 +390,8 @@ export function Editpal({ model }: EditpalProps) {
 				editor: ref,
 			}}
 		>
+			<Toolbar />
+
 			<div
 				ref={ref}
 				contentEditable

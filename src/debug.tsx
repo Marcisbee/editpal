@@ -71,7 +71,7 @@ function debug(tokens: AnyToken | AnyToken[], indent = 0): string[] {
 
 export function Debug({ model }: { model: Model }) {
 	const { tokens, selection } = useStore(model);
-	const { first, last } = useStore(selection);
+	const { first, last, format } = useStore(selection);
 
 	return (
 		<pre
@@ -92,6 +92,7 @@ export function Debug({ model }: { model: Model }) {
 			{`selection\n`}
 			{selection ? (
 				<>
+					{` ├ format ${JSON.stringify(format)}\n`}
 					{` ├ first ${JSON.stringify({
 						key: first[0],
 						offset: first[1],

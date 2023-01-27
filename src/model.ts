@@ -1,4 +1,5 @@
 import { Exome } from "exome";
+import { ModelSelection } from "./selection";
 
 import {
 	AnyToken,
@@ -16,8 +17,9 @@ export const ACTION = {
 	_Delete: 3,
 	_Tab: 4,
 	_ShiftTab: 5,
-	_Paste: 6,
-	_Compose: 7,
+	_Compose: 6,
+	_FormatAdd: 7,
+	_FormatRemove: 8,
 };
 
 function handleEnter(
@@ -100,34 +102,6 @@ function handleTab(
 	}
 
 	model.update();
-}
-
-export class ModelSelection extends Exome {
-	public first: [string, number] = ["0.0", 0];
-	public last: [string, number] = this.first;
-
-	public setSelection(
-		anchor: string,
-		anchorOffset: number,
-		focus: string,
-		focusOffset: number,
-	) {
-		const [first, last] = (
-			[
-				[anchor, anchorOffset],
-				[focus, focusOffset],
-			] as [string, number][]
-		).sort((a, b) => {
-			if (a[0] === b[0]) {
-				return a[1] > b[1] ? 1 : -1;
-			}
-
-			return a[0].localeCompare(b[0], undefined, { numeric: true });
-		});
-
-		this.first = first;
-		this.last = last;
-	}
 }
 
 export class Model extends Exome {
@@ -497,6 +471,11 @@ export class Model extends Exome {
 	};
 
 	public action = (type: number, data?: string) => {
+		console.log("ACTION", {
+			type,
+			data,
+		});
+
 		let {
 			first: [firstKey, firstOffset],
 			last: [lastKey, lastOffset],
@@ -663,6 +642,53 @@ export class Model extends Exome {
 				handleEnter(firstParent, clonedTokens[0] as any, this);
 			}
 
+			return;
+		}
+
+		if (type === ACTION._FormatAdd && data != null) {
+			const keys = this.keysBetween(firstKey, lastKey);
+
+			for (const key of keys) {
+				const el = this.findElement(key);
+
+				if (el.type === "t") {
+					console.log("🥒ADD", el.key);
+					if (!el.props) {
+						el.props = {};
+					}
+					el.props[data[0]] = data[1];
+				}
+			}
+
+			this.selection.setFormat({
+				...this.selection.format,
+				[data[0]]: data[1],
+			});
+			this.recalculate();
+			return;
+		}
+
+		if (type === ACTION._FormatRemove && data != null) {
+			const keys = this.keysBetween(firstKey, lastKey);
+
+			for (const key of keys) {
+				const el = this.findElement(key);
+
+				if (el.type === "t") {
+					console.log("🌶️REMOVE", el.key);
+					if (!el.props) {
+						continue;
+					}
+					el.props[data[0]] = undefined;
+				}
+			}
+
+			// @TODO Figure out why remove action doesn't reload view
+			this.selection.setFormat({
+				...this.selection.format,
+				[data[0]]: undefined,
+			});
+			this.recalculate();
 			return;
 		}
 
