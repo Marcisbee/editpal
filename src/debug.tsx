@@ -76,17 +76,17 @@ export function Debug({ model }: { model: Model }) {
 	return (
 		<pre
 			style={{
-				position: "absolute",
 				textAlign: "left",
 				fontSize: 12,
 				lineHeight: 1.4,
 				height: 300,
 				overflowX: "hidden",
 				overflowY: "scroll",
-				width: "90%",
+				width: "100%",
 				border: "1px solid #ccc",
 				borderRadius: 6,
 				padding: 10,
+				boxSizing: "border-box",
 			}}
 		>
 			{`selection\n`}

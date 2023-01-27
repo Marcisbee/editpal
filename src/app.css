@@ -2,15 +2,17 @@
   user-select: text;
   border: 2px solid orange;
   border-radius: 6px;
-  width: 500px;
+  width: 100%;
   padding: 10px 10px 0 10px;
   outline: 0;
+  font-size: 16px;
 }
 [data-ep-main]:focus-within,
 [data-ep-main]:focus {
   border-color: #98c9ff;
 }
 
+[data-ep-main],
 [data-ep-main] * {
   box-sizing: border-box;
 }
@@ -256,6 +258,7 @@ li[data-ep-l="ul"][data-ep-i="3"]:before {
   border: 1px solid rgba(255, 255, 255, 0.05);
   border-top: 0;
   border-radius: 0 0 5px 5px;
+  font-size: 16px;
 }
 
 [data-debug] {
