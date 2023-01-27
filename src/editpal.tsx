@@ -62,7 +62,7 @@ function RenderImage(item: ImgToken & { k: string }) {
 		>
 			<br />
 			<span contentEditable={false}>
-				<img src={src} alt={"@TODO"} />
+				<img src={src} alt={item.props.alt} />
 				<input
 					ref={inputRef}
 					type="text"
@@ -82,8 +82,6 @@ function RenderImage(item: ImgToken & { k: string }) {
 }
 
 function RenderItem(item: AnyToken & { k: string }) {
-	const { editor, model } = useContext(EditorContext);
-
 	if (item.type === "h") {
 		const { size, ...style } = item.props || {};
 
@@ -150,11 +148,6 @@ function RenderItem(item: AnyToken & { k: string }) {
 						onFocus={preventDefault}
 					/>
 				</span>
-				{/* <img
-          className="mx-preview-todo-capture"
-          src="https://img.strike.lv/avatars/bc7cefc4-2270-4c5c-9cba-7e7b142c8000.png"
-          alt="asd"
-        /> */}
 			</p>
 		);
 	}
