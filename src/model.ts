@@ -85,6 +85,12 @@ function handleTab(
 		} else {
 			if (mod === -1 && !element.props.indent) {
 				element.type = "p";
+				if (model.selection) {
+					model.select(
+						model.findElement(model.selection.anchor),
+						model.selection.anchorOffset || 0,
+					);
+				}
 				continue;
 			}
 
@@ -407,6 +413,8 @@ export class Model extends Exome {
 		}
 
 		transformToParagraph(parent);
+
+		this.select(parent);
 
 		console.log("🟢 REMOVE INITIAL", (parent as any).index);
 
