@@ -348,34 +348,6 @@ export function Editpal({ model }: EditpalProps) {
 			return;
 		}
 
-		// const observer = new MutationObserver((mutations) => {
-		// 	mutations.forEach(({ type, target, ...rest }) => {
-		// 		if (type === 'characterData') {
-		// 			const key = target.parentElement?.getAttribute("data-ep");
-		// 			const content = target.textContent;
-		// 			console.log("🍏 CHARACTER", { key, content }, rest);
-		// 			return;
-		// 		}
-
-		// 		console.log('🍎 MUTATION', type, target);
-		// 		// const targetDOM = mutation.target;
-		// 		// if (mutation.type === 'childList') {
-		// 		//   const listValues = Array.from(targetNode.children)
-		// 		//       .map(node => node.innerHTML)
-		// 		//       .filter(html => html !== '<br>');
-		// 		//   console.log(listValues);
-		// 		// }
-		// 	});
-		// });
-
-		// observer.observe(ref.current, {
-		// 	characterData: true,
-		// 	childList: true,
-		// 	subtree: true,
-		// });
-
-		// onSelectionStart();
-
 		const e = ref.current;
 
 		e.addEventListener("compositionstart", onCompositionStart);
@@ -406,15 +378,15 @@ export function Editpal({ model }: EditpalProps) {
 		>
 			<div
 				ref={ref}
-				// suppressContentEditableWarning
 				contentEditable
 				tabIndex={0}
 				onDragStart={preventDefaultAndStop}
 				onPaste={(e) => {
-					// @TODO transform before paste
-					// @TODO strip from html
-					preventDefault(e);
-					action(ACTION._Paste, "@TODO");
+					preventDefaultAndStop(e);
+
+					const text = e.clipboardData.getData("text");
+
+					action(ACTION._Key, text);
 				}}
 				onKeyDown={(e) => {
 					if (e.key.indexOf("Arrow") === 0) {

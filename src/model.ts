@@ -792,7 +792,7 @@ export class Model extends Exome {
 
 		// this._selectSilent(first, start);
 		this.stack.push(() => setCaret(first.id, start));
-		
+
 		this.update();
 		this.selection.setSelection(first.key, start, first.key, start);
 	};
