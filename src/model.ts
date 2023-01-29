@@ -500,12 +500,14 @@ export class Model extends Exome {
 		const first = this.selection.first.slice() as [string, number];
 		const last = this.selection.last.slice() as [string, number];
 		const tokens = JSON.parse(JSON.stringify(this.tokens));
+		// Later on we mutate these variables, so let's cache them
+		const t = type;
+		const d = data;
 		const trace = {
 			undo: () => {
 				this.selection.first = first;
 				this.selection.last = last;
 				this.tokens = JSON.parse(JSON.stringify(tokens));
-				// this.select(this.findElement(first[0]), first[1]);
 
 				this.recalculate();
 
@@ -533,10 +535,11 @@ export class Model extends Exome {
 					);
 				});
 
-				this.action(type, data);
+				this.action(t, d);
 			},
 		};
 
+		// this.history.push(trace);
 		this.history.push(trace, type === ACTION._Compose ? ACTION._Key : type);
 
 		let {
