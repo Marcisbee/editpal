@@ -475,39 +475,15 @@ export class Model extends Exome {
 		return newTokens;
 	};
 
-	public action = (type: number, data?: string) => {
-		if (!this.history.locked) {
-			console.log("ACTION", {
-				type,
-				data,
-			});
-		}
-
-		if (type === ACTION._Undo) {
-			this.history.undo();
-			return;
-		}
-
-		if (type === ACTION._Redo) {
-			this.history.redo();
-			return;
-		}
-
-		if (type === ACTION._Key && data === " ") {
-			this.history.batch();
-		}
-
+	private _pushToHistory = (type: number, data?: string) => {
 		const first = this.selection.first.slice() as [string, number];
 		const last = this.selection.last.slice() as [string, number];
-		const tokens = JSON.parse(JSON.stringify(this.tokens));
-		// Later on we mutate these variables, so let's cache them
-		const t = type;
-		const d = data;
+		const tokensString = JSON.stringify(this.tokens);
 		const trace = {
 			undo: () => {
 				this.selection.first = first;
 				this.selection.last = last;
-				this.tokens = JSON.parse(JSON.stringify(tokens));
+				this.tokens = JSON.parse(tokensString);
 
 				this.recalculate();
 
@@ -535,12 +511,37 @@ export class Model extends Exome {
 					);
 				});
 
-				this.action(t, d);
+				this.action(type, data);
 			},
 		};
 
 		// this.history.push(trace);
 		this.history.push(trace, type === ACTION._Compose ? ACTION._Key : type);
+	};
+
+	public action = (type: number, data?: string) => {
+		if (!this.history.locked) {
+			console.log("ACTION", {
+				type,
+				data,
+			});
+		}
+
+		if (type === ACTION._Undo) {
+			this.history.undo();
+			return;
+		}
+
+		if (type === ACTION._Redo) {
+			this.history.redo();
+			return;
+		}
+
+		if (type === ACTION._Key && data === " ") {
+			this.history.batch();
+		}
+
+		this._pushToHistory(type, data);
 
 		let {
 			first: [firstKey, firstOffset],
