@@ -13,34 +13,38 @@ export function stringSplice(
 	return str.slice(0, start) + (add || "") + str.slice(end);
 }
 
-export function setCaret(id: string, position: number) {
+function getTextNode(id: string) {
+	const element = document.querySelector(`[data-ep="${id}"`);
+	let textNode = element?.childNodes?.[0];
+
+	if (textNode?.nodeType !== 3) {
+		// nodeType 3 = text node
+		textNode = [].slice
+			.call(element?.childNodes || [], 0)
+			.find((node?: Node) => node?.nodeType === 3 || node?.nodeName === "BR");
+	}
+
+	return textNode;
+}
+
+export function setCaret(
+	first: string,
+	firstOffset: number,
+	last: string = first,
+	lastOffset: number = firstOffset,
+) {
 	const sel = window.getSelection();
 
 	if (!sel) {
 		return;
 	}
 
-	if (sel.rangeCount > 0) {
-		const element = document.querySelector(`[data-ep="${id}"`);
-		let textNode = element?.childNodes?.[0];
-
-		// nodeType 3 = text node
-		if (textNode?.nodeType !== 3) {
-			textNode = [].slice
-				.call(element?.childNodes || [], 0)
-				.find((node?: Node) => node?.nodeType === 3 || node?.nodeName === "BR");
-		}
-
-		if (textNode) {
-			const pos = Math.min(position, textNode.textContent?.length || 0);
-
-			sel.collapse(textNode, pos);
-			console.log("🟪", "FOCUS", textNode, pos);
-			return;
-		}
-
-		sel.collapse(element, position);
-	}
+	sel.setBaseAndExtent(
+		getTextNode(first)!,
+		firstOffset,
+		getTextNode(last)!,
+		lastOffset,
+	);
 }
 
 export function cloneToken<T = AnyToken>(token: T): T {

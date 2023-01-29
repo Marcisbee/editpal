@@ -174,7 +174,7 @@ function Toolbar() {
 						format.fontWeight === "bold"
 							? ACTION._FormatRemove
 							: ACTION._FormatAdd;
-					action(type, ['fontWeight', "bold"]);
+					action(type, ["fontWeight", "bold"]);
 				}}
 			>
 				B
@@ -211,6 +211,25 @@ function Toolbar() {
 			>
 				<u>U</u>
 			</button>
+			<br />
+			<button
+				onMouseDown={preventDefaultAndStop}
+				onClick={(e) => {
+					action(ACTION._Undo);
+				}}
+				type="button"
+			>
+				undo
+			</button>
+			<button
+				onMouseDown={preventDefaultAndStop}
+				onClick={(e) => {
+					action(ACTION._Redo);
+				}}
+				type="button"
+			>
+				redo
+			</button>
 		</div>
 	);
 }
@@ -231,6 +250,10 @@ export function Editpal({ model }: EditpalProps) {
 		anchorOffset: number,
 		focusOffset: number,
 	) {
+		if (model._isComposing) {
+			return;
+		}
+
 		const anchor =
 			first?.parentElement?.getAttribute("data-ep") ||
 			first?.getAttribute?.("data-ep");
@@ -279,6 +302,8 @@ export function Editpal({ model }: EditpalProps) {
 			return;
 		}
 
+		model.history.batch();
+
 		select(
 			range.startContainer,
 			range.endContainer,
@@ -295,7 +320,7 @@ export function Editpal({ model }: EditpalProps) {
 	function onSelectionChange(event) {
 		const selection = document.getSelection();
 
-		console.log("SELEEEECT", selection);
+		// console.log("SELEEEECT", selection);
 
 		if (!selection) {
 			return;
@@ -405,7 +430,18 @@ export function Editpal({ model }: EditpalProps) {
 					action(ACTION._Key, text);
 				}}
 				onKeyDown={(e) => {
+					if (e.metaKey && e.key === "z") {
+						model.action(e.shiftKey ? ACTION._Redo : ACTION._Undo);
+						return;
+					}
+
+					// Allow cmd+r etc.
+					if (e.metaKey) {
+						return;
+					}
+
 					if (e.key.indexOf("Arrow") === 0) {
+						model.history.batch();
 						return;
 					}
 
@@ -429,7 +465,7 @@ export function Editpal({ model }: EditpalProps) {
 
 					// Single letter
 					if (e.key.length === 1) {
-						preventDefault(e);
+						preventDefaultAndStop(e);
 						action(ACTION._Key, e.key);
 						return;
 					}

@@ -1,6 +1,7 @@
 import { Exome } from "exome";
-import { ModelSelection } from "./selection";
 
+import { HistoryStore } from "./history";
+import { ModelSelection } from "./selection";
 import {
 	AnyToken,
 	BlockToken,
@@ -20,6 +21,8 @@ export const ACTION = {
 	_Compose: 6,
 	_FormatAdd: 7,
 	_FormatRemove: 8,
+	_Undo: 9,
+	_Redo: 10,
 };
 
 function handleEnter(
@@ -90,6 +93,8 @@ function handleTab(
 				model.select(
 					model.findElement(model.selection.first[0]),
 					model.selection.first[1],
+					model.findElement(model.selection.last[0]),
+					model.selection.last[1],
 				);
 				continue;
 			}
@@ -113,6 +118,7 @@ export class Model extends Exome {
 	// 	focusOffset: number;
 	// } | null = null;
 	public selection = new ModelSelection();
+	public history = new HistoryStore();
 
 	public _idToKey: Record<string, string> = {};
 	public _elements: Record<string, AnyToken> = {};
@@ -423,7 +429,6 @@ export class Model extends Exome {
 	};
 
 	private _handleTextTransforms = (element: TextToken, textAdded: string) => {
-		console.log({ textAdded });
 		if (textAdded === ")") {
 			element.text = element.text.replace(/\:\)/g, "😄");
 			return;
@@ -471,10 +476,68 @@ export class Model extends Exome {
 	};
 
 	public action = (type: number, data?: string) => {
-		console.log("ACTION", {
-			type,
-			data,
-		});
+		if (!this.history.locked) {
+			console.log("ACTION", {
+				type,
+				data,
+			});
+		}
+
+		if (type === ACTION._Undo) {
+			this.history.undo();
+			return;
+		}
+
+		if (type === ACTION._Redo) {
+			this.history.redo();
+			return;
+		}
+
+		if (type === ACTION._Key && data === " ") {
+			this.history.batch();
+		}
+
+		const first = this.selection.first.slice() as [string, number];
+		const last = this.selection.last.slice() as [string, number];
+		const tokens = JSON.parse(JSON.stringify(this.tokens));
+		const trace = {
+			undo: () => {
+				this.selection.first = first;
+				this.selection.last = last;
+				this.tokens = JSON.parse(JSON.stringify(tokens));
+				// this.select(this.findElement(first[0]), first[1]);
+
+				this.recalculate();
+
+				this.stack.push(() => {
+					setCaret(
+						this.findElement(first[0]).id,
+						first[1],
+						this.findElement(last[0]).id,
+						last[1],
+					);
+				});
+			},
+			redo: () => {
+				this.selection.first = first;
+				this.selection.last = last;
+
+				this.recalculate();
+
+				this.stack.push(() => {
+					setCaret(
+						this.findElement(first[0]).id,
+						first[1],
+						this.findElement(last[0]).id,
+						last[1],
+					);
+				});
+
+				this.action(type, data);
+			},
+		};
+
+		this.history.push(trace, type === ACTION._Compose ? ACTION._Key : type);
 
 		let {
 			first: [firstKey, firstOffset],
@@ -700,10 +763,10 @@ export class Model extends Exome {
 				return;
 			}
 
-			el.text = stringSplice(el.text, firstOffset - 1, firstOffset - 1, data);
+			el.text = stringSplice(el.text, firstOffset, firstOffset, data);
 
 			this.recalculate();
-			this.select(el, firstOffset - 1 + data.length);
+			this.select(el, firstOffset + data.length);
 			return;
 		}
 
@@ -811,15 +874,20 @@ export class Model extends Exome {
 	// 	this.update();
 	// };
 
-	public select = (first: AnyToken, start: number = 0) => {
+	public select = (
+		first: AnyToken,
+		firstOffset: number = 0,
+		last: AnyToken = first,
+		lastOffset: number = firstOffset,
+	) => {
 		if (this._isComposing) {
 			return;
 		}
 
-		// this._selectSilent(first, start);
-		this.stack.push(() => setCaret(first.id, start));
+		// this._selectSilent(first, firstOffset);
+		this.stack.push(() => setCaret(first.id, firstOffset, last.id, lastOffset));
 
 		this.update();
-		this.selection.setSelection(first.key, start, first.key, start);
+		this.selection.setSelection(first.key, firstOffset, last.key, lastOffset);
 	};
 }
