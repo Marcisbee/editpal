@@ -109,7 +109,10 @@ function handleTab(
 	model.update();
 }
 
-function propsEqual(a: Record<string, any> = {}, b: Record<string, any> = {}): boolean {
+function propsEqual(
+	a: Record<string, any> = {},
+	b: Record<string, any> = {},
+): boolean {
 	const keysA = Object.keys(a);
 	const keysB = Object.keys(b);
 
@@ -159,10 +162,29 @@ export class Model extends Exome {
 			return;
 		}
 
+		this.selection.fix = false;
+
 		this._elements_temp = {};
 		this._idToKey = this._buildKeys(this.tokens);
 		this._elements = this._elements_temp;
 		this.update();
+
+		if (!this.selection.fix) {
+			return;
+		}
+
+		const {
+			first: [first, firstOffset],
+			last: [last, lastOffset],
+		} = this.selection;
+		console.log("APPLY", first, firstOffset, last, lastOffset);
+
+		this.select(
+			this.findElement(first),
+			firstOffset,
+			this.findElement(last),
+			lastOffset,
+		);
 	};
 
 	private _buildKeys = (
@@ -190,6 +212,25 @@ export class Model extends Exome {
 
 		keys[tokens.id] = tokens.key;
 
+		// @TODO figure out where did last selection was and fix it on the fly
+
+		const {
+			first: [firstKey, firstOffset],
+			last: [lastKey, lastOffset],
+		} = this.selection;
+		let fixedFirst;
+		let fixedLast;
+
+		// console.log(
+		// 	{
+		// 		first,
+		// 		firstOffset,
+		// 		last,
+		// 		lastOffset,
+		// 	},
+		// 	tokens.key,
+		// );
+
 		if (tokens.type !== "t" && Array.isArray(tokens.children)) {
 			let last;
 			let i = -1;
@@ -203,22 +244,85 @@ export class Model extends Exome {
 					}
 
 					if (!last.text) {
+						const kk = key.concat(i).join(".");
+						if (firstKey === kk) {
+							console.warn("FIX 1", kk);
+							// fixedFirst = [last.key, last.text.length];
+						}
+						if (lastKey === kk) {
+							console.warn("FIX 1", kk);
+							// fixedLast = [last.key, last.text.length];
+						}
 						tokens.children.splice(i - 1, 1);
 						i -= 1;
 						break check;
 					}
 
 					if (!child.text) {
+						const kk = key.concat(i).join(".");
 						tokens.children.splice(i, 1);
 						i -= 1;
+
+						// @TODO Handle 0.0 position
+						if (!fixedFirst && firstKey === kk) {
+							console.warn("FIX F", kk, "=>", i, last.text);
+							fixedFirst = [
+								key.concat(i).join("."),
+								last.text.length + firstOffset,
+							];
+						}
+
+						if (!fixedLast && lastKey === kk) {
+							console.warn("FIX L", kk, "=>", i, last.text);
+							fixedLast = [
+								key.concat(i).join("."),
+								firstKey === lastKey
+									? last.text.length + firstOffset + lastOffset
+									: lastOffset,
+							];
+						}
 						continue;
 					}
 
 					if (propsEqual(last.props, child.props)) {
+						// const kk = key.concat(i).join(".");
+						// if (firstKey === kk) {
+						// 	console.warn("FIX 3", kk, "=>", i, last.text);
+						// 	// fixedFirst = [last.key, last.text.length];
+						// }
+						// if (lastKey === kk) {
+						// 	console.warn("FIX 3", kk, "=>", i, last.text);
+						// 	// fixedLast = [last.key, last.text.length];
+						// }
 						last.text += child.text;
 						tokens.children.splice(i, 1);
 						i -= 1;
+
+						// if (!fixedFirst && firstKey === kk) {
+						// 	console.warn("FIX F", kk, "=>", i, last.text);
+						// 	fixedFirst = [key.concat(i).join('.'), firstOffset];
+						// }
+						// console.log(child.key);
+						// if (!fixedLast && lastKey === kk) {
+						// 	console.warn("FIX L", kk, "=>", i, last.text);
+						// 	fixedLast = [key.concat(i).join('.'), child.text.length - lastOffset];
+						// }
 						continue;
+					}
+
+					// Key not initiated
+					// This thing was just added
+					if (!child.key) {
+						const kk = key.concat(i - 1).join(".");
+						if (!fixedFirst && firstKey === kk) {
+							console.warn("FIX 3", kk, "=>", i, last.text);
+							fixedFirst = [key.concat(i).join("."), 0];
+						}
+						if (!fixedLast && lastKey === kk) {
+							console.warn("FIX 3", kk, "=>", i, last.text);
+							fixedLast = [key.concat(i).join("."), child.text.length];
+						}
+						console.log(child, kk);
 					}
 				}
 
@@ -226,6 +330,22 @@ export class Model extends Exome {
 			}
 
 			this._buildKeys(tokens.children, keys, key);
+		}
+
+		if (fixedFirst) {
+			this.selection.first = fixedFirst;
+			console.log({
+				fixedFirst,
+			});
+			this.selection.fix = true;
+		}
+
+		if (fixedLast) {
+			this.selection.last = fixedLast;
+			console.log({
+				fixedLast,
+			});
+			this.selection.fix = true;
 		}
 
 		return keys;
@@ -854,7 +974,7 @@ export class Model extends Exome {
 				const [tokens] = this.insert(rest, el);
 
 				this.recalculate();
-				this.select(tokens, 0, undefined, tokens.text.length);
+				// this.select(tokens, 0, undefined, tokens.text.length);
 
 				return;
 			}
@@ -880,7 +1000,7 @@ export class Model extends Exome {
 			}
 
 			this.recalculate();
-			this.select(firstToken, 0, lastToken, lastToken.text.length);
+			// this.select(firstToken, 0, lastToken, lastToken.text.length);
 			return;
 		}
 
