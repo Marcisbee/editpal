@@ -274,13 +274,23 @@ export function Editpal({ model }: EditpalProps) {
 			/\./.test(f) ? f : `${f}.0`,
 			focusOffset,
 		);
-		if (a === f) {
-			selection.setFormat({
-				...model.findElement(a)?.props,
-			});
-		} else {
-			selection.setFormat({});
-		}
+
+		const anchorProps = model.findElement(a).props as Record<string, any>;
+		const focusProps = model.findElement(f).props as Record<string, any>;
+
+		// Set formatting for current selection
+		selection.setFormat(
+			Object.entries(anchorProps || {}).reduce<Record<string, any>>(
+				(acc, [key, value]) => {
+					if (focusProps?.[key] === value) {
+						acc[key] = value;
+					}
+
+					return acc;
+				},
+				{},
+			),
+		);
 	}
 
 	function onSelect(event: MouseEvent) {

@@ -23,6 +23,7 @@
   padding: 0 0 15px 0;
   font-size: 2em;
   line-height: 1.1em;
+  font-weight: normal;
 }
 
 [data-ep-main] > [data-ep-h]::before {

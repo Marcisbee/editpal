@@ -109,6 +109,23 @@ function handleTab(
 	model.update();
 }
 
+function propsEqual(a: Record<string, any> = {}, b: Record<string, any> = {}): boolean {
+	const keysA = Object.keys(a);
+	const keysB = Object.keys(b);
+
+	if (keysA.length !== keysB.length) {
+		return false;
+	}
+
+	for (const key of keysA) {
+		if (a[key] !== b[key]) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
 export class Model extends Exome {
 	public tokens: TokenRoot;
 	// public selection: {
@@ -197,7 +214,7 @@ export class Model extends Exome {
 						continue;
 					}
 
-					if (JSON.stringify(last.props) === JSON.stringify(child.props)) {
+					if (propsEqual(last.props, child.props)) {
 						last.text += child.text;
 						tokens.children.splice(i, 1);
 						i -= 1;
@@ -414,7 +431,7 @@ export class Model extends Exome {
 			const prev = this.previousText(parent.key)!;
 			const siblings = parent.children.map(cloneToken);
 
-			this.insertAfter(siblings, prev);
+			this.insert(siblings, prev);
 			this.remove(parent.key);
 
 			const prevLength = prev.text.length;
@@ -477,19 +494,27 @@ export class Model extends Exome {
 		}
 	};
 
-	public insertAfter = (tokens: AnyToken[], element: AnyToken) => {
+	public insert = <T = AnyToken, E = AnyToken>(
+		tokens: T[],
+		element: E,
+		direction = 1,
+	): T[] => {
 		const parent = this.parent(element.key);
 
 		const newTokens = tokens.map(cloneToken);
 
 		if (!parent) {
-			this.tokens.splice(this.tokens.indexOf(element) + 1, 0, ...newTokens);
+			this.tokens.splice(
+				this.tokens.indexOf(element) + direction,
+				0,
+				...newTokens,
+			);
 
 			return newTokens;
 		}
 
 		parent.children.splice(
-			parent.children.indexOf(element) + 1,
+			parent.children.indexOf(element) + direction,
 			0,
 			...newTokens,
 		);
@@ -539,6 +564,42 @@ export class Model extends Exome {
 
 		// this.history.push(trace);
 		this.history.push(trace, type === ACTION._Compose ? ACTION._Key : type);
+	};
+
+	private _cut = (
+		el: TextToken,
+		firstOffset: number,
+		lastOffset?: number,
+		additionalProps?: Record<string, any>,
+	) => {
+		let middle = el.text.slice(firstOffset, lastOffset);
+		let right = el.text.slice(lastOffset);
+		el.text = el.text.slice(0, firstOffset);
+
+		const output: TextToken[] = [
+			{
+				type: "t",
+				text: middle,
+				id: ranID(),
+				props: {
+					...el.props,
+					...additionalProps,
+				},
+				key: "",
+			},
+		];
+
+		if (lastOffset === undefined) {
+			return output;
+		}
+
+		return output.concat({
+			type: "t",
+			text: right,
+			id: ranID(),
+			props: el.props,
+			key: "",
+		});
 	};
 
 	public action = (type: number, data?: string) => {
@@ -722,7 +783,7 @@ export class Model extends Exome {
 				String(parseInt(lastKeyChunks[0], 10) + 1),
 				false,
 			);
-			const clonedTokens = this.insertAfter([newToken] as any, firstParent);
+			const clonedTokens = this.insert([newToken] as any, firstParent);
 			this.recalculate();
 			this.select(this.nextText(clonedTokens[0].key)!, 0);
 			// this.stack.push(() => setCaret(this.nextText(clonedTokens[0].key)!.id, 0));
@@ -734,70 +795,126 @@ export class Model extends Exome {
 			return;
 		}
 
-		if (type === ACTION._FormatAdd && data != null) {
-			const keys = this.keysBetween(firstKey, lastKey);
-
-			for (const key of keys) {
-				const el = this.findElement(key);
-
-				if (el.type === "t") {
-					console.log(
-						"%c + STYLE ",
-						"background: #00b33c; color: black; font-weight: bold;",
-						el.key,
-						...data,
-					);
-					// if (!el.props) {
-					// 	el.props = {};
-					// }
-					// el.props[data[0]] = data[1];
-					el.props = {
-						...el.props,
-						[data[0]]: data[1],
-					};
-				}
+		if (
+			(type === ACTION._FormatAdd || type === ACTION._FormatRemove) &&
+			data != null
+		) {
+			// @TODO figure out how to set styles beforehand
+			if (firstKey === lastKey && firstOffset === lastOffset) {
+				return;
 			}
+
+			const [key, value] = data;
+			const newProps = {
+				[key]: type === ACTION._FormatAdd ? value : undefined,
+			};
 
 			this.selection.setFormat({
 				...this.selection.format,
-				[data[0]]: data[1],
+				...newProps,
 			});
-			this.recalculate();
 
-			return;
-		}
+			// if (firstKey === lastKey && firstOffset === lastOffset) {
+			// 	return;
+			// }
 
-		if (type === ACTION._FormatRemove && data != null) {
-			const keys = this.keysBetween(firstKey, lastKey);
+			const elements = this.keysBetween(firstKey, lastKey).reduce<TextToken[]>(
+				(acc, key) => {
+					const el = this.findElement(key);
 
-			for (const key of keys) {
-				const el = this.findElement(key);
-
-				if (el.type === "t") {
-					console.log(
-						"%c - STYLE ",
-						"background: #e62e00; color: black; font-weight: bold;",
-						el.key,
-						...data,
-					);
-					if (!el.props) {
-						continue;
+					if (el.type !== "t") {
+						return acc;
 					}
-					el.props = {
-						...el.props,
-						[data[0]]: undefined,
-					};
-				}
+
+					return acc.concat(el);
+				},
+				[],
+			);
+
+			if (ACTION._FormatAdd) {
+				console.log(
+					"%c + STYLE ",
+					"background: #00b33c; color: black; font-weight: bold;",
+					elements.map((e) => e.key),
+					...data,
+				);
+			} else {
+				console.log(
+					"%c - STYLE ",
+					"background: #e62e00; color: black; font-weight: bold;",
+					elements.map((e) => e.key),
+					...data,
+				);
 			}
 
-			// @TODO Figure out why remove action doesn't reload view
-			this.selection.setFormat({
-				...this.selection.format,
-				[data[0]]: undefined,
-			});
+			if (elements.length === 1) {
+				const el = elements[0];
+				const rest = this._cut(el, firstOffset, lastOffset, newProps);
+
+				const [tokens] = this.insert(rest, el);
+
+				this.recalculate();
+				this.select(tokens, 0, undefined, tokens.text.length);
+
+				return;
+			}
+
+			const firstEl = elements.shift()!;
+			const lastEl = elements.pop()!;
+
+			const [firstToken] = this.insert(
+				this._cut(firstEl, firstOffset, undefined, newProps),
+				firstEl,
+			);
+
+			const [lastToken] = this.insert(
+				this._cut(lastEl, 0, lastOffset, newProps),
+				lastEl,
+			);
+
+			for (const el of elements) {
+				el.props = {
+					...el.props,
+					...newProps,
+				};
+			}
+
 			this.recalculate();
+			this.select(firstToken, 0, lastToken, lastToken.text.length);
 			return;
 		}
+
+		// if (type === ACTION._FormatRemove && data != null) {
+		// 	const keys = this.keysBetween(firstKey, lastKey);
+
+		// 	for (const key of keys) {
+		// 		const el = this.findElement(key);
+
+		// 		if (el.type === "t") {
+		// 			console.log(
+		// 				"%c - STYLE ",
+		// 				"background: #e62e00; color: black; font-weight: bold;",
+		// 				el.key,
+		// 				...data,
+		// 			);
+		// 			if (!el.props) {
+		// 				continue;
+		// 			}
+		// 			el.props = {
+		// 				...el.props,
+		// 				[data[0]]: undefined,
+		// 			};
+		// 		}
+		// 	}
+
+		// 	// @TODO Figure out why remove action doesn't reload view
+		// 	this.selection.setFormat({
+		// 		...this.selection.format,
+		// 		[data[0]]: undefined,
+		// 	});
+		// 	this.recalculate();
+		// 	return;
+		// }
 
 		// Handle new text being added after Dead key
 		if (type === ACTION._Compose && data != null) {
@@ -866,7 +983,7 @@ export class Model extends Exome {
 					false,
 				);
 
-				this.insertAfter(siblings, firstElement);
+				this.insert(siblings, firstElement);
 
 				// this.recalculate();
 
