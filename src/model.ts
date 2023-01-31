@@ -356,6 +356,12 @@ export class Model extends Exome {
 		return this.nextText(lastKey);
 	};
 
+	public _transformToParagraph(element: BlockToken) {
+		element.type = "p";
+		element.props = undefined as any;
+		this.select(element.children[0]);
+	}
+
 	private _handleInitialRemove = (element: AnyToken) => {
 		const parent =
 			element.type === "t" || element.type === "img"
@@ -364,7 +370,7 @@ export class Model extends Exome {
 
 		if (parent.type === "h") {
 			if (parent.props.size <= 1) {
-				transformToParagraph(parent);
+				this._transformToParagraph(parent);
 				return;
 			}
 
@@ -415,22 +421,19 @@ export class Model extends Exome {
 			return;
 		}
 
-		transformToParagraph(parent);
+		if (parent.props.indent && parent.props.indent > 0) {
+			handleTab(parent, parent, this, true);
+			return;
+		}
 
-		this.select(parent);
+		this._transformToParagraph(parent);
 
 		console.log("🟢 REMOVE INITIAL", (parent as any).index);
-
-		function transformToParagraph(element: AnyToken) {
-			// Transform block to paragraph
-			element.type = "p";
-			(element as any).props = undefined;
-		}
 	};
 
 	private _handleTextTransforms = (element: TextToken, textAdded: string) => {
-		if (textAdded === ")") {
-			element.text = element.text.replace(/\:\)/g, "😄");
+		if (textAdded === "D") {
+			element.text = element.text.replace(/\:D/g, "😄");
 			return;
 		}
 
@@ -440,6 +443,11 @@ export class Model extends Exome {
 		if (textAdded === " " && parent.type === "p" && element.text === "- ") {
 			parent.type = "l";
 			element.text = "";
+			parent.props = {
+				indent: 0,
+				...parent.props,
+				type: "ul",
+			};
 			return;
 		}
 
@@ -448,6 +456,7 @@ export class Model extends Exome {
 			parent.type = "l";
 			element.text = "";
 			parent.props = {
+				indent: 0,
 				...parent.props,
 				type: "ol",
 			};
@@ -804,6 +813,8 @@ export class Model extends Exome {
 				return;
 			}
 
+			const parent = this.parent(firstKey)!;
+			const index = parent.children.indexOf(firstElement);
 			const lastText = lastElement.text;
 			firstElement.text = firstElement.text.slice(0, firstOffset) + data;
 
@@ -826,45 +837,73 @@ export class Model extends Exome {
 
 				this.insertAfter(siblings, firstElement);
 
-				this.recalculate();
-				// resetSelection(firstKey, 0);
-				this.select(firstElement, 0);
+				// this.recalculate();
+
+				// this.select(parent.children[index], firstText.length);
+				// return;
 			} else {
 				firstElement.text += lastText.slice(lastOffset);
+				// this.recalculate();
 				// this.select(firstElement, firstText.length);
 			}
 
+			const prev = parent.children[index - 1];
+			const previousLength = (prev as any)?.text?.length || 0;
+
+			this.recalculate();
+
 			if (data && firstKey === lastKey && firstOffset === lastOffset) {
 				this._handleTextTransforms(firstElement, data);
-			}
-
-			if (firstElement.text) {
-				this.select(firstElement, firstText.length);
-				// this.stack.push(() =>
-				// 	setCaret(firstElement.id, firstOffset + (data?.length as number)),
-				// );
+				// const firstChild = parent.children[0] as any;
+				// this.select(firstChild, firstChild.text.length);
+				// return;
 				// this.recalculate();
-				return;
+				// this.stack.push(() => {
+
+				// 	this.select(parent.children[index], firstText.length);
+				// });
+				// return;
 			}
 
-			// Hello {World} 2
-			// ^^^^^^ > backspace
-			if (firstElement.key.endsWith(".0")) {
-				const parent = this.parent(firstElement.key)!;
+			const firstChild = parent.children[0] as any;
 
-				// this.stack.push(() => setCaret(parent.id, 0));
-				this.select(parent, 0);
-				this.recalculate();
-
-				// resetSelection(firstKey, 0);
-				return;
+			if (prev && firstChild !== firstElement) {
+				// Element was deleted fallback to previous element
+				this.select(prev, previousLength);
+			} else {
+				this.select(
+					firstChild,
+					Math.min(firstChild.text.length, firstText.length),
+				);
 			}
 
-			// Hello {World} 2
-			//        ^^^^^ > backspace
-			const prev = this.previousText(firstElement.key)!;
-			this.select(prev, prev.text.length || 0);
-			this.recalculate();
+			// if (firstElement.text) {
+			// 	this.select(firstElement, firstText.length);
+			// 	// this.stack.push(() =>
+			// 	// 	setCaret(firstElement.id, firstOffset + (data?.length as number)),
+			// 	// );
+			// 	// this.recalculate();
+			// 	return;
+			// }
+
+			// // Hello {World} 2
+			// // ^^^^^^ > backspace
+			// if (firstElement.key.endsWith(".0")) {
+			// 	const parent = this.parent(firstElement.key)!;
+
+			// 	// this.stack.push(() => setCaret(parent.id, 0));
+			// 	this.select(parent, 0);
+			// 	this.recalculate();
+
+			// 	// resetSelection(firstKey, 0);
+			// 	return;
+			// }
+
+			// // Hello {World} 2
+			// //        ^^^^^ > backspace
+			// const prev = this.previousText(firstElement.key)!;
+			// this.select(prev, prev.text.length || 0);
+			// this.recalculate();
 			return;
 		}
 	};

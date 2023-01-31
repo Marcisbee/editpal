@@ -276,7 +276,7 @@ export function Editpal({ model }: EditpalProps) {
 		);
 		if (a === f) {
 			selection.setFormat({
-				...model.findElement(a).props,
+				...model.findElement(a)?.props,
 			});
 		} else {
 			selection.setFormat({});
