@@ -368,6 +368,19 @@ export class Model extends Exome {
 				? this.parent(element.key)!
 				: element;
 
+		if (element.type === "img") {
+			parent.children = [
+				cloneToken({
+					type: "t",
+					text: "",
+					id: ranID(),
+					props: {},
+					key: "",
+				}),
+			];
+			return;
+		}
+
 		if (parent.type === "h") {
 			if (parent.props.size <= 1) {
 				this._transformToParagraph(parent);
@@ -441,7 +454,7 @@ export class Model extends Exome {
 
 		// "-|[space]" => "• |"
 		if (textAdded === " " && parent.type === "p" && element.text === "- ") {
-			parent.type = "l";
+			parent.type = "l" as any;
 			element.text = "";
 			parent.props = {
 				indent: 0,
@@ -453,7 +466,7 @@ export class Model extends Exome {
 
 		// "1.|[space]" => "1. |"
 		if (textAdded === " " && parent.type === "p" && element.text === "1. ") {
-			parent.type = "l";
+			parent.type = "l" as any;
 			element.text = "";
 			parent.props = {
 				indent: 0,
@@ -729,10 +742,14 @@ export class Model extends Exome {
 
 				if (el.type === "t") {
 					console.log("🥒ADD", el.key);
-					if (!el.props) {
-						el.props = {};
-					}
-					el.props[data[0]] = data[1];
+					// if (!el.props) {
+					// 	el.props = {};
+					// }
+					// el.props[data[0]] = data[1];
+					el.props = {
+						...el.props,
+						[data[0]]: data[1],
+					};
 				}
 			}
 
