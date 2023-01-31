@@ -741,7 +741,12 @@ export class Model extends Exome {
 				const el = this.findElement(key);
 
 				if (el.type === "t") {
-					console.log("🥒ADD", el.key);
+					console.log(
+						"%c + STYLE ",
+						"background: #00b33c; color: black; font-weight: bold;",
+						el.key,
+						...data,
+					);
 					// if (!el.props) {
 					// 	el.props = {};
 					// }
@@ -758,6 +763,7 @@ export class Model extends Exome {
 				[data[0]]: data[1],
 			});
 			this.recalculate();
+
 			return;
 		}
 
@@ -768,11 +774,19 @@ export class Model extends Exome {
 				const el = this.findElement(key);
 
 				if (el.type === "t") {
-					console.log("🌶️REMOVE", el.key);
+					console.log(
+						"%c - STYLE ",
+						"background: #e62e00; color: black; font-weight: bold;",
+						el.key,
+						...data,
+					);
 					if (!el.props) {
 						continue;
 					}
-					el.props[data[0]] = undefined;
+					el.props = {
+						...el.props,
+						[data[0]]: undefined,
+					};
 				}
 			}
 
@@ -882,15 +896,15 @@ export class Model extends Exome {
 				// return;
 			}
 
-			const firstChild = parent.children[0] as any;
+			const correctedChild = parent.children[index] as any;
 
-			if (prev && firstChild !== firstElement) {
+			if (prev && correctedChild !== firstElement) {
 				// Element was deleted fallback to previous element
 				this.select(prev, previousLength);
 			} else {
 				this.select(
-					firstChild,
-					Math.min(firstChild.text.length, firstText.length),
+					correctedChild,
+					Math.min(correctedChild.text.length, firstText.length),
 				);
 			}
 
