@@ -430,7 +430,7 @@ export function Editpal({ model }: EditpalProps) {
 					action(ACTION._Key, text);
 				}}
 				onKeyDown={(e) => {
-					if (e.metaKey && e.key === "z") {
+					if ((e.metaKey || e.ctrlKey) && (e.key === "z" || e.key === "Z")) {
 						model.action(e.shiftKey ? ACTION._Redo : ACTION._Undo);
 						return;
 					}
