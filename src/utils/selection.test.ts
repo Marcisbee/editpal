@@ -6,7 +6,7 @@ import type { AnyToken, TextToken } from "../tokens";
 import { buildKeys, type BuildKeysSelection } from "./selection";
 
 function displaySelection(tokens: AnyToken[], selection: BuildKeysSelection) {
-	console.log([selection[0].join(" "), selection[1].join(" ")].join(" - "));
+	// console.log([selection[0].join(" "), selection[1].join(" ")].join(" - "));
 
 	// Sort focus and anchor to match browser behavior
 	// selection = selection
@@ -72,7 +72,9 @@ function displaySelection(tokens: AnyToken[], selection: BuildKeysSelection) {
 		})
 		.join("\n");
 
-	return textLines;
+	return `${textLines}(${[selection[0].join(" "), selection[1].join(" ")].join(
+		" - ",
+	)})`;
 }
 
 test("empty", () => {
@@ -125,7 +127,10 @@ test("h", () => {
 			children: [],
 		},
 	]);
-	assert.snapshot(displaySelection(tokens, context.newSelection), "\n");
+	assert.snapshot(
+		displaySelection(tokens, context.newSelection),
+		"\n(0.0 0 - 0.0 0)",
+	);
 });
 
 test("h,t", () => {
@@ -176,7 +181,10 @@ test("h,t", () => {
 			],
 		},
 	]);
-	assert.snapshot(displaySelection(tokens, context.newSelection), "Hello\n");
+	assert.snapshot(
+		displaySelection(tokens, context.newSelection),
+		"Hello\n(0.0 0 - 0.0 0)",
+	);
 });
 
 test("h(Hello World)", () => {
@@ -236,7 +244,7 @@ test("h(Hello World)", () => {
 	]);
 	assert.snapshot(
 		displaySelection(tokens, context.newSelection),
-		"Hello World\n",
+		"Hello World\n(0.0 0 - 0.0 0)",
 	);
 });
 
@@ -324,7 +332,7 @@ test("h(Hello[ World]!)", () => {
 	]);
 	assert.snapshot(
 		displaySelection(tokens, context.newSelection),
-		"Hello World!\n",
+		"Hello World!\n(0.0 0 - 0.0 0)",
 	);
 });
 
@@ -418,7 +426,7 @@ test("added style h(<Hello>[ World]!) => h([<Hello> World]!)", () => {
 		displaySelection(tokens, context.newSelection),
 		[
 			"Hello World!",
-			"^^^^^       ",
+			"^^^^^       (0.0 0 - 0.0 5)",
 			// SELECTION
 		]
 			.filter(Boolean)
@@ -549,7 +557,7 @@ test("added style h(He<ll>o[ World]!) => h(He[<ll>]o[ World]!)", () => {
 		displaySelection(tokens, context.newSelection),
 		[
 			"Hello World!",
-			"  ^^        ",
+			"  ^^        (0.1 0 - 0.1 2)",
 			// SELECTION
 		]
 			.filter(Boolean)
@@ -655,7 +663,7 @@ test("added style h(He<llo>[ World]!) => h(He[<llo> World]!)", () => {
 		displaySelection(tokens, context.newSelection),
 		[
 			"Hello World!",
-			"  ^^^       ",
+			"  ^^^       (0.1 0 - 0.1 3)",
 			// SELECTION
 		]
 			.filter(Boolean)
@@ -778,7 +786,7 @@ test("added style h(<He>llo[ World]!) => h([<He>]llo[ World]!)", () => {
 		displaySelection(tokens, context.newSelection),
 		[
 			"Hello World!",
-			"^^          ",
+			"^^          (0.0 0 - 0.0 2)",
 			// SELECTION
 		]
 			.filter(Boolean)
@@ -891,7 +899,7 @@ test("added style h(Hello[< Wor>ld]!) => h(Hello< Wor>[ld]!)", () => {
 		displaySelection(tokens, context.newSelection),
 		[
 			"Hello World!",
-			"     ^^^^   ",
+			"     ^^^^   (0.0 5 - 0.0 9)",
 			// SELECTION
 		]
 			.filter(Boolean)
@@ -977,7 +985,7 @@ test("added style h(Hello[< World>]!) => h(Hello< World>!)", () => {
 		displaySelection(tokens, context.newSelection),
 		[
 			"Hello World!",
-			"     ^^^^^^ ",
+			"     ^^^^^^ (0.0 5 - 0.0 11)",
 			// SELECTION
 		]
 			.filter(Boolean)
@@ -1107,7 +1115,7 @@ test("added style h(Hello[ <Wor>ld]!) => h(Hello[ ]<Wor>[ld]!)", () => {
 		displaySelection(tokens, context.newSelection),
 		[
 			"Hello World!",
-			"      ^^^   ",
+			"      ^^^   (0.2 0 - 0.2 3)",
 			// SELECTION
 		]
 			.filter(Boolean)
@@ -1211,7 +1219,111 @@ test("added style h(Hello[ <World>]!) => h(Hello[ ]<World>!)", () => {
 		displaySelection(tokens, context.newSelection),
 		[
 			"Hello World!",
-			"      ^^^^^ ",
+			"      ^^^^^ (0.2 0 - 0.2 5)",
+			// SELECTION
+		]
+			.filter(Boolean)
+			.join("\n"),
+	);
+});
+
+test("added style h(Hello[ <World>]!) => h(Hello[ ]<World>!)", () => {
+	const tokensAdded: TextToken[] = [
+		{
+			type: "t",
+			id: "e",
+			key: "",
+			props: {},
+			text: "World",
+		},
+	];
+	const tokens: AnyToken[] = [
+		{
+			type: "h",
+			id: "a",
+			key: "0.0",
+			props: {
+				size: 0,
+			},
+			children: [
+				{
+					type: "t",
+					id: "b",
+					key: "0.0",
+					props: {},
+					text: "Hello",
+				},
+				{
+					type: "t",
+					id: "c",
+					key: "0.1",
+					props: {
+						fontWeight: "bold",
+					},
+					text: " ", // Changed by cut
+				},
+				...tokensAdded,
+				{
+					type: "t",
+					id: "d",
+					key: "0.2",
+					props: {},
+					text: "!",
+				},
+			],
+		},
+	];
+	const context = buildKeys(tokens, [
+		["0.1", 1],
+		["0.1", 5],
+	]);
+
+	assert.equal(context.keys, {
+		a: "0",
+		b: "0.0",
+		c: "0.1",
+		e: "0.2",
+	});
+	assert.equal(tokens, [
+		{
+			type: "h",
+			id: "a",
+			key: "0",
+			props: {
+				size: 0,
+			},
+			children: [
+				{
+					type: "t",
+					id: "b",
+					key: "0.0",
+					props: {},
+					text: "Hello",
+				},
+				{
+					type: "t",
+					id: "c",
+					key: "0.1",
+					props: {
+						fontWeight: "bold",
+					},
+					text: " ",
+				},
+				{
+					type: "t",
+					id: "e",
+					key: "0.2",
+					props: {},
+					text: "World!",
+				},
+			],
+		},
+	]);
+	assert.snapshot(
+		displaySelection(tokens, context.newSelection),
+		[
+			"Hello World!",
+			"      ^^^^^ (0.2 0 - 0.2 5)",
 			// SELECTION
 		]
 			.filter(Boolean)
