@@ -1115,4 +1115,108 @@ test("added style h(Hello[ <Wor>ld]!) => h(Hello[ ]<Wor>[ld]!)", () => {
 	);
 });
 
+test("added style h(Hello[ <World>]!) => h(Hello[ ]<World>!)", () => {
+	const tokensAdded: TextToken[] = [
+		{
+			type: "t",
+			id: "e",
+			key: "",
+			props: {},
+			text: "World",
+		},
+	];
+	const tokens: AnyToken[] = [
+		{
+			type: "h",
+			id: "a",
+			key: "0.0",
+			props: {
+				size: 0,
+			},
+			children: [
+				{
+					type: "t",
+					id: "b",
+					key: "0.0",
+					props: {},
+					text: "Hello",
+				},
+				{
+					type: "t",
+					id: "c",
+					key: "0.1",
+					props: {
+						fontWeight: "bold",
+					},
+					text: " ", // Changed by cut
+				},
+				...tokensAdded,
+				{
+					type: "t",
+					id: "d",
+					key: "0.2",
+					props: {},
+					text: "!",
+				},
+			],
+		},
+	];
+	const context = buildKeys(tokens, [
+		["0.1", 1],
+		["0.1", 5],
+	]);
+
+	assert.equal(context.keys, {
+		a: "0",
+		b: "0.0",
+		c: "0.1",
+		e: "0.2",
+	});
+	assert.equal(tokens, [
+		{
+			type: "h",
+			id: "a",
+			key: "0",
+			props: {
+				size: 0,
+			},
+			children: [
+				{
+					type: "t",
+					id: "b",
+					key: "0.0",
+					props: {},
+					text: "Hello",
+				},
+				{
+					type: "t",
+					id: "c",
+					key: "0.1",
+					props: {
+						fontWeight: "bold",
+					},
+					text: " ",
+				},
+				{
+					type: "t",
+					id: "e",
+					key: "0.2",
+					props: {},
+					text: "World!",
+				},
+			],
+		},
+	]);
+	assert.snapshot(
+		displaySelection(tokens, context.newSelection),
+		[
+			"Hello World!",
+			"      ^^^^^ ",
+			// SELECTION
+		]
+			.filter(Boolean)
+			.join("\n"),
+	);
+});
+
 test.run();
