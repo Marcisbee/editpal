@@ -415,7 +415,7 @@ export function buildKeys(
 				// }
 				if (!child.key && !isCollapsed) {
 					const kk = key.concat(i - 1).join(".");
-					// const ka = key.concat(i).join(".");
+					const ka = key.concat(i).join(".");
 					console.log("add", last[0], kk, { diff });
 
 					if (kk === selection[0][0]) {
@@ -425,9 +425,27 @@ export function buildKeys(
 						// console.log("add", first[0], kk);
 					}
 
+					// if (ka === selection[1][0]) {
+					// 	last[0] = key.concat(i + diff).join(".");
+					// 	// last[0] = key.concat(i + diff).join(".");
+
+					// 	// if (!textDiff) {
+					// 	// last[1] = textDiff + lastChild.text.length;
+					// 	// } else {
+					// 	// last[1] += textDiff;
+					// 	console.log("0-----------");
+					// 	// }
+					// 	// console.log("add", textDiff, child.text.length, lastChild.text.length);
+					// } else
 					if (kk === selection[1][0]) {
 						last[0] = key.concat(i + diff).join(".");
-						last[1] = textDiff + lastChild.text.length;
+
+						if (diff >= 0) {
+							last[1] = textDiff + child.text.length || 0;
+							// } else {
+							// last[1] += textDiff;
+							// console.log(">>>>> ", last[1], selection[1][1]);
+						}
 						// console.log("add", textDiff, child.text.length, lastChild.text.length);
 					}
 
