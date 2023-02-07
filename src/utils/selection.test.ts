@@ -6,7 +6,7 @@ import type { AnyToken, TextToken } from "../tokens";
 import { buildKeys, type BuildKeysSelection } from "./selection";
 
 function displaySelection(tokens: AnyToken[], selection: BuildKeysSelection) {
-	// console.log([selection[0].join(" "), selection[1].join(" ")].join(" - "));
+	console.log([selection[0].join(" "), selection[1].join(" ")].join(" - "));
 
 	// Sort focus and anchor to match browser behavior
 	// selection = selection
@@ -1256,6 +1256,88 @@ test("added style h(Hello[ <World>]!) => h(Hello[ ]<World>!)", () => {
 		[
 			"Hello World!",
 			"      ^^^^^ (0.2 0 - 0.2 5)",
+			// SELECTION
+		]
+			.filter(Boolean)
+			.join("\n"),
+	);
+});
+
+test("added style h(<Hello[ World]!>) => h([<Hello World!>])", () => {
+	const tokens: AnyToken[] = [
+		{
+			type: "h",
+			id: "a",
+			key: "0.0",
+			props: {
+				size: 0,
+			},
+			children: [
+				{
+					type: "t",
+					id: "b",
+					key: "0.0",
+					props: {
+						fontWeight: "bold",
+					},
+					text: "Hello",
+				},
+				{
+					type: "t",
+					id: "c",
+					key: "0.1",
+					props: {
+						fontWeight: "bold",
+					},
+					text: " World",
+				},
+				{
+					type: "t",
+					id: "d",
+					key: "0.2",
+					props: {
+						fontWeight: "bold",
+					},
+					text: "!",
+				},
+			],
+		},
+	];
+	const context = buildKeys(tokens, [
+		["0.0", 0],
+		["0.2", 1],
+	]);
+
+	assert.equal(context.keys, {
+		a: "0",
+		b: "0.0",
+	});
+	assert.equal(tokens, [
+		{
+			type: "h",
+			id: "a",
+			key: "0",
+			props: {
+				size: 0,
+			},
+			children: [
+				{
+					type: "t",
+					id: "b",
+					key: "0.0",
+					props: {
+						fontWeight: "bold",
+					},
+					text: "Hello World!",
+				},
+			],
+		},
+	]);
+	assert.snapshot(
+		displaySelection(tokens, context.newSelection),
+		[
+			"Hello World!",
+			"^^^^^^^^^^^^(0.0 0 - 0.0 12)",
 			// SELECTION
 		]
 			.filter(Boolean)

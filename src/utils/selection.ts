@@ -77,7 +77,7 @@ export function buildKeys(
 
 				if (!lastChild.text) {
 					// const kk = key.concat(i - 1).join(".");
-					// console.log("R -last", first[0], kk);
+					console.log("R -last", key, i);
 					// if (!isCollapsed && first[0] === kk) {
 					// Nothing changes really
 					diff -= 1;
@@ -95,7 +95,7 @@ export function buildKeys(
 				}
 
 				if (!child.text) {
-					// console.log("R -child", key, i);
+					console.log("R -child", key, i);
 					diff -= 1;
 					textDiff = 0;
 					// const kk = key.concat(i + 1).join(".");
@@ -158,7 +158,13 @@ export function buildKeys(
 						// // console.log("merge 1", kk, { diff });
 					}
 
-					if (!isCollapsed && last[0] === ka) {
+					if (!isCollapsed && last[0] === child.key) {
+						last[0] = kk;
+
+						if (diff < 0) {
+							last[1] += lastChild.text.length || 0;
+						}
+					} else if (!isCollapsed && last[0] === ka) {
 						last[0] = kk;
 						last[1] += lastChild.text.length || 0;
 						// console.log("merge 2", kk, { diff });
@@ -416,7 +422,7 @@ export function buildKeys(
 				if (!child.key && !isCollapsed) {
 					const kk = key.concat(i - 1).join(".");
 					const ka = key.concat(i).join(".");
-					console.log("add", last[0], kk, { diff });
+					console.log("add", first[0], last[0], kk, { diff });
 
 					if (kk === selection[0][0]) {
 						first[0] = key.concat(i + diff).join(".");
@@ -425,6 +431,9 @@ export function buildKeys(
 						// console.log("add", first[0], kk);
 					}
 
+					// if (kk === last[0]) {
+					// 	console.log('>>>>>>>>>');
+					// }
 					// if (ka === selection[1][0]) {
 					// 	last[0] = key.concat(i + diff).join(".");
 					// 	// last[0] = key.concat(i + diff).join(".");
@@ -433,7 +442,7 @@ export function buildKeys(
 					// 	// last[1] = textDiff + lastChild.text.length;
 					// 	// } else {
 					// 	// last[1] += textDiff;
-					// 	console.log("0-----------");
+					// console.log("0-----------");
 					// 	// }
 					// 	// console.log("add", textDiff, child.text.length, lastChild.text.length);
 					// } else
@@ -444,8 +453,10 @@ export function buildKeys(
 							last[1] = textDiff + child.text.length || 0;
 							// } else {
 							// last[1] += textDiff;
-							// console.log(">>>>> ", last[1], selection[1][1]);
+							// } else {
+							// 	last[1] = textDiff + lastChild.text.length || 0;
 						}
+						console.log(">>>>> ", last[1], selection[1][1]);
 						// console.log("add", textDiff, child.text.length, lastChild.text.length);
 					}
 
