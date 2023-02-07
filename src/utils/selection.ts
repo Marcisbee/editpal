@@ -95,10 +95,10 @@ export function buildKeys(
 				}
 
 				if (!child.text) {
+					// const kk = key.concat(i + 1).join(".");
 					console.log("R -child", key, i);
 					diff -= 1;
 					textDiff = 0;
-					// const kk = key.concat(i + 1).join(".");
 					tokens.children.splice(i, 1);
 					i -= 1;
 
@@ -163,14 +163,34 @@ export function buildKeys(
 
 						if (diff < 0) {
 							last[1] += lastChild.text.length || 0;
+						console.log("last", "+", lastChild.text.length || 0);
 						}
+
+						// if (diff === 0) {
+							// last[1] += textDiff;
+						// 	last[1] += lastChild.text.length || 0;
+						// 	console.log('po');
+						// }else
+						// else if (diff === 0) {
+						// 	console.log("po");
+						// }
+						console.log("PP", { diff, textDiff });
 					} else if (!isCollapsed && last[0] === ka) {
 						last[0] = kk;
 						last[1] += lastChild.text.length || 0;
+						console.log("last", "+", lastChild.text.length || 0);
 						// console.log("merge 2", kk, { diff });
 					} else if (!isCollapsed && last[0] === kk) {
 						last[0] = kk;
-						last[1] = lastChild.text.length || 0;
+						if (diff < 0 && textDiff) {
+							last[1] = lastChild.text.length + child.text.length;
+						console.log("last", "=", lastChild.text.length + child.text.length);
+						} else {
+							last[1] = lastChild.text.length;
+						console.log("last", "=", lastChild.text.length);
+						}
+						// last[1] = lastChild.text.length || 0;
+						// console.log("last", "=", lastChild.text.length || 0);
 						// console.log("merge 2", kk, { diff });
 					}
 
@@ -337,6 +357,7 @@ export function buildKeys(
 					// }
 					diff -= 1;
 					textDiff = lastChild.text.length;
+					console.log("text diff", textDiff);
 
 					lastChild.text += child.text;
 					tokens.children.splice(i, 1);
@@ -451,6 +472,7 @@ export function buildKeys(
 
 						if (diff >= 0) {
 							last[1] = textDiff + child.text.length || 0;
+						console.log("last", "=", textDiff + child.text.length || 0);
 							// } else {
 							// last[1] += textDiff;
 							// } else {
@@ -468,28 +490,28 @@ export function buildKeys(
 				}
 
 				// @TODO this was last try
-				// if (!child.key) {
-				// 	if (firstKey === last.key) {
-				// 		console.log("%cFIRST MATCH", "color: orange;");
-				// 		this.selection.fixFirstKey += 1;
-				// 		this.selection.fixFirstOffset = 0;
-				// 	}
+			// if (!child.key) {
+			// 	if (firstKey === last.key) {
+			// 		console.log("%cFIRST MATCH", "color: orange;");
+			// 		this.selection.fixFirstKey += 1;
+			// 		this.selection.fixFirstOffset = 0;
+			// 	}
 
-				// 	// @TODO Figure out `Hello Jupiter!`
-				// 	//                     ^^^^^^^ - bold
-				// 	// Same for un-bold
-				// 	if (lastKey === last.key) {
-				// 		console.log("%cLAST MATCH", "color: orange;", last, child);
-				// 		this.selection.fixLastKey += firstOffset ? 1 : 0;
-				// 		this.selection.fixLastOffset = firstOffset
-				// 			? child.text.length
-				// 			: last.text.length;
-				// 	} else if (firstOffset) {
-				// 		// this.selection.fixLastKey += 1;
-				// 	}
+			// 	// @TODO Figure out `Hello Jupiter!`
+			// 	//                     ^^^^^^^ - bold
+			// 	// Same for un-bold
+			// 	if (lastKey === last.key) {
+			// 		console.log("%cLAST MATCH", "color: orange;", last, child);
+			// 		this.selection.fixLastKey += firstOffset ? 1 : 0;
+			// 		this.selection.fixLastOffset = firstOffset
+			// 			? child.text.length
+			// 			: last.text.length;
+			// 	} else if (firstOffset) {
+			// 		// this.selection.fixLastKey += 1;
+			// 	}
 
-				// 	console.log("R add", key, i, child, JSON.stringify(last.key));
-				// }
+			// 	console.log("R add", key, i, child, JSON.stringify(last.key));
+			// }
 			}
 
 			textDiff = 0;
