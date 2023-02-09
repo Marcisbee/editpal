@@ -1664,4 +1664,140 @@ test("added style h(H<ello[ World]!> ..or Mars!) => h(H[<ello World!>] ..or Mars
 	);
 });
 
+test("added style h(Hello< [Earth] and [Mars] >from Me!) => h(Hello[< Earth and Mars >]from Me!)", () => {
+	const tokensAdded1: TextToken[] = [
+		{
+			type: "t",
+			id: "z1",
+			key: "",
+			props: {
+				fontWeight: "bold",
+			},
+			text: " ",
+		},
+	];
+	const tokensAdded2: TextToken[] = [
+		{
+			type: "t",
+			id: "z2",
+			key: "",
+			props: {
+				fontWeight: "bold",
+			},
+			text: " ",
+		},
+	];
+	const tokens: AnyToken[] = [
+		{
+			type: "h",
+			id: "a",
+			key: "0.0",
+			props: {
+				size: 0,
+			},
+			children: [
+				{
+					type: "t",
+					id: "b",
+					key: "0.0",
+					props: {},
+					text: "Hello", // Updated by cut
+				},
+				...tokensAdded1,
+				{
+					type: "t",
+					id: "c",
+					key: "0.1",
+					props: {
+						fontWeight: "bold",
+					},
+					text: "Earth",
+				},
+				{
+					type: "t",
+					id: "d",
+					key: "0.2",
+					props: {
+						fontWeight: "bold",
+					},
+					text: " and ",
+				},
+				{
+					type: "t",
+					id: "e",
+					key: "0.3",
+					props: {
+						fontWeight: "bold",
+					},
+					text: "Mars",
+				},
+				...tokensAdded2,
+				{
+					type: "t",
+					id: "f",
+					key: "0.4",
+					props: {},
+					text: "from Me!", // Updated by cut
+				},
+			],
+		},
+	];
+	const context = buildKeys(tokens, [
+		["0.0", 5],
+		["0.4", 1],
+	]);
+
+	assert.equal(context.keys, {
+		a: "0",
+		b: "0.0",
+		z1: "0.1",
+		f: "0.2",
+	});
+	assert.equal(tokens, [
+		{
+			type: "h",
+			id: "a",
+			key: "0",
+			props: {
+				size: 0,
+			},
+			children: [
+				{
+					type: "t",
+					id: "b",
+					key: "0.0",
+					props: {},
+					text: "Hello",
+				},
+				{
+					type: "t",
+					id: "z1",
+					key: "0.1",
+					props: {
+						fontWeight: "bold",
+					},
+					text: " Earth and Mars ",
+				},
+				{
+					type: "t",
+					id: "f",
+					key: "0.2",
+					props: {},
+					text: "from Me!",
+				},
+			],
+		},
+	]);
+	assert.snapshot(
+		displaySelection(tokens, context.newSelection),
+		[
+			"Hello Earth and Mars from Me!",
+			"     ^^^^^^^^^^^^^^^^        (0.1 0 - 0.1 16)",
+			// SELECTION
+		]
+			.filter(Boolean)
+			.join("\n"),
+	);
+});
+
 test.run();
