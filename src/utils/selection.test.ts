@@ -150,27 +150,6 @@ test("h", () => {
 // 	return letter;
 // }
 
-// function createTextToken(id: string, text: string) {
-// 	return {
-// 					type: "t",
-// 					// @TODO increment id
-// 					id,
-// 					key: "",
-// 					props: {},
-// 					text,
-// 				};
-// }
-
-// function createBlockToken(id: string, type: string) {
-// 	return {
-// 					type,
-// 					id: "b",
-// 					key: "",
-// 					props: {},
-// 					text: "Hello",
-// 				};
-// }
-
 test("h,t", () => {
 	const tokens: AnyToken[] = [
 		{
