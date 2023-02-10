@@ -11,6 +11,7 @@ import {
 } from "./tokens";
 import { setCaret, cloneToken, stringSplice, ranID } from "./utils";
 import { propsEqual } from "./utils/props-equal";
+import { buildKeys } from "./utils/selection";
 
 export const ACTION = {
 	_Key: 0,
@@ -123,9 +124,8 @@ export class Model extends Exome {
 
 	public _idToKey: Record<string, string> = {};
 	public _elements: Record<string, AnyToken> = {};
-	public _elements_temp: Record<string, AnyToken> = {};
-	public stack: Function[] = [];
 	public _isComposing = false;
+	public _stack: Function[] = [];
 
 	constructor(tokens: TokenRoot) {
 		super();
@@ -144,19 +144,22 @@ export class Model extends Exome {
 		}
 
 		// this.selection.fix = false;
-		this.selection.fixFirst = undefined;
-		this.selection.fixLast = undefined;
+		// this.selection.fixFirst = undefined;
+		// this.selection.fixLast = undefined;
 
-		const firstChunks = this.selection.first[0].split(".");
-		const lastChunks = this.selection.last[0].split(".");
-		this.selection.fixFirstKey = parseInt(firstChunks.pop()!, 10);
-		this.selection.fixFirstOffset = this.selection.first[1];
-		this.selection.fixLastKey = parseInt(lastChunks.pop()!, 10);
-		this.selection.fixLastOffset = this.selection.last[1];
+		// const firstChunks = this.selection.first[0].split(".");
+		// const lastChunks = this.selection.last[0].split(".");
+		// this.selection.fixFirstKey = parseInt(firstChunks.pop()!, 10);
+		// this.selection.fixFirstOffset = this.selection.first[1];
+		// this.selection.fixLastKey = parseInt(lastChunks.pop()!, 10);
+		// this.selection.fixLastOffset = this.selection.last[1];
 
-		this._elements_temp = {};
-		this._idToKey = this._buildKeys(this.tokens);
-		this._elements = this._elements_temp;
+		const context = buildKeys(this.tokens, [
+			this.selection.first,
+			this.selection.last,
+		]);
+		this._idToKey = context._keys;
+		this._elements = context._elements;
 		this.update();
 
 		// Don't heal initial selection
@@ -164,438 +167,32 @@ export class Model extends Exome {
 			return;
 		}
 
-		return;
+		// return;
 
-		// if (!this.selection.fixFirst && !this.selection.fixLast) {
-		// 	return;
-		// }
+		if (!context._newSelection[0] && !context._newSelection[1]) {
+			return;
+		}
+
+		// console.log("HEALED", context._newSelection);
 
 		// const {
 		// 	fixFirst: [first, firstOffset] = this.selection.first,
 		// 	fixLast: [last, lastOffset] = this.selection.last,
 		// } = this.selection;
-		console.log(
-			"APPLY",
-			this.selection.fixFirstKey,
-			this.selection.fixFirstOffset,
-			this.selection.fixLastKey,
-			this.selection.fixLastOffset,
-		);
-
-		this.select2(
-			this.findElement(
-				firstChunks.concat(this.selection.fixFirstKey).join("."),
-			),
-			this.selection.fixFirstOffset,
-			this.findElement(lastChunks.concat(this.selection.fixLastKey).join(".")),
-			this.selection.fixLastOffset,
-			// this.findElement(last),
-			// lastOffset,
-		);
-	};
-
-	private _buildKeys = (
-		tokens: AnyToken | AnyToken[],
-		keys: Record<string, string> = {},
-		key: string[] = [],
-	) => {
-		if (Array.isArray(tokens)) {
-			let i = 0;
-			for (const element of tokens) {
-				this._buildKeys(element, keys, key.concat(i + ""));
-				i += 1;
-			}
-
-			return keys;
-		}
-
-		if (!tokens?.id) {
-			return keys;
-		}
-
-		tokens.key = key.join(".");
-
-		this._elements_temp[tokens.key] = tokens;
-
-		keys[tokens.id] = tokens.key;
-
-		// @TODO figure out where did last selection was and fix it on the fly
-
-		const {
-			first: [firstKey, firstOffset],
-			last: [lastKey, lastOffset],
-		} = this.selection;
-		let fixedFirst;
-		let fixedLast;
-
 		// console.log(
-		// 	{
-		// 		first,
-		// 		firstOffset,
-		// 		last,
-		// 		lastOffset,
-		// 	},
-		// 	tokens.key,
+		// 	"APPLY",
+		// 	this.selection.fixFirstKey,
+		// 	this.selection.fixFirstOffset,
+		// 	this.selection.fixLastKey,
+		// 	this.selection.fixLastOffset,
 		// );
 
-		if (tokens.type !== "t" && Array.isArray(tokens.children)) {
-			let last;
-			let i = -1;
-
-			for (const child of tokens.children.slice()) {
-				i += 1;
-
-				check: {
-					if (last?.type !== "t" || child?.type !== "t") {
-						break check;
-					}
-
-					if (!last.text) {
-						console.log("R -last", key, i);
-						// const kk = key.concat(i).join(".");
-						// if (firstKey === kk) {
-						// 	console.warn("A1", kk);
-						// 	// fixedFirst = [last.key, last.text.length];
-						// }
-						// if (lastKey === kk) {
-						// 	console.warn("A2", kk);
-						// 	// fixedLast = [last.key, last.text.length];
-						// }
-						tokens.children.splice(i - 1, 1);
-						i -= 1;
-						break check;
-					}
-
-					if (!child.text) {
-						console.log("R -child", key, i);
-						// const kk = key.concat(i + 1).join(".");
-						tokens.children.splice(i, 1);
-						i -= 1;
-
-						// if (lastKey === kk) {
-						// 	// this.selection.fixFirstKey -= 1;
-						// 	// this.selection.fixFirstOffset = child.text.length;
-						// 	console.log("REEEEEEE 1", this.selection.fixFirstKey);
-						// }
-
-						// @TODO Handle 0.0 position
-						// if (!fixedFirst && firstKey === kk) {
-						// 	console.warn("B1", kk, "=>", i, last.text, child.text);
-						// 	fixedFirst = [
-						// 		key.concat(i).join("."),
-						// 		last.text.length + firstOffset,
-						// 	];
-						// }
-
-						// if (!fixedLast && lastKey === kk) {
-						// 	console.warn("B2", kk, "=>", i, last.text, child.text);
-						// 	fixedLast = [
-						// 		key.concat(i).join("."),
-						// 		firstKey === lastKey
-						// 			? last.text.length + firstOffset + lastOffset
-						// 			: lastOffset,
-						// 	];
-						// }
-						continue;
-					}
-
-					if (propsEqual(last.props, child.props)) {
-						const kk = key.concat(i).join(".");
-						const ka = key.concat(this.selection.fixFirstKey).join(".");
-						const kb = key.concat(this.selection.fixLastKey).join(".");
-						// {
-						// 	const kk = key.concat(i).join(".");
-						// 	const ka = key.concat(this.selection.fixFirstKey).join(".");
-						// 	const kb = key.concat(this.selection.fixLastKey).join(".");
-
-						// 	if (kk === ka) {
-						// 		console.log("REMOVE FIRST", kk, ka, this.selection.fixFirstKey);
-						// 		this.selection.fixFirstKey -= 1;
-						// 	}
-
-						// 	if (kk === kb) {
-						// 		console.log("REMOVE LAST", this.selection.fixLastKey);
-						// 		this.selection.fixLastKey -= 1;
-						// 	}
-						// }
-						// @TODO this was last try
-						// if (firstKey === ka) {
-						// 	console.log(
-						// 		"%c< FIRST MATCH",
-						// 		"color: salmon;",
-						// 		last,
-						// 		child,
-						// 		firstOffset,
-						// 	);
-						// 	console.table({
-						// 		key: {
-						// 			from: this.selection.fixFirstKey,
-						// 			to: i - 1,
-						// 		},
-						// 		offset: {
-						// 			from: this.selection.fixFirstOffset,
-						// 			to: firstOffset || child.key ? 0 : last.text.length,
-						// 		},
-						// 	});
-						// 	// console.log(
-						// 	// 	"%c< FIRST MATCH",
-						// 	// 	"color: salmon;",
-						// 	// 	this.selection.fixFirstKey,
-						// 	// 	"=>",
-						// 	// 	i - 1,
-						// 	// 	last,
-						// 	// 	child,
-						// 	// );
-						// 	this.selection.fixFirstKey = i - 1;
-						// 	// this.selection.fixFirstKey -= firstOffset ? 1 : 0;
-						// 	this.selection.fixFirstOffset =
-						// 		firstOffset || child.key ? 0 : last.text.length;
-						// }
-
-						// if (lastKey === kk) {
-						// 	console.log(
-						// 		"%c> LAST MATCH",
-						// 		"color: salmon;",
-						// 		last,
-						// 		child,
-						// 		firstOffset,
-						// 	);
-						// 	console.table({
-						// 		key: {
-						// 			from: this.selection.fixLastKey,
-						// 			to: i - 1,
-						// 		},
-						// 		offset: {
-						// 			from: this.selection.fixLastOffset,
-						// 			to:
-						// 				firstKey === lastKey
-						// 					? last.text.length
-						// 					: last.text.length + child.text.length,
-						// 		},
-						// 	});
-						// 	// console.log(
-						// 	// 	"%c> LAST MATCH",
-						// 	// 	"color: salmon;",
-						// 	// 	this.selection.fixLastKey,
-						// 	// 	'=>',
-						// 	// 	i - 1,
-						// 	// 	last,
-						// 	// 	child,
-						// 	// );
-						// 	this.selection.fixLastKey = i - 1;
-						// 	this.selection.fixLastOffset =
-						// 		(this.selection.fixFirstKey === this.selection.fixLastKey && last.key)
-						// 			? this.selection.fixFirstOffset + lastOffset
-						// 			: firstKey === lastKey
-						// 			? last.text.length
-						// 			: last.text.length + child.text.length;
-						// }
-
-						// const kk = key.concat(i - 1).join(".");
-						// const ka = firstKey.replace(
-						// 	/\.\d+$/,
-						// 	`.${this.selection.fixFirstKey}`,
-						// );
-						// const kb = lastKey.replace(
-						// 	/\.\d+$/,
-						// 	`.${this.selection.fixLastKey}`,
-						// );
-						// if (firstKey === ka) {
-						// 	// console.log("remove 1.3");
-						// 	this.selection.fixFirstKey = i - 1;
-						// 	this.selection.fixFirstOffset = last.text.length;
-						// }
-						// // if (kk === lastKey) {
-						// 	// console.log("remove 2.3");
-						// 	this.selection.fixLastKey = i -1;
-						// 	this.selection.fixLastOffset = firstOffset
-						// 		? child.text.length
-						// 		: last.text.length;
-						// // }
-						// if (ka === kk) {
-						// 	console.log("remove 1", this.selection.fixFirstKey);
-						// 	this.selection.fixFirstKey -= 1;
-						// 	this.selection.fixFirstOffset = last.text.length;
-						// }
-						// if (lastKey === kk) {
-						// 	console.log("remove 2.1");
-						// 	this.selection.fixLastKey = i- 1;
-						// 	this.selection.fixLastOffset = i === 0 ? lastOffset : last.text.length;
-						// // } else
-						// // if (lastKey === kk && firstKey !== lastKey) {
-						// // 	console.log("remove 2.2");
-						// // 	this.selection.fixLastKey =i-1;
-						// // 	this.selection.fixLastOffset = last.text.length;
-						// }
-
-						// console.log("R props", key, i);
-						// if (firstKey === kk) {
-						// 	console.log('%c resque', 'color: red;');
-						// 	this.selection.fixFirstKey -= 1;
-						// 	// this.selection.fixFirstOffset = last.text.length;
-						// }
-						// if (!fixedFirst && firstKey === kk) {
-						// 	console.warn(
-						// 		"C1",
-						// 		kk,
-						// 		"=>",
-						// 		i - 1,
-						// 		last.text,
-						// 		"+",
-						// 		child.text,
-						// 	);
-						// 	fixedFirst = [key.concat(i - 1).join("."), last.text.length];
-						// }
-						// if (!fixedLast && lastKey === kk) {
-						// 	console.warn(
-						// 		"C2",
-						// 		kk,
-						// 		"=>",
-						// 		i - 1,
-						// 		last.text,
-						// 		"+",
-						// 		child.text,
-						// 	);
-						// 	fixedLast = [
-						// 		key.concat(i - 1).join("."),
-						// 		(firstKey === lastKey ? child.text.length : 0) +
-						// 			last.text.length,
-						// 	];
-						// }
-
-						last.text += child.text;
-						tokens.children.splice(i, 1);
-						i -= 1;
-						continue;
-					}
-
-					// Key not initiated
-					// This thing was just added
-					// if (!child.key) {
-					const kk = key.concat(i - 1).join(".");
-					const ka = firstKey.replace(
-						/\.\d+$/,
-						`.${this.selection.fixFirstKey}`,
-					);
-					const kb = lastKey.replace(/\.\d+$/, `.${this.selection.fixLastKey}`);
-					// if (ka === firstKey && firstOffset) {
-					// 	console.log('add 1');
-					// 	this.selection.fixFirstKey += 1;
-					// 	this.selection.fixFirstOffset = 0;
-					// }
-					// if (lastKey === kk && firstKey === lastKey && firstOffset) {
-					// 	console.log("add 2.1");
-					// 	this.selection.fixLastKey += 1;
-					// 	this.selection.fixLastOffset = lastOffset - firstOffset;
-					// } else
-					// if (lastKey === kk && firstKey !== lastKey) {
-					// 	console.log("add 2.2");
-					// 	this.selection.fixLastKey += i === 1 ? 0 : 1;
-					// 	this.selection.fixLastOffset = i === 1 ? lastOffset : child.text.length;
-					// } else
-					// if (kk === firstKey && firstOffset) {
-					// 	// console.log('add 1.3');
-					// 	this.selection.fixFirstKey += 1;
-					// 	this.selection.fixFirstOffset = 0;
-					// }
-					// if (kk === lastKey) {
-					// 	// console.log('add 2.3');
-					// 	this.selection.fixLastKey += firstOffset ? 1 : 0;
-					// 	this.selection.fixLastOffset = firstOffset ? child.text.length : last.text.length;
-					// }
-					// if (!fixedFirst && firstKey === kk && firstOffset) {
-					// 	console.warn("D1", kk, "=>", i, last.text);
-					// 	fixedFirst = [key.concat(i).join("."), 0];
-					// }
-					// if (lastKey === kk && firstOffset) {
-					// 	console.warn("D2", kk, "=>", i, last.text);
-					// 	fixedLast = [key.concat(i).join("."), child.text.length];
-					// }
-					// // if (!fixedLast && lastKey === kk && !firstOffset) {
-					// // 	console.warn("FIX 3 L1", kk, "=>", i, child.text);
-					// // 	fixedLast = [key.concat(i - 1).join("."), child.text.length];
-					// // }
-
-					// if (fixedFirst && !fixedLast && lastKey === key.concat(i).join(".")) {
-					// 	console.log("%cBINGO", "color: red;");
-					// 	console.warn("D3", lastKey, "=>", i, key.concat(i).join("."));
-					// 	fixedLast = [key.concat(i - 1).join("."), last.text.length];
-					// }
-					// console.warn(child, { firstKey, lastKey }, kk, tokens.key);
-
-					// // if (!fixedFirst && )
-
-					// // console.warn(child, {firstKey, lastKey}, kk, tokens.key);
-					// }
-					// {
-					// 	const kk = key.concat(i).join(".");
-					// 	const ka = key.concat(this.selection.fixFirstKey).join(".");
-					// 	const kb = key.concat(this.selection.fixLastKey).join(".");
-
-					// 	if (kk === firstKey) {
-					// 		console.log("ADD FIRST", kk, ka, this.selection.fixFirstKey);
-					// 		this.selection.fixFirstKey += firstOffset ? 1 : 0;
-					// 		this.selection.fixFirstOffset = 0;
-
-					// 		// reset last offset
-					// 		this.selection.fixLastOffset = 0
-					// 	}
-
-					// 	if (kk === lastKey) {
-					// 		console.log("ADD LAST", kk, kb, this.selection.fixLastKey);
-					// 		this.selection.fixLastKey += firstOffset ? 1 : 0;
-					// 		this.selection.fixLastOffset += firstOffset ? last.text.length : child.text.length;
-					// 	}
-					// }
-
-					// @TODO this was last try
-					// if (!child.key) {
-					// 	if (firstKey === last.key) {
-					// 		console.log("%cFIRST MATCH", "color: orange;");
-					// 		this.selection.fixFirstKey += 1;
-					// 		this.selection.fixFirstOffset = 0;
-					// 	}
-
-					// 	// @TODO Figure out `Hello Jupiter!`
-					// 	//                     ^^^^^^^ - bold
-					// 	// Same for un-bold
-					// 	if (lastKey === last.key) {
-					// 		console.log("%cLAST MATCH", "color: orange;", last, child);
-					// 		this.selection.fixLastKey += firstOffset ? 1 : 0;
-					// 		this.selection.fixLastOffset = firstOffset
-					// 			? child.text.length
-					// 			: last.text.length;
-					// 	} else if (firstOffset) {
-					// 		// this.selection.fixLastKey += 1;
-					// 	}
-
-					// 	console.log("R add", key, i, child, JSON.stringify(last.key));
-					// }
-				}
-
-				last = child;
-			}
-
-			this._buildKeys(tokens.children, keys, key);
-		}
-
-		// if (fixedFirst) {
-		// 	this.selection.fixFirst = fixedFirst;
-		// 	console.log({
-		// 		fixedFirst,
-		// 	});
-		// 	// this.selection.fix = true;
-		// }
-
-		// if (fixedLast) {
-		// 	this.selection.fixLast = fixedLast;
-		// 	console.log({
-		// 		fixedLast,
-		// 	});
-		// 	// this.selection.fix = true;
-		// }
-
-		return keys;
+		this.select(
+			this.findElement(context._newSelection[0][0]!),
+			context._newSelection[0][1]!,
+			this.findElement(context._newSelection[1][0]!),
+			context._newSelection[1][1]!,
+		);
 	};
 
 	public remove = (key: string) => {
@@ -784,7 +381,7 @@ export class Model extends Exome {
 				const prev = this.previousText(parent.key);
 				this.remove(parent.key);
 				const l = prev!.text.length;
-				this.stack.push(() => {
+				this._stack.push(() => {
 					setCaret(prev!.id, l);
 				});
 				return;
@@ -807,7 +404,7 @@ export class Model extends Exome {
 
 			const prevAfterCalculation = this.innerText(prev.key);
 
-			this.stack.push(() => {
+			this._stack.push(() => {
 				if (prevAfterCalculation !== prev) {
 					setCaret(prevAfterCalculation.id, prevLength);
 					return;
@@ -901,7 +498,7 @@ export class Model extends Exome {
 
 				this.recalculate();
 
-				this.stack.push(() => {
+				this._stack.push(() => {
 					setCaret(
 						this.findElement(first[0]).id,
 						first[1],
@@ -916,7 +513,7 @@ export class Model extends Exome {
 
 				this.recalculate();
 
-				this.stack.push(() => {
+				this._stack.push(() => {
 					setCaret(
 						this.findElement(first[0]).id,
 						first[1],
@@ -1016,20 +613,20 @@ export class Model extends Exome {
 			const isFirstChild = element.key?.endsWith(".0") ?? true;
 
 			if (firstOffset === 1) {
-				element.text = stringSplice(
-					element.text,
-					firstOffset - 1,
-					firstOffset,
-					"",
-				);
+				// element.text = stringSplice(
+				// 	element.text,
+				// 	firstOffset - 1,
+				// 	firstOffset,
+				// 	"",
+				// );
 
 				if (!isFirstChild) {
 					const prev = this.previousText(element.key);
 
 					if (prev) {
 						// const l = prev.text?.length;
-						this.select2(this.findElement(prev.key)!, prev.text?.length);
-						// this.stack.push(() => {
+						this.select(this.findElement(prev.key)!, prev.text?.length);
+						// this._stack.push(() => {
 						// 	setCaret(prev.id, l);
 						// });
 					}
@@ -1041,16 +638,16 @@ export class Model extends Exome {
 						next.id.replace(/\.[\d]+$/, "") ===
 							element.key.replace(/\.[\d]+$/, "")
 					) {
-						this.select2(this.findElement(next.key)!, 0);
-						// this.stack.push(() => {
+						this.select(this.findElement(next.key)!, 0);
+						// this._stack.push(() => {
 						// 	setCaret(next.id, 0);
 						// 	resetSelection(next.id, 0);
 						// });
 					} else {
 						// console.log("HEREEE");
 						// Heres the issue
-						this.select2(this.findElement(lastKey)!, 0);
-						// this.stack.push(() => {
+						this.select(this.findElement(lastKey)!, 0);
+						// this._stack.push(() => {
 						// 	setCaret(this.findElement(lastKey).id, 0);
 						// 	resetSelection(lastKey, 0);
 						// 	// if (this.selection) {
@@ -1063,8 +660,8 @@ export class Model extends Exome {
 						// return;
 					}
 				} else {
-					this.select2(element, firstOffset - 1);
-					// this.stack.push(() => {
+					this.select(element, firstOffset - 1);
+					// this._stack.push(() => {
 					// 	setCaret(element.id, firstOffset - 1);
 					// 	resetSelection(firstKey, firstOffset - 1);
 					// 	// if (this.selection) {
@@ -1155,7 +752,7 @@ export class Model extends Exome {
 			const clonedTokens = this.insert([newToken] as any, firstParent);
 			this.recalculate();
 			this.select(this.nextText(clonedTokens[0].key)!, 0);
-			// this.stack.push(() => setCaret(this.nextText(clonedTokens[0].key)!.id, 0));
+			// this._stack.push(() => setCaret(this.nextText(clonedTokens[0].key)!.id, 0));
 
 			if (firstParent === lastParent) {
 				handleEnter(firstParent, clonedTokens[0] as any, this);
@@ -1224,33 +821,33 @@ export class Model extends Exome {
 
 				const [newToken] = this.insert(rest, el);
 
-				if (!el.text) {
-					this.remove(el.key);
-					console.log("REMOVEd");
-				}
+				// if (!el.text) {
+				// 	this.remove(el.key);
+				// 	console.log("REMOVEd");
+				// }
 
 				// console.log("tokens", el, tokens);
 
-				const prev = this.previousText(el.key);
-				const prevText = prev?.text;
+				// const prev = this.previousText(el.key);
+				// const prevText = prev?.text;
 
 				this.recalculate();
 
-				if (!newToken.key && prevText) {
-					console.log(1);
-					this.select2(
-						prev,
-						prevText?.length,
-						undefined,
-						prevText?.length + lastOffset,
-					);
-				} else if (!el.text) {
-					console.log(2);
-					this.select2(newToken, firstOffset, undefined, lastOffset);
-				} else {
-					console.log(3, newToken.text, el.text, prev?.text);
-					this.select2(newToken, 0, undefined, newToken.text.length);
-				}
+				// if (!newToken.key && prevText) {
+				// 	console.log(1);
+				// 	this.select(
+				// 		prev,
+				// 		prevText?.length,
+				// 		undefined,
+				// 		prevText?.length + lastOffset,
+				// 	);
+				// } else if (!el.text) {
+				// 	console.log(2);
+				// 	this.select(newToken, firstOffset, undefined, lastOffset);
+				// } else {
+				// 	console.log(3, newToken.text, el.text, prev?.text);
+				// 	this.select(newToken, 0, undefined, newToken.text.length);
+				// }
 
 				return;
 			}
@@ -1277,41 +874,46 @@ export class Model extends Exome {
 
 			// console.log("multi", firstEl, elements, lastEl);
 
-			if (!firstEl.text) {
-				this.remove(firstEl.key);
-			}
+			// if (!firstEl.text) {
+			// 	this.remove(firstEl.key);
+			// }
 
-			if (!lastEl.text) {
-				this.remove(lastEl.key);
-			}
+			// if (!lastEl.text) {
+			// 	this.remove(lastEl.key);
+			// }
 
-				const firstPrev = this.previousText(firstEl.key);
-			const firstPrevText = firstPrev?.text;
+			// const firstPrev = this.previousText(firstEl.key);
+			// const firstPrevText = firstPrev?.text;
 
 			this.recalculate();
 
-				if (!firstToken.key && firstPrevText) {
-					console.log(1);
-					this.select2(
-						firstPrev,
-						firstPrevText?.length,
-						undefined,
-						firstPrevText?.length + lastOffset,
-					);
-				} else if (!firstToken.text) {
-					console.log(2);
-					this.select2(firstToken, firstOffset, undefined, lastOffset);
-				} else {
-					console.log(3, firstToken.text, firstToken.text, firstPrev?.text);
-					this.select2(firstToken, 0, lastToken, lastToken.text.length || this.previousText(lastEl.key).text.length);
-				}
-			console.log(firstEl.text, lastEl.text, firstToken.text, lastToken.text);
+			// if (!firstToken.key && firstPrevText) {
+			// 	console.log(1);
+			// 	this.select(
+			// 		firstPrev,
+			// 		firstPrevText?.length,
+			// 		undefined,
+			// 		firstPrevText?.length + lastOffset,
+			// 	);
+			// } else if (!firstToken.text) {
+			// 	console.log(2);
+			// 	this.select(firstToken, firstOffset, undefined, lastOffset);
+			// } else {
+			// 	console.log(3, firstToken.text, firstToken.text, firstPrev?.text);
+			// 	this.select(
+			// 		firstToken,
+			// 		0,
+			// 		lastToken,
+			// 		lastToken.text.length || this.previousText(lastEl.key).text.length,
+			// 	);
+			// }
+			// console.log(firstEl.text, lastEl.text, firstToken.text, lastToken.text);
 
 			// if (!firstToken.key) {
-			// 	this.select2(firstEl, firstOffset);
+			// 	this.select(firstEl, firstOffset);
 			// }
 
-			// this.select2(firstToken, 0, lastToken, lastToken.text.length);
+			// this.select(firstToken, 0, lastToken, lastToken.text.length);
 			// this.select(firstToken, 0, lastToken, lastToken.text.length);
 			return;
 		}
@@ -1438,7 +1040,7 @@ export class Model extends Exome {
 				// this.select(firstChild, firstChild.text.length);
 				// return;
 				// this.recalculate();
-				// this.stack.push(() => {
+				// this._stack.push(() => {
 
 				// 	this.select(parent.children[index], firstText.length);
 				// });
@@ -1449,9 +1051,9 @@ export class Model extends Exome {
 
 			if (prev && correctedChild !== firstElement) {
 				// Element was deleted fallback to previous element
-				this.select2(prev, previousLength);
+				this.select(prev, previousLength);
 			} else {
-				this.select2(
+				this.select(
 					correctedChild,
 					Math.min(correctedChild.text.length, firstText.length),
 				);
@@ -1459,7 +1061,7 @@ export class Model extends Exome {
 
 			// if (firstElement.text) {
 			// 	this.select(firstElement, firstText.length);
-			// 	// this.stack.push(() =>
+			// 	// this._stack.push(() =>
 			// 	// 	setCaret(firstElement.id, firstOffset + (data?.length as number)),
 			// 	// );
 			// 	// this.recalculate();
@@ -1471,7 +1073,7 @@ export class Model extends Exome {
 			// if (firstElement.key.endsWith(".0")) {
 			// 	const parent = this.parent(firstElement.key)!;
 
-			// 	// this.stack.push(() => setCaret(parent.id, 0));
+			// 	// this._stack.push(() => setCaret(parent.id, 0));
 			// 	this.select(parent, 0);
 			// 	this.recalculate();
 
@@ -1493,11 +1095,11 @@ export class Model extends Exome {
 	// 		return;
 	// 	}
 
-	// 	this.stack.push(() => setCaret(first.id, start));
+	// 	this._stack.push(() => setCaret(first.id, start));
 	// 	this.update();
 	// };
 
-	public select2 = (
+	public select = (
 		first: AnyToken,
 		firstOffset: number = 0,
 		last: AnyToken = first,
@@ -1519,27 +1121,31 @@ export class Model extends Exome {
 		);
 
 		// this._selectSilent(first, firstOffset);
-		this.stack.push(() => setCaret(first.id, firstOffset, last.id, lastOffset));
+		this._stack.push(() =>
+			setCaret(first.id, firstOffset, last.id, lastOffset),
+		);
 
 		this.update();
 		this.selection.setSelection(first.key, firstOffset, last.key, lastOffset);
 	};
 
-	public select = (
-		first: AnyToken,
-		firstOffset: number = 0,
-		last: AnyToken = first,
-		lastOffset: number = firstOffset,
-	) => {
-		return;
-		if (this._isComposing) {
-			return;
-		}
+	// public select2 = (
+	// 	first: AnyToken,
+	// 	firstOffset: number = 0,
+	// 	last: AnyToken = first,
+	// 	lastOffset: number = firstOffset,
+	// ) => {
+	// 	return;
+	// 	if (this._isComposing) {
+	// 		return;
+	// 	}
 
-		// this._selectSilent(first, firstOffset);
-		this.stack.push(() => setCaret(first.id, firstOffset, last.id, lastOffset));
+	// 	// this._selectSilent(first, firstOffset);
+	// 	this._stack.push(() =>
+	// 		setCaret(first.id, firstOffset, last.id, lastOffset),
+	// 	);
 
-		this.update();
-		this.selection.setSelection(first.key, firstOffset, last.key, lastOffset);
-	};
+	// 	this.update();
+	// 	this.selection.setSelection(first.key, firstOffset, last.key, lastOffset);
+	// };
 }

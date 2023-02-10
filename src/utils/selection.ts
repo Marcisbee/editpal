@@ -9,8 +9,9 @@ export type BuildKeysSelection = [
 
 export interface BuildKeysContext {
 	_index: number;
-	keys: Record<string, string>;
-	newSelection: BuildKeysSelection;
+	_elements: Record<string, AnyToken>;
+	_keys: Record<string, string>;
+	_newSelection: BuildKeysSelection;
 }
 
 export function buildKeys(
@@ -18,8 +19,9 @@ export function buildKeys(
 	selection: BuildKeysSelection,
 	context: BuildKeysContext = {
 		_index: 0,
-		keys: {},
-		newSelection: JSON.parse(JSON.stringify(selection)),
+		_elements: {},
+		_keys: {},
+		_newSelection: JSON.parse(JSON.stringify(selection)),
 	},
 	key: string[] = [],
 ): BuildKeysContext {
@@ -39,33 +41,13 @@ export function buildKeys(
 
 	tokens.key = key.join(".");
 
-	// @TODO handle this
-	// this._elements_temp[tokens.key] = tokens;
-
-	context.keys[tokens.id] = tokens.key;
-
-	// @TODO figure out where did last selection was and fix it on the fly
-
-	const [first, last] = context.newSelection;
-	const isCollapsed =
-		selection[0][0] === selection[1][0] && selection[0][1] === selection[1][1];
-	// let fixedFirst;
-	// let fixedLast;
-
-	// console.log(
-	// 	{
-	// 		first,
-	// 		firstOffset,
-	// 		last,
-	// 		lastOffset,
-	// 	},
-	// 	tokens.key,
-	// );
+	context._elements[tokens.key] = tokens;
+	context._keys[tokens.id] = tokens.key;
 
 	if (tokens.type !== "t" && Array.isArray(tokens.children)) {
 		let lastChild;
 		let p = -1;
-		let i = -1;
+		let i = p;
 		let start: number | undefined;
 		let newStart: number | undefined;
 		let end: number | undefined;
@@ -114,7 +96,7 @@ export function buildKeys(
 				}
 			}
 
-			// @TODO hmmmm
+			// @TODO is this right?
 			if (!child.key && child.text) {
 				p -= 1;
 			}
@@ -137,8 +119,8 @@ export function buildKeys(
 					continue;
 				}
 
-				if ((len + child.text.length) > start) {
-					context.newSelection[0] = [key + "." + i, start - len];
+				if (len + child.text.length > start) {
+					context._newSelection[0] = [key + "." + i, start - len];
 					// console.log("start", key + '.' + i, start - len);
 					break;
 				}
@@ -160,8 +142,8 @@ export function buildKeys(
 
 				// console.log(key + "." + i, child.text, { len, end });
 
-				if ((len + child.text.length) >= end) {
-					context.newSelection[1] = [key + "." + i, end - len];
+				if (len + child.text.length >= end) {
+					context._newSelection[1] = [key + "." + i, end - len];
 					// console.log("end", key + '.' + i, end - len);
 					break;
 				}
@@ -178,25 +160,7 @@ export function buildKeys(
 		}
 
 		buildKeys(tokens.children, selection, context, key);
-		// console.log(context._index);
-		// console.log({ startKeyDiff });
 	}
-
-	// if (fixedFirst) {
-	// 	this.selection.fixFirst = fixedFirst;
-	// 	console.log({
-	// 		fixedFirst,
-	// 	});
-	// 	// this.selection.fix = true;
-	// }
-
-	// if (fixedLast) {
-	// 	this.selection.fixLast = fixedLast;
-	// 	console.log({
-	// 		fixedLast,
-	// 	});
-	// 	// this.selection.fix = true;
-	// }
 
 	return context;
 }

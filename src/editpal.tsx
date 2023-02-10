@@ -235,13 +235,13 @@ function Toolbar() {
 }
 
 export function Editpal({ model }: EditpalProps) {
-	const { tokens, stack, action, selection } = useStore(model);
+	const { tokens, _stack, action, selection } = useStore(model);
 	const ref = useRef<HTMLDivElement>(null);
 	const [focus, setFocus] = useState(0);
 	const [reload, setReload] = useState(0);
 
 	useLayoutEffect(() => {
-		stack.splice(0).pop()?.();
+		_stack.splice(0).pop()?.();
 	});
 
 	function select(
@@ -384,7 +384,7 @@ export function Editpal({ model }: EditpalProps) {
 		// (Firefox) isTrusted === true
 		// (Safari) isTrusted === true
 		if (e.isTrusted) {
-			stack.push(fn);
+			_stack.push(fn);
 		} else {
 			fn();
 		}
