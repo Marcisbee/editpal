@@ -2173,4 +2173,138 @@ test("added style h(He<llo {Wo>rld}!) => h(He[<llo ]{[<Wo>]}{rld}!)", () => {
 	);
 });
 
+test("added style h(He[<llo ]{[<Wo>]}{rld}!) => h(He<llo {Wo>rld}!)", () => {
+	const tokensAdded1: TextToken[] = [
+		{
+			type: "t",
+			id: "z1",
+			key: "",
+			props: {},
+			text: "llo ",
+		},
+	];
+	const tokensAdded2: TextToken[] = [
+		{
+			type: "t",
+			id: "z2",
+			key: "",
+			props: {
+				fontStyle: "italic",
+			},
+			text: "Wo",
+		},
+	];
+	const tokens: AnyToken[] = [
+		{
+			type: "h",
+			id: "a",
+			key: "0",
+			props: {
+				size: 0,
+			},
+			children: [
+				{
+					type: "t",
+					id: "b",
+					key: "0.0",
+					props: {},
+					text: "He",
+				},
+				...tokensAdded1,
+				{
+					type: "t",
+					id: "c",
+					key: "0.1",
+					props: {
+						fontWeight: "bold",
+					},
+					text: "", // cut
+				},
+				...tokensAdded2,
+				{
+					type: "t",
+					id: "d",
+					key: "0.2",
+					props: {
+						fontStyle: "italic",
+					},
+					text: "", // cut
+				},
+				{
+					type: "t",
+					id: "e",
+					key: "0.3",
+					props: {
+						fontStyle: "italic",
+					},
+					text: "rld",
+				},
+				{
+					type: "t",
+					id: "f",
+					key: "0.4",
+					props: {},
+					text: "!",
+				},
+			],
+		},
+	];
+	const context = buildKeys(tokens, [
+		["0.1", 0],
+		["0.2", 2],
+	]);
+
+	assert.equal(context._keys, {
+		a: "0",
+		b: "0.0",
+		z2: "0.1",
+		f: "0.2",
+	});
+	assert.equal(tokens, [
+		{
+			type: "h",
+			id: "a",
+			key: "0",
+			props: {
+				size: 0,
+			},
+			children: [
+				{
+					type: "t",
+					id: "b",
+					key: "0.0",
+					props: {},
+					text: "Hello ",
+				},
+				{
+					type: "t",
+					id: "z2",
+					key: "0.1",
+					props: {
+						fontStyle: "italic",
+					},
+					text: "World",
+				},
+				{
+					type: "t",
+					id: "f",
+					key: "0.2",
+					props: {},
+					text: "!",
+				},
+			],
+		},
+	]);
+	assert.snapshot(
+		displaySelection(tokens, context._newSelection),
+		[
+			"Hello World!",
+			"  ^^^^^^    (0.0 2 - 0.1 2)",
+			// SELECTION
+		]
+			.filter(Boolean)
+			.join("\n"),
+	);
+});
+
 test.run();
