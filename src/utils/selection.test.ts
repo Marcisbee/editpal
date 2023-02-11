@@ -42,6 +42,13 @@ function displaySelection(tokens: AnyToken[], selection: BuildKeysSelection) {
 
 						let leftover = child.text.length;
 
+						// if (lastChunk[1] === childIndex) {
+						// 	range += "^".repeat(leftover);
+						// 	leftover = 0;
+						// } else
+
+						// console.log(firstChunk[1], firstOffset, lastChunk[1], lastOffset);
+
 						if (
 							firstChunk[0] < parentIndex &&
 							firstChunk[1] < childIndex &&
@@ -63,6 +70,16 @@ function displaySelection(tokens: AnyToken[], selection: BuildKeysSelection) {
 								range += "^".repeat(lastSize - firstOffset);
 							} catch {}
 							leftover -= firstOffset + (lastSize - firstOffset);
+						} else if (
+							firstChunk[0] <= parentIndex &&
+							firstChunk[1] <= childIndex &&
+							lastChunk[0] === parentIndex &&
+							lastChunk[1] === childIndex
+						) {
+							try {
+								range += "^".repeat(lastSize);
+							} catch {}
+							leftover -= lastSize;
 						}
 
 						if (leftover) {
@@ -87,6 +104,7 @@ function displaySelection(tokens: AnyToken[], selection: BuildKeysSelection) {
 
 // Selection: <...>
 // Bold format: [...]
+// Italic format: {...}
 
 test("empty", () => {
 	assert.equal(
@@ -383,7 +401,7 @@ test("added style h(Hello <Wo>rld!) => h(Hello [<Wo>]rld!)", () => {
 		{
 			type: "h",
 			id: "a",
-			key: "0.0",
+			key: "0",
 			props: {
 				size: 0,
 			},
@@ -604,7 +622,7 @@ test("added style h(<Hello>[ World]!) => h([<Hello> World]!)", () => {
 		{
 			type: "h",
 			id: "a",
-			key: "0.0",
+			key: "0",
 			props: {
 				size: 0,
 			},
@@ -709,7 +727,7 @@ test("added style h(He<ll>o[ World]!) => h(He[<ll>]o[ World]!)", () => {
 		{
 			type: "h",
 			id: "a",
-			key: "0.0",
+			key: "0",
 			props: {
 				size: 0,
 			},
@@ -833,7 +851,7 @@ test("added style h(He<llo>[ World]!) => h(He[<llo> World]!)", () => {
 		{
 			type: "h",
 			id: "a",
-			key: "0.0",
+			key: "0",
 			props: {
 				size: 0,
 			},
@@ -946,7 +964,7 @@ test("added style h(<He>llo[ World]!) => h([<He>]llo[ World]!)", () => {
 		{
 			type: "h",
 			id: "a",
-			key: "0.0",
+			key: "0",
 			props: {
 				size: 0,
 			},
@@ -1069,7 +1087,7 @@ test("added style h(Hello[< Wor>ld]!) => h(Hello< Wor>[ld]!)", () => {
 		{
 			type: "h",
 			id: "a",
-			key: "0.0",
+			key: "0",
 			props: {
 				size: 0,
 			},
@@ -1173,7 +1191,7 @@ test("added style h(Hello[< World>]!) => h(Hello< World>!)", () => {
 		{
 			type: "h",
 			id: "a",
-			key: "0.0",
+			key: "0",
 			props: {
 				size: 0,
 			},
@@ -1268,7 +1286,7 @@ test("added style h(Hello[ <Wor>ld]!) => h(Hello[ ]<Wor>[ld]!)", () => {
 		{
 			type: "h",
 			id: "a",
-			key: "0.0",
+			key: "0",
 			props: {
 				size: 0,
 			},
@@ -1389,7 +1407,7 @@ test("added style h(Hello[ <World>]!) => h(Hello[ ]<World>!)", () => {
 		{
 			type: "h",
 			id: "a",
-			key: "0.0",
+			key: "0",
 			props: {
 				size: 0,
 			},
@@ -1484,7 +1502,7 @@ test("added style h(<Hello[ World]!>) => h([<Hello World!>])", () => {
 		{
 			type: "h",
 			id: "a",
-			key: "0.0",
+			key: "0",
 			props: {
 				size: 0,
 			},
@@ -1577,7 +1595,7 @@ test("added style h(<Hello[ World]!> ..or Mars!) => h([<Hello World!>] ..or Mars
 		{
 			type: "h",
 			id: "a",
-			key: "0.0",
+			key: "0",
 			props: {
 				size: 0,
 			},
@@ -1677,7 +1695,7 @@ test("added style h(H<ello[ World]!>) => h(H[<ello World!>])", () => {
 		{
 			type: "h",
 			id: "a",
-			key: "0.0",
+			key: "0",
 			props: {
 				size: 0,
 			},
@@ -1788,7 +1806,7 @@ test("added style h(H<ello[ World]!> ..or Mars!) => h(H[<ello World!>] ..or Mars
 		{
 			type: "h",
 			id: "a",
-			key: "0.0",
+			key: "0",
 			props: {
 				size: 0,
 			},
@@ -1906,7 +1924,7 @@ test("added style h(Hello< [Earth] and [Mars] >from Me!) => h(Hello[< Earth and 
 		{
 			type: "h",
 			id: "a",
-			key: "0.0",
+			key: "0",
 			props: {
 				size: 0,
 			},
@@ -2008,6 +2026,146 @@ test("added style h(Hello< [Earth] and [Mars] >from Me!) => h(Hello[< Earth and 
 		[
 			"Hello Earth and Mars from Me!",
 			"     ^^^^^^^^^^^^^^^^        (0.1 0 - 0.1 16)",
+			// SELECTION
+		]
+			.filter(Boolean)
+			.join("\n"),
+	);
+});
+
+test("added style h(He<llo {Wo>rld}!) => h(He[<llo ]{[<Wo>]}{rld}!)", () => {
+	const tokensAdded1: TextToken[] = [
+		{
+			type: "t",
+			id: "z1",
+			key: "",
+			props: {
+				fontWeight: "bold",
+			},
+			text: "llo ",
+		},
+	];
+	const tokensAdded2: TextToken[] = [
+		{
+			type: "t",
+			id: "z2",
+			key: "",
+			props: {
+				fontWeight: "bold",
+				fontStyle: "italic",
+			},
+			text: "Wo",
+		},
+	];
+	const tokens: AnyToken[] = [
+		{
+			type: "h",
+			id: "a",
+			key: "0",
+			props: {
+				size: 0,
+			},
+			children: [
+				{
+					type: "t",
+					id: "b",
+					key: "0.0",
+					props: {},
+					text: "He", // Was cut from this
+				},
+				...tokensAdded1,
+				...tokensAdded2,
+				{
+					type: "t",
+					id: "c",
+					key: "0.1",
+					props: {
+						fontStyle: "italic",
+					},
+					text: "rld", // Was cut from this
+				},
+				{
+					type: "t",
+					id: "d",
+					key: "0.2",
+					props: {},
+					text: "!",
+				},
+			],
+		},
+	];
+	const context = buildKeys(tokens, [
+		["0.0", 2],
+		["0.1", 2],
+	]);
+
+	assert.equal(context._keys, {
+		a: "0",
+		b: "0.0",
+		z1: "0.1",
+		z2: "0.2",
+		c: "0.3",
+		d: "0.4",
+	});
+	assert.equal(tokens, [
+		{
+			type: "h",
+			id: "a",
+			key: "0",
+			props: {
+				size: 0,
+			},
+			children: [
+				{
+					type: "t",
+					id: "b",
+					key: "0.0",
+					props: {},
+					text: "He",
+				},
+				{
+					type: "t",
+					id: "z1",
+					key: "0.1",
+					props: {
+						fontWeight: "bold",
+					},
+					text: "llo ",
+				},
+				{
+					type: "t",
+					id: "z2",
+					key: "0.2",
+					props: {
+						fontWeight: "bold",
+						fontStyle: "italic",
+					},
+					text: "Wo",
+				},
+				{
+					type: "t",
+					id: "c",
+					key: "0.3",
+					props: {
+						fontStyle: "italic",
+					},
+					text: "rld",
+				},
+				{
+					type: "t",
+					id: "d",
+					key: "0.4",
+					props: {},
+					text: "!",
+				},
+			],
+		},
+	]);
+	assert.snapshot(
+		displaySelection(tokens, context._newSelection),
+		[
+			"Hello World!",
+			"  ^^^^^^    (0.1 0 - 0.2 2)",
 			// SELECTION
 		]
 			.filter(Boolean)

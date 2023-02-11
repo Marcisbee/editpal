@@ -45,6 +45,9 @@ export function buildKeys(
 	context._elements[tokens.key] = tokens;
 	context._keys[tokens.id] = tokens.key;
 
+	const isCollapsed =
+		selection[0][0] === selection[1][0] && selection[0][1] === selection[1][1];
+
 	if (tokens.type !== "t" && Array.isArray(tokens.children)) {
 		let lastChild;
 		let p = -1;
@@ -54,17 +57,19 @@ export function buildKeys(
 		let end: number | undefined;
 		let newEnd: number | undefined;
 
-		for (const child of tokens.children.slice()) {
+		const oldTokens = tokens.children.slice();
+		for (const child of oldTokens) {
 			p += 1;
 			i += 1;
 
 			const childTextLength = child.text?.length || 0;
+			// console.log("T", child.text, i, p);
 
 			if (selection[0][0] === key + "." + p && start == null) {
 				start = index + selection[0][1];
 			}
 
-			if (selection[1][0] === key + "." + p && end == null) {
+			if (selection[1][0] === key + "." + p) {
 				end = index + selection[1][1];
 			}
 
@@ -98,7 +103,12 @@ export function buildKeys(
 			}
 
 			// @TODO is this right?
-			if (!child.key && child.text) {
+			if (
+				!child.key &&
+				child.text &&
+				(oldTokens[i + 1]?.key === key + "." + i || !oldTokens[i + 1]?.key)
+			) {
+				// console.log(child, oldTokens[i + 1]);
 				p -= 1;
 			}
 
@@ -109,7 +119,7 @@ export function buildKeys(
 		// 	start, end
 		// });
 
-		if (start != null && newStart == null) {
+		if (!isCollapsed && start != null && newStart == null) {
 			let i = -1;
 			let len = 0;
 
@@ -130,7 +140,7 @@ export function buildKeys(
 			}
 		}
 
-		if (end != null && newEnd == null) {
+		if (!isCollapsed && end != null && newEnd == null) {
 			let i = -1;
 			let len = 0;
 
@@ -144,10 +154,14 @@ export function buildKeys(
 				// console.log(key + "." + i, child.text, { len, end });
 
 				if (len + child.text.length >= end) {
+					// console.log({
+					// 	end,len
+					// });
 					context._newSelection[1] = [key + "." + i, end - len];
 					// console.log("end", key + '.' + i, end - len);
 					break;
 				}
+
 				// if (len > end - 1) {
 				// 	console.log("end", key + '.' + i, child.text.length);
 				// 	break;
