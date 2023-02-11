@@ -864,8 +864,6 @@ export class Model extends Exome {
 			// 	this.remove(lastEl.key);
 			// }
 
-			// console.log(this.tokens[1].children);
-			// debugger
 
 			for (const el of elements) {
 				el.props = {

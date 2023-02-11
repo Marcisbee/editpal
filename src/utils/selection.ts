@@ -98,6 +98,11 @@ export function buildKeys(
 					lastChild.text += child.text;
 					tokens.children.splice(i, 1);
 					i -= 1;
+					if (lastChild.key && !child.key) {
+						// console.log({child, lastChild, next: oldTokens[i + 1]});
+					p -= 1;
+
+					}
 					continue;
 				}
 			}

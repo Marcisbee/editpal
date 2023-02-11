@@ -704,6 +704,116 @@ test("added style h(<Hello>[ World]!) => h([<Hello> World]!)", () => {
 	);
 });
 
+test("added style h(Hello[ Wor<ld]!>) => h(Hello[ Wor<ld!>])", () => {
+	const tokensAdded1: TextToken[] = [
+		{
+			type: "t",
+			id: "z1",
+			key: "",
+			props: {
+				fontWeight: "bold",
+			},
+			text: "ld",
+		},
+	];
+	const tokensAdded2: TextToken[] = [
+		{
+			type: "t",
+			id: "z2",
+			key: "",
+			props: {
+				fontWeight: "bold",
+			},
+			text: "!",
+		},
+	];
+	const tokens: AnyToken[] = [
+		{
+			type: "h",
+			id: "a",
+			key: "0",
+			props: {
+				size: 0,
+			},
+			children: [
+				{
+					type: "t",
+					id: "b",
+					key: "0.0",
+					props: {},
+					text: "Hello",
+				},
+				{
+					type: "t",
+					id: "c",
+					key: "0.1",
+					props: {
+						fontWeight: "bold",
+					},
+					text: " Wor", // cut
+				},
+				...tokensAdded1,
+				{
+					type: "t",
+					id: "d",
+					key: "0.2",
+					props: {},
+					text: "", // cut
+				},
+				...tokensAdded2,
+			],
+		},
+	];
+	const context = buildKeys(tokens, [
+		["0.1", 4],
+		["0.2", 1],
+	]);
+
+	assert.equal(context._keys, {
+		a: "0",
+		b: "0.0",
+		c: "0.1",
+	});
+	assert.equal(tokens, [
+		{
+			type: "h",
+			id: "a",
+			key: "0",
+			props: {
+				size: 0,
+			},
+			children: [
+				{
+					type: "t",
+					id: "b",
+					key: "0.0",
+					props: {},
+					text: "Hello",
+				},
+				{
+					type: "t",
+					id: "c",
+					key: "0.1",
+					props: {
+						fontWeight: "bold",
+					},
+					text: " World!",
+				},
+			],
+		},
+	]);
+	assert.snapshot(
+		displaySelection(tokens, context._newSelection),
+		[
+			"Hello World!",
+			"         ^^^(0.1 4 - 0.1 7)",
+			// SELECTION
+		]
+			.filter(Boolean)
+			.join("\n"),
+	);
+});
+
 test("added style h(He<ll>o[ World]!) => h(He[<ll>]o[ World]!)", () => {
 	const tokensAdded: TextToken[] = [
 		{
@@ -1099,7 +1209,6 @@ test("added style h(Hello[< Wor>ld]!) => h(Hello< Wor>[ld]!)", () => {
 					props: {},
 					text: "Hello",
 				},
-				...tokensAdded,
 				{
 					type: "t",
 					id: "c",
@@ -1109,6 +1218,7 @@ test("added style h(Hello[< Wor>ld]!) => h(Hello< Wor>[ld]!)", () => {
 					},
 					text: "", // Changed by cut
 				},
+				...tokensAdded,
 				{
 					type: "t",
 					id: "d",
@@ -1203,7 +1313,6 @@ test("added style h(Hello[< World>]!) => h(Hello< World>!)", () => {
 					props: {},
 					text: "Hello",
 				},
-				...tokensAdded,
 				{
 					type: "t",
 					id: "c",
@@ -1213,6 +1322,7 @@ test("added style h(Hello[< World>]!) => h(Hello< World>!)", () => {
 					},
 					text: "", // Changed by cut
 				},
+				...tokensAdded,
 				{
 					type: "t",
 					id: "d",
@@ -1580,15 +1690,33 @@ test("added style h(<Hello[ World]!>) => h([<Hello World!>])", () => {
 });
 
 test("added style h(<Hello[ World]!> ..or Mars!) => h([<Hello World!>] ..or Mars!)", () => {
-	const tokensAdded: TextToken[] = [
+	const tokensAdded1: TextToken[] = [
 		{
 			type: "t",
-			id: "e",
+			id: "z1",
+			key: "",
+			props: {
+				fontWeight: "bold",
+			},
+			text: "Hello",
+		},
+	];
+	const tokensAdded2: TextToken[] = [
+		{
+			type: "t",
+			id: "z2",
 			key: "",
 			props: {
 				fontWeight: "bold",
 			},
 			text: "!",
+		},
+		{
+			type: "t",
+			id: "z3",
+			key: "",
+			props: {},
+			text: " ..or Mars!",
 		},
 	];
 	const tokens: AnyToken[] = [
@@ -1604,28 +1732,27 @@ test("added style h(<Hello[ World]!> ..or Mars!) => h([<Hello World!>] ..or Mars
 					type: "t",
 					id: "b",
 					key: "0.0",
-					props: {
-						fontWeight: "bold",
-					},
-					text: "Hello",
+					props: {},
+					text: "", // cut
 				},
+				...tokensAdded1,
 				{
 					type: "t",
-					id: "c",
+					id: "b",
 					key: "0.1",
 					props: {
 						fontWeight: "bold",
 					},
 					text: " World",
 				},
-				...tokensAdded,
 				{
 					type: "t",
-					id: "d",
+					id: "c",
 					key: "0.2",
 					props: {},
-					text: " ..or Mars!", // Updated by cut
+					text: "", // cut
 				},
+				...tokensAdded2,
 			],
 		},
 	];
@@ -1636,8 +1763,8 @@ test("added style h(<Hello[ World]!> ..or Mars!) => h([<Hello World!>] ..or Mars
 
 	assert.equal(context._keys, {
 		a: "0",
-		b: "0.0",
-		d: "0.1",
+		z1: "0.0",
+		z3: "0.1",
 	});
 	assert.equal(tokens, [
 		{
@@ -1650,7 +1777,7 @@ test("added style h(<Hello[ World]!> ..or Mars!) => h([<Hello World!>] ..or Mars
 			children: [
 				{
 					type: "t",
-					id: "b",
+					id: "z1",
 					key: "0.0",
 					props: {
 						fontWeight: "bold",
@@ -1659,7 +1786,7 @@ test("added style h(<Hello[ World]!> ..or Mars!) => h([<Hello World!>] ..or Mars
 				},
 				{
 					type: "t",
-					id: "d",
+					id: "z3",
 					key: "0.1",
 					props: {},
 					text: " ..or Mars!",
@@ -2173,7 +2300,6 @@ test("added style h(He<llo {Wo>rld}!) => h(He[<llo ]{[<Wo>]}{rld}!)", () => {
 	);
 });
 
-// @TODO fix cutting for this case
 test("added style h(He[<llo ]{[<Wo>]}{rld}!) => h(He<llo {Wo>rld}!)", () => {
 	const tokensAdded1: TextToken[] = [
 		{
@@ -2211,7 +2337,6 @@ test("added style h(He[<llo ]{[<Wo>]}{rld}!) => h(He<llo {Wo>rld}!)", () => {
 					props: {},
 					text: "He",
 				},
-				...tokensAdded1,
 				{
 					type: "t",
 					id: "c",
@@ -2221,7 +2346,7 @@ test("added style h(He[<llo ]{[<Wo>]}{rld}!) => h(He<llo {Wo>rld}!)", () => {
 					},
 					text: "", // cut
 				},
-				...tokensAdded2,
+				...tokensAdded1,
 				{
 					type: "t",
 					id: "d",
@@ -2231,6 +2356,7 @@ test("added style h(He[<llo ]{[<Wo>]}{rld}!) => h(He<llo {Wo>rld}!)", () => {
 					},
 					text: "", // cut
 				},
+				...tokensAdded2,
 				{
 					type: "t",
 					id: "e",

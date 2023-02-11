@@ -51,9 +51,9 @@ const root = [
 				id: ranID(),
 				type: "t",
 				props: {
-					color: "orangered",
+					fontWeight: "bold",
 				},
-				text: "Jupiter",
+				text: "World",
 			},
 			{
 				id: ranID(),
