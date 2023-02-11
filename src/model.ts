@@ -571,12 +571,12 @@ export class Model extends Exome {
 			const isFirstChild = element.key?.endsWith(".0") ?? true;
 
 			if (firstOffset === 1) {
-				// element.text = stringSplice(
-				// 	element.text,
-				// 	firstOffset - 1,
-				// 	firstOffset,
-				// 	"",
-				// );
+				element.text = stringSplice(
+					element.text,
+					firstOffset - 1,
+					firstOffset,
+					"",
+				);
 
 				if (!isFirstChild) {
 					const prev = this.previousText(element.key);
@@ -602,7 +602,6 @@ export class Model extends Exome {
 						// 	resetSelection(next.id, 0);
 						// });
 					} else {
-						// console.log("HEREEE");
 						// Heres the issue
 						this.select(this.findElement(lastKey)!, 0);
 						// this._stack.push(() => {
