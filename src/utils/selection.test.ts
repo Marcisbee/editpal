@@ -2173,6 +2173,7 @@ test("added style h(He<llo {Wo>rld}!) => h(He[<llo ]{[<Wo>]}{rld}!)", () => {
 	);
 });
 
+// @TODO fix cutting for this case
 test("added style h(He[<llo ]{[<Wo>]}{rld}!) => h(He<llo {Wo>rld}!)", () => {
 	const tokensAdded1: TextToken[] = [
 		{

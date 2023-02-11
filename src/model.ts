@@ -10,6 +10,7 @@ import {
 	TokenRoot,
 } from "./tokens";
 import { setCaret, cloneToken, stringSplice, ranID } from "./utils";
+import { createTextToken } from "./utils/create-token";
 import { propsEqual } from "./utils/props-equal";
 import { buildKeys } from "./utils/selection";
 
@@ -541,16 +542,13 @@ export class Model extends Exome {
 		el.text = el.text.slice(0, firstOffset);
 
 		const output: TextToken[] = [
-			{
-				type: "t",
-				text: middle,
-				id: ranID(),
-				props: {
+			createTextToken(
+				{
 					...el.props,
 					...additionalProps,
 				},
-				key: "",
-			},
+				middle,
+			),
 		];
 
 		if (lastOffset === undefined) {
@@ -558,13 +556,7 @@ export class Model extends Exome {
 		}
 
 		return output
-			.concat({
-				type: "t",
-				text: right,
-				id: ranID(),
-				props: el.props,
-				key: "",
-			})
+			.concat(createTextToken(el.props, right))
 			.filter((a) => a.text);
 	};
 
@@ -864,6 +856,17 @@ export class Model extends Exome {
 				lastEl,
 			);
 
+			if (!firstEl.text && !elements.length) {
+				this.remove(firstEl.key);
+			}
+
+			// if (!lastEl.text) {
+			// 	this.remove(lastEl.key);
+			// }
+
+			// console.log(this.tokens[1].children);
+			// debugger
+
 			for (const el of elements) {
 				el.props = {
 					...el.props,
@@ -872,14 +875,6 @@ export class Model extends Exome {
 			}
 
 			// console.log("multi", firstEl, elements, lastEl);
-
-			// if (!firstEl.text) {
-			// 	this.remove(firstEl.key);
-			// }
-
-			// if (!lastEl.text) {
-			// 	this.remove(lastEl.key);
-			// }
 
 			// const firstPrev = this.previousText(firstEl.key);
 			// const firstPrevText = firstPrev?.text;

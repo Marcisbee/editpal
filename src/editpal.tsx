@@ -192,6 +192,15 @@ function Toolbar() {
 					marginRight: 5,
 					width: 40,
 				}}
+				onMouseDown={preventDefaultAndStop}
+				onClick={(e) => {
+					preventDefaultAndStop(e);
+					const type =
+						format.fontStyle === "italic"
+							? ACTION._FormatRemove
+							: ACTION._FormatAdd;
+					action(type, ["fontStyle", "italic"]);
+				}}
 			>
 				<i>I</i>
 			</button>
@@ -207,6 +216,15 @@ function Toolbar() {
 					color: format.textDecoration === "underline" ? "#fff" : "#ccc",
 					marginRight: 5,
 					width: 40,
+				}}
+				onMouseDown={preventDefaultAndStop}
+				onClick={(e) => {
+					preventDefaultAndStop(e);
+					const type =
+						format.textDecoration === "underline"
+							? ACTION._FormatRemove
+							: ACTION._FormatAdd;
+					action(type, ["textDecoration", "underline"]);
 				}}
 			>
 				<u>U</u>
