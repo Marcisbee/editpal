@@ -100,8 +100,7 @@ export function buildKeys(
 					i -= 1;
 					if (lastChild.key && !child.key) {
 						// console.log({child, lastChild, next: oldTokens[i + 1]});
-					p -= 1;
-
+						p -= 1;
 					}
 					continue;
 				}

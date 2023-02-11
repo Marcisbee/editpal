@@ -864,7 +864,6 @@ export class Model extends Exome {
 			// 	this.remove(lastEl.key);
 			// }
 
-
 			for (const el of elements) {
 				el.props = {
 					...el.props,
