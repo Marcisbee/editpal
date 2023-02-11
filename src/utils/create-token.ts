@@ -5,7 +5,7 @@ let id = 0;
 // @TODO create format cutter
 export function createTextToken(
 	props: Record<string, any> = {},
-	text: string,
+	text: string = "",
 ): TextToken {
 	return {
 		type: "t",

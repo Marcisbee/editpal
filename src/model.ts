@@ -10,7 +10,7 @@ import {
 	TokenRoot,
 } from "./tokens";
 import { setCaret, cloneToken, stringSplice, ranID } from "./utils";
-import { createTextToken } from "./utils/create-token";
+import { createBlockToken, createTextToken } from "./utils/create-token";
 import { propsEqual } from "./utils/props-equal";
 import { buildKeys } from "./utils/selection";
 
@@ -144,23 +144,14 @@ export class Model extends Exome {
 			return;
 		}
 
-		// this.selection.fix = false;
-		// this.selection.fixFirst = undefined;
-		// this.selection.fixLast = undefined;
+		const {
+			_keys,
+			_elements,
+			_newSelection: [first, last],
+		} = buildKeys(this.tokens, [this.selection.first, this.selection.last]);
 
-		// const firstChunks = this.selection.first[0].split(".");
-		// const lastChunks = this.selection.last[0].split(".");
-		// this.selection.fixFirstKey = parseInt(firstChunks.pop()!, 10);
-		// this.selection.fixFirstOffset = this.selection.first[1];
-		// this.selection.fixLastKey = parseInt(lastChunks.pop()!, 10);
-		// this.selection.fixLastOffset = this.selection.last[1];
-
-		const context = buildKeys(this.tokens, [
-			this.selection.first,
-			this.selection.last,
-		]);
-		this._idToKey = context._keys;
-		this._elements = context._elements;
+		this._idToKey = _keys;
+		this._elements = _elements;
 		this.update();
 
 		// Don't heal initial selection
@@ -170,29 +161,15 @@ export class Model extends Exome {
 
 		// return;
 
-		if (!context._newSelection[0] && !context._newSelection[1]) {
+		if (!first && !last) {
 			return;
 		}
 
-		// console.log("HEALED", context._newSelection);
-
-		// const {
-		// 	fixFirst: [first, firstOffset] = this.selection.first,
-		// 	fixLast: [last, lastOffset] = this.selection.last,
-		// } = this.selection;
-		// console.log(
-		// 	"APPLY",
-		// 	this.selection.fixFirstKey,
-		// 	this.selection.fixFirstOffset,
-		// 	this.selection.fixLastKey,
-		// 	this.selection.fixLastOffset,
-		// );
-
 		this.select(
-			this.findElement(context._newSelection[0][0]!),
-			context._newSelection[0][1]!,
-			this.findElement(context._newSelection[1][0]!),
-			context._newSelection[1][1]!,
+			this.findElement(first[0]!),
+			first[1]!,
+			this.findElement(last[0]!),
+			last[1]!,
 		);
 	};
 
@@ -351,15 +328,7 @@ export class Model extends Exome {
 				: element;
 
 		if (element.type === "img") {
-			parent.children = [
-				cloneToken({
-					type: "t",
-					text: "",
-					id: ranID(),
-					props: {},
-					key: "",
-				}),
-			];
+			parent.children = [createTextToken()];
 			return;
 		}
 
@@ -706,11 +675,9 @@ export class Model extends Exome {
 				if (parent?.type === "p") {
 					parent.children = [
 						{
+							...createTextToken(),
 							id: el.id,
 							key: el.key,
-							type: "t",
-							props: {},
-							text: "",
 						},
 					];
 					this.recalculate();
@@ -730,11 +697,10 @@ export class Model extends Exome {
 
 			firstElement.text = firstElement.text.slice(0, firstOffset);
 
-			const newToken = {
-				id: ranID(),
-				type: "p",
-				children: [...siblings, { id: ranID(), type: "t", text: "" }],
-			};
+			const newToken = createBlockToken("p", {}, [
+				...siblings,
+				createTextToken(),
+			]);
 			const lastKeyChunks = lastElement.key.split(".");
 			this.removeBetween(
 				firstElement.key,
@@ -771,10 +737,6 @@ export class Model extends Exome {
 				...newProps,
 			});
 
-			// if (firstKey === lastKey && firstOffset === lastOffset) {
-			// 	return;
-			// }
-
 			const elements = this.keysBetween(firstKey, lastKey).reduce<TextToken[]>(
 				(acc, key) => {
 					const el = this.findElement(key);
@@ -788,57 +750,29 @@ export class Model extends Exome {
 				[],
 			);
 
-			if (ACTION._FormatAdd) {
-				console.log(
-					"%c + STYLE ",
-					"background: #00b33c; color: black; font-weight: bold;",
-					elements.map((e) => e.key),
-					...data,
-				);
-			} else {
-				console.log(
-					"%c - STYLE ",
-					"background: #e62e00; color: black; font-weight: bold;",
-					elements.map((e) => e.key),
-					...data,
-				);
-			}
+			// if (ACTION._FormatAdd) {
+			// 	console.log(
+			// 		"%c + STYLE ",
+			// 		"background: #00b33c; color: black; font-weight: bold;",
+			// 		elements.map((e) => e.key),
+			// 		...data,
+			// 	);
+			// } else {
+			// 	console.log(
+			// 		"%c - STYLE ",
+			// 		"background: #e62e00; color: black; font-weight: bold;",
+			// 		elements.map((e) => e.key),
+			// 		...data,
+			// 	);
+			// }
 
 			if (elements.length === 1) {
 				const el = elements[0];
 				const rest = this._cut(el, firstOffset, lastOffset, newProps);
 
-				// console.log('rest', el, rest);
-
-				const [newToken] = this.insert(rest, el);
-
-				// if (!el.text) {
-				// 	this.remove(el.key);
-				// 	console.log("REMOVEd");
-				// }
-
-				// console.log("tokens", el, tokens);
-
-				// const prev = this.previousText(el.key);
-				// const prevText = prev?.text;
+				this.insert(rest, el);
 
 				this.recalculate();
-
-				// if (!newToken.key && prevText) {
-				// 	console.log(1);
-				// 	this.select(
-				// 		prev,
-				// 		prevText?.length,
-				// 		undefined,
-				// 		prevText?.length + lastOffset,
-				// 	);
-				// } else if (!el.text) {
-				// 	console.log(2);
-				// 	this.select(newToken, firstOffset, undefined, lastOffset);
-				// } else {
-				// 	console.log(3, newToken.text, el.text, prev?.text);
-				// 	this.select(newToken, 0, undefined, newToken.text.length);
-				// }
 
 				return;
 			}
@@ -846,23 +780,16 @@ export class Model extends Exome {
 			const firstEl = elements.shift()!;
 			const lastEl = elements.pop()!;
 
-			const [firstToken] = this.insert(
+			this.insert(
 				this._cut(firstEl, firstOffset, undefined, newProps),
 				firstEl,
 			);
 
-			const [lastToken] = this.insert(
-				this._cut(lastEl, 0, lastOffset, newProps),
-				lastEl,
-			);
+			this.insert(this._cut(lastEl, 0, lastOffset, newProps), lastEl);
 
 			if (!firstEl.text && !elements.length) {
 				this.remove(firstEl.key);
 			}
-
-			// if (!lastEl.text) {
-			// 	this.remove(lastEl.key);
-			// }
 
 			for (const el of elements) {
 				el.props = {
@@ -871,75 +798,9 @@ export class Model extends Exome {
 				};
 			}
 
-			// console.log("multi", firstEl, elements, lastEl);
-
-			// const firstPrev = this.previousText(firstEl.key);
-			// const firstPrevText = firstPrev?.text;
-
 			this.recalculate();
-
-			// if (!firstToken.key && firstPrevText) {
-			// 	console.log(1);
-			// 	this.select(
-			// 		firstPrev,
-			// 		firstPrevText?.length,
-			// 		undefined,
-			// 		firstPrevText?.length + lastOffset,
-			// 	);
-			// } else if (!firstToken.text) {
-			// 	console.log(2);
-			// 	this.select(firstToken, firstOffset, undefined, lastOffset);
-			// } else {
-			// 	console.log(3, firstToken.text, firstToken.text, firstPrev?.text);
-			// 	this.select(
-			// 		firstToken,
-			// 		0,
-			// 		lastToken,
-			// 		lastToken.text.length || this.previousText(lastEl.key).text.length,
-			// 	);
-			// }
-			// console.log(firstEl.text, lastEl.text, firstToken.text, lastToken.text);
-
-			// if (!firstToken.key) {
-			// 	this.select(firstEl, firstOffset);
-			// }
-
-			// this.select(firstToken, 0, lastToken, lastToken.text.length);
-			// this.select(firstToken, 0, lastToken, lastToken.text.length);
 			return;
 		}
-
-		// if (type === ACTION._FormatRemove && data != null) {
-		// 	const keys = this.keysBetween(firstKey, lastKey);
-
-		// 	for (const key of keys) {
-		// 		const el = this.findElement(key);
-
-		// 		if (el.type === "t") {
-		// 			console.log(
-		// 				"%c - STYLE ",
-		// 				"background: #e62e00; color: black; font-weight: bold;",
-		// 				el.key,
-		// 				...data,
-		// 			);
-		// 			if (!el.props) {
-		// 				continue;
-		// 			}
-		// 			el.props = {
-		// 				...el.props,
-		// 				[data[0]]: undefined,
-		// 			};
-		// 		}
-		// 	}
-
-		// 	// @TODO Figure out why remove action doesn't reload view
-		// 	this.selection.setFormat({
-		// 		...this.selection.format,
-		// 		[data[0]]: undefined,
-		// 	});
-		// 	this.recalculate();
-		// 	return;
-		// }
 
 		// Handle new text being added after Dead key
 		if (type === ACTION._Compose && data != null) {
