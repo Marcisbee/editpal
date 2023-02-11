@@ -159,9 +159,7 @@ export class Model extends Exome {
 			return;
 		}
 
-		// return;
-
-		if (!first && !last) {
+		if (first[0] === last[0] && first[1] === last[1]) {
 			return;
 		}
 
