@@ -765,7 +765,6 @@ export class Model extends Exome {
 			(type === ACTION._FormatAdd || type === ACTION._FormatRemove) &&
 			data != null
 		) {
-			// @TODO figure out how to set styles beforehand
 			if (firstKey === lastKey && firstOffset === lastOffset) {
 				return;
 			}

@@ -8,7 +8,6 @@ export type BuildKeysSelection = [
 ];
 
 export interface BuildKeysContext {
-	_index: number;
 	_elements: Record<string, AnyToken>;
 	_keys: Record<string, string>;
 	_newSelection: BuildKeysSelection;
@@ -18,7 +17,6 @@ export function buildKeys(
 	tokens: AnyToken | AnyToken[],
 	selection: BuildKeysSelection,
 	context: BuildKeysContext = {
-		_index: 0,
 		_elements: {},
 		_keys: {},
 		_newSelection: JSON.parse(JSON.stringify(selection)),
@@ -38,6 +36,9 @@ export function buildKeys(
 	if (!tokens?.id) {
 		return context;
 	}
+
+	// Reset index each time
+	let index = 0;
 
 	tokens.key = key.join(".");
 
@@ -60,16 +61,16 @@ export function buildKeys(
 			const childTextLength = child.text?.length || 0;
 
 			if (selection[0][0] === key + "." + p && start == null) {
-				start = context._index + selection[0][1];
+				start = index + selection[0][1];
 			}
 
 			if (selection[1][0] === key + "." + p && end == null) {
-				end = context._index + selection[1][1];
+				end = index + selection[1][1];
 			}
 
-			context._index += childTextLength;
+			index += childTextLength;
 
-			// console.log({ p, i: context._index  });
+			// console.log({ p, i: index  });
 
 			check: {
 				if (lastChild?.type !== "t" || child?.type !== "t") {

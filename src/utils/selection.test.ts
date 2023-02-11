@@ -48,19 +48,27 @@ function displaySelection(tokens: AnyToken[], selection: BuildKeysSelection) {
 							lastChunk[0] >= parentIndex &&
 							lastChunk[1] >= childIndex
 						) {
-							range += "^".repeat(lastSize);
+							try {
+								range += "^".repeat(lastSize);
+							} catch {}
 							leftover -= lastSize;
 						} else if (
 							firstChunk[0] === parentIndex &&
 							firstChunk[1] === childIndex
 						) {
-							range += " ".repeat(firstOffset);
-							range += "^".repeat(lastSize - firstOffset);
+							try {
+								range += " ".repeat(firstOffset);
+							} catch {}
+							try {
+								range += "^".repeat(lastSize - firstOffset);
+							} catch {}
 							leftover -= firstOffset + (lastSize - firstOffset);
 						}
 
 						if (leftover) {
-							range += " ".repeat(leftover);
+							try {
+								range += " ".repeat(leftover);
+							} catch {}
 						}
 					}
 
@@ -90,7 +98,6 @@ test("empty", () => {
 			],
 		),
 		{
-			_index: 0,
 			_keys: {},
 			_elements: {},
 			_newSelection: [
@@ -443,6 +450,137 @@ test("added style h(Hello <Wo>rld!) => h(Hello [<Wo>]rld!)", () => {
 		[
 			"Hello World!",
 			"      ^^    (0.1 0 - 0.1 2)",
+			// SELECTION
+		]
+			.filter(Boolean)
+			.join("\n"),
+	);
+});
+
+test("added style v2 h(Hello <Wo>rld!) => h(Hello [<Wo>]rld!)", () => {
+	const tokensAdded: TextToken[] = [
+		{
+			type: "t",
+			id: "z1",
+			key: "",
+			props: {
+				fontWeight: "bold",
+			},
+			text: "Wo",
+		},
+		{
+			type: "t",
+			id: "z2",
+			key: "",
+			props: {},
+			text: "rld!",
+		},
+	];
+	const tokens: AnyToken[] = [
+		{
+			type: "p",
+			id: "a",
+			key: "0",
+			props: {},
+			children: [
+				{
+					type: "t",
+					id: "b",
+					key: "0.0",
+					props: {},
+					text: "Previous", // Was cut from this
+				},
+			],
+		},
+		{
+			type: "h",
+			id: "c",
+			key: "1",
+			props: {
+				size: 0,
+			},
+			children: [
+				{
+					type: "t",
+					id: "d",
+					key: "1.0",
+					props: {},
+					text: "Hello ", // Was cut from this
+				},
+				...tokensAdded,
+			],
+		},
+	];
+	const context = buildKeys(tokens, [
+		["1.0", 6],
+		["1.0", 8],
+	]);
+
+	assert.equal(context._keys, {
+		a: "0",
+		b: "0.0",
+		c: "1",
+		d: "1.0",
+		z1: "1.1",
+		z2: "1.2",
+	});
+	assert.equal(tokens, [
+		{
+			type: "p",
+			id: "a",
+			key: "0",
+			props: {},
+			children: [
+				{
+					type: "t",
+					id: "b",
+					key: "0.0",
+					props: {},
+					text: "Previous", // Was cut from this
+				},
+			],
+		},
+		{
+			type: "h",
+			id: "c",
+			key: "1",
+			props: {
+				size: 0,
+			},
+			children: [
+				{
+					type: "t",
+					id: "d",
+					key: "1.0",
+					props: {},
+					text: "Hello ",
+				},
+				{
+					type: "t",
+					id: "z1",
+					key: "1.1",
+					props: {
+						fontWeight: "bold",
+					},
+					text: "Wo",
+				},
+				{
+					type: "t",
+					id: "z2",
+					key: "1.2",
+					props: {},
+					text: "rld!",
+				},
+			],
+		},
+	]);
+	assert.snapshot(
+		displaySelection(tokens, context._newSelection),
+		[
+			"Previous",
+			"        ",
+			"Hello World!",
+			"      ^^    (1.1 0 - 1.1 2)",
 			// SELECTION
 		]
 			.filter(Boolean)
