@@ -19,8 +19,8 @@ export class HistoryStore extends Exome {
 
 	private _max = 40;
 	private _lastBatchId?: string | number;
-	private _batch: TraceBatch = [];
 
+	public _batch: TraceBatch = [];
 	public _undo: TraceBatch[] = [];
 	public _redo: TraceBatch[] = [];
 

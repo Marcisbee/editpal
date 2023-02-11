@@ -8,7 +8,7 @@ import { ACTION } from "./model";
 export function Toolbar() {
 	const { model } = useContext(EditorContext);
 	const { action, selection } = useStore(model);
-	const { _undo, _redo } = useStore(model.history);
+	const { _batch, _undo, _redo } = useStore(model.history);
 	const { format } = useStore(selection);
 
 	return (
@@ -150,15 +150,15 @@ export function Toolbar() {
 				<input
 					type="range"
 					min={0}
-					max={_undo.length + _redo.length}
-					value={_undo.length}
+					max={_undo.length + _batch.length + _redo.length}
+					value={_undo.length + _batch.length}
 					onInput={(e) => {
-						if (parseInt(e.target.value, 10) > _undo.length) {
+						if (parseInt(e.target.value, 10) > _undo.length + _batch.length) {
 							action(ACTION._Redo);
 							return;
 						}
 
-						if (parseInt(e.target.value, 10) < _undo.length) {
+						if (parseInt(e.target.value, 10) < _undo.length + _batch.length) {
 							action(ACTION._Undo);
 							return;
 						}

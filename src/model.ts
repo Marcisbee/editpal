@@ -11,7 +11,6 @@ import {
 } from "./tokens";
 import { setCaret, cloneToken, stringSplice, ranID } from "./utils";
 import { createBlockToken, createTextToken } from "./utils/create-token";
-import { propsEqual } from "./utils/props-equal";
 import { buildKeys } from "./utils/selection";
 
 export const ACTION = {

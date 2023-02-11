@@ -106,7 +106,6 @@ export function buildKeys(
 				}
 			}
 
-			// @TODO is this right?
 			if (
 				!child.key &&
 				child.text &&
@@ -123,6 +122,7 @@ export function buildKeys(
 		// 	start, end
 		// });
 
+		// @TODO make this in single loop
 		if (!isCollapsed && start != null && newStart == null) {
 			let i = -1;
 			let len = 0;
