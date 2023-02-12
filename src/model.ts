@@ -119,7 +119,7 @@ export class Model extends Exome {
 	// 	focus: string;
 	// 	focusOffset: number;
 	// } | null = null;
-	public selection = new ModelSelection();
+	public selection = new ModelSelection(this);
 	public history = new HistoryStore();
 
 	public _idToKey: Record<string, string> = {};
