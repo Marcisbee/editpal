@@ -165,6 +165,19 @@ export function Editpal({ model }: EditpalProps) {
 			return;
 		}
 
+		// @TODO: Firefox selects parent element not text when double click on text
+		if (first?.dataset?.ep) {
+			first = first.childNodes[0].childNodes[0];
+			anchorOffset = 0;
+		}
+		if (last?.dataset?.ep) {
+			const p = last.childNodes[last.childNodes.length - 1];
+			if (p?.childNodes) {
+				last = p.childNodes[p.childNodes.length - 1];
+				focusOffset = last.textContent?.length || 0;
+			}
+		}
+
 		const anchor =
 			first?.parentElement?.getAttribute("data-ep") ||
 			first?.getAttribute?.("data-ep");
@@ -363,10 +376,6 @@ export function Editpal({ model }: EditpalProps) {
 
 					if (e.key.indexOf("Arrow") === 0) {
 						model.history.batch();
-						return;
-					}
-
-					if (e.metaKey) {
 						return;
 					}
 
