@@ -5,7 +5,7 @@
   "main": "dist/editpal.js",
   "scripts": {
     "dev": "esbuild src/main.tsx --bundle --jsx-factory=h --jsx-fragment=Fragment --outdir=www --watch --servedir=www --sourcemap=inline",
-    "build": "esbuild src/editpal.tsx --metafile=meta.json --bundle --jsx-factory=h --jsx-fragment=Fragment --outdir=dist --define:process.env.NODE_ENV=\\\"production\\\" --minify --legal-comments=none --format=esm --platform=browser --external:exome --external:preact --analyze=verbose --mangle-props=^_ --mangle-quoted --pure:console.log --target=es2020,chrome63",
+    "build": "esbuild src/editpal.tsx --metafile=meta.json --bundle --jsx-factory=h --jsx-fragment=Fragment --outdir=dist --define:process.env.NODE_ENV=\\\"production\\\" --minify --legal-comments=none --format=esm --platform=browser --external:exome --external:preact --analyze=verbose --pure:console.log --target=es2020,chrome63",
     "preview": "esbuild src/main.tsx --bundle --jsx-factory=h --jsx-fragment=Fragment --outdir=dist --define:process.env.NODE_ENV=\\\"production\\\" --minify --legal-comments=none --format=esm --platform=browser --analyze=verbose --mangle-props=^_ --mangle-quoted --pure:console.log --target=es2020,chrome63 --outdir=www --watch --servedir=www --sourcemap=inline",
     "declarations": "tsc src/editpal.tsx --declaration --emitDeclarationOnly --outDir dist --jsx react-jsx",
     "test": "uvu -r tsm src test.ts"
