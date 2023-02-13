@@ -127,7 +127,9 @@ export class Model extends Exome {
 	public _isComposing = false;
 	public _stack: Function[] = [];
 
-	constructor(tokens: TokenRoot) {
+	constructor(
+		tokens: TokenRoot = [createBlockToken("p", {}, [createTextToken()])],
+	) {
 		super();
 
 		this.tokens = cloneToken(tokens);
