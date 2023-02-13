@@ -167,8 +167,11 @@ export function Editpal({ model }: EditpalProps) {
 
 		// Firefox selects parent element not text when double click on text
 		if (first?.dataset?.ep) {
-			first = first.childNodes[0].childNodes[0];
-			anchorOffset = 0;
+			const pl = first.childNodes[0].childNodes[0];
+			if (pl) {
+				first = first.childNodes[0].childNodes[0];
+				anchorOffset = 0;
+			}
 		}
 		if (last?.dataset?.ep) {
 			const p = last.childNodes[last.childNodes.length - 1];
