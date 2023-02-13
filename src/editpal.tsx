@@ -172,8 +172,9 @@ export function Editpal({ model }: EditpalProps) {
 		}
 		if (last?.dataset?.ep) {
 			const p = last.childNodes[last.childNodes.length - 1];
-			if (p?.childNodes) {
-				last = p.childNodes[p.childNodes.length - 1];
+			const pl = p.childNodes[p.childNodes.length - 1];
+			if (p?.childNodes && pl) {
+				last = pl;
 				focusOffset = last.textContent?.length || 0;
 			}
 		}

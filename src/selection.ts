@@ -47,7 +47,7 @@ export class ModelSelection extends Exome {
 
 				if (f?.key) {
 					last[0] = f.key;
-					last[1] = f.text?.length;
+					last[1] = f.text?.length || 0;
 				}
 			}
 		}

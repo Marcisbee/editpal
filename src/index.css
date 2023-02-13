@@ -48,3 +48,12 @@ body {
     background-color: #f9f9f9;
   }
 }
+
+[data-ep-main] {
+  border: 2px solid orange;
+}
+
+[data-ep-main]:focus-within,
+[data-ep-main]:focus {
+  border-color: #98c9ff;
+}
