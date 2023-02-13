@@ -1,11 +1,11 @@
 import { addMiddleware, Exome } from "exome";
-import { exomeDevtools } from "exome/devtools";
+// import { exomeDevtools } from "exome/devtools";
 
-addMiddleware(
-	exomeDevtools({
-		name: "Exome Playground",
-	}),
-);
+// addMiddleware(
+// 	exomeDevtools({
+// 		name: "Exome Playground",
+// 	}),
+// );
 
 export interface Trace {
 	undo(): void;
