@@ -1,13 +1,13 @@
 import { useStore } from "exome/preact";
 import { h, createContext, RefObject } from "preact";
-import { useContext, useLayoutEffect, useRef, useState } from "preact/hooks";
+import { useLayoutEffect, useRef, useState } from "preact/hooks";
 
 import type { AnyToken, TextToken } from "./tokens";
 import { ACTION, Model as EditorModel } from "./model";
 import { RenderImage } from "./plugin/image";
+import { Toolbar } from "./toolbar";
 
 import "./app.css";
-import { Toolbar } from "./toolbar";
 
 export const Model = EditorModel;
 
@@ -165,7 +165,7 @@ export function Editpal({ model }: EditpalProps) {
 			return;
 		}
 
-		// @TODO: Firefox selects parent element not text when double click on text
+		// Firefox selects parent element not text when double click on text
 		if (first?.dataset?.ep) {
 			first = first.childNodes[0].childNodes[0];
 			anchorOffset = 0;
@@ -178,12 +178,8 @@ export function Editpal({ model }: EditpalProps) {
 			}
 		}
 
-		const anchor =
-			first?.parentElement?.getAttribute("data-ep") ||
-			first?.getAttribute?.("data-ep");
-		const focus =
-			last?.parentElement?.getAttribute("data-ep") ||
-			last?.getAttribute?.("data-ep");
+		const anchor = first?.parentElement?.dataset.ep || first?.dataset.ep;
+		const focus = last?.parentElement?.dataset.ep || last?.dataset.ep;
 
 		if (!anchor || !focus) {
 			return;
@@ -368,6 +364,15 @@ export function Editpal({ model }: EditpalProps) {
 						model.action(e.shiftKey ? ACTION._Redo : ACTION._Undo);
 						return;
 					}
+
+					// Firefox doesn't trigger selection change event on SELECT ALL
+					// if ((e.metaKey || e.ctrlKey) && (e.key === "a" || e.key === "A")) {
+					// 	console.log("select all");
+					// 	model._stack.push(() => {
+					// 		onSelectionChange(e);
+					// 	});
+					// 	return;
+					// }
 
 					// Allow cmd+r etc.
 					if (e.metaKey) {

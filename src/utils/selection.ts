@@ -122,8 +122,15 @@ export function buildKeys(
 		// 	start, end
 		// });
 
-		// @TODO make this in single loop
-		if (!isCollapsed && start != null && newStart == null) {
+		// @TODO make this in top loop
+		let solves = 0;
+		if (
+			!isCollapsed &&
+			start != null &&
+			newStart == null &&
+			end != null &&
+			newEnd == null
+		) {
 			let i = -1;
 			let len = 0;
 
@@ -134,28 +141,13 @@ export function buildKeys(
 					continue;
 				}
 
-				if (len + child.text.length > start) {
+				if (len + child.text.length > start && !solves) {
 					context._newSelection[0] = [key + "." + i, start - len];
-					// console.log("start", key + '.' + i, start - len);
-					break;
+					solves++;
+					if (solves >= 2) {
+						break;
+					}
 				}
-
-				len += child.text?.length || 0;
-			}
-		}
-
-		if (!isCollapsed && end != null && newEnd == null) {
-			let i = -1;
-			let len = 0;
-
-			for (const child of tokens.children) {
-				i += 1;
-
-				if (lastChild?.type !== "t" || child?.type !== "t") {
-					continue;
-				}
-
-				// console.log(key + "." + i, child.text, { len, end });
 
 				if (len + child.text.length >= end) {
 					// console.log({
@@ -166,17 +158,43 @@ export function buildKeys(
 					break;
 				}
 
-				// if (len > end - 1) {
-				// 	console.log("end", key + '.' + i, child.text.length);
-				// 	break;
-				// } else if (len >= end) {
-				// 	console.log("end", key + "." + i, end - len);
-				// 	break;
-				// }
-
 				len += child.text?.length || 0;
 			}
 		}
+
+		// if (!isCollapsed && end != null && newEnd == null) {
+		// 	let i = -1;
+		// 	let len = 0;
+
+		// 	for (const child of tokens.children) {
+		// 		i += 1;
+
+		// 		if (lastChild?.type !== "t" || child?.type !== "t") {
+		// 			continue;
+		// 		}
+
+		// 		// console.log(key + "." + i, child.text, { len, end });
+
+		// 		if (len + child.text.length >= end) {
+		// 			// console.log({
+		// 			// 	end,len
+		// 			// });
+		// 			context._newSelection[1] = [key + "." + i, end - len];
+		// 			// console.log("end", key + '.' + i, end - len);
+		// 			break;
+		// 		}
+
+		// 		// if (len > end - 1) {
+		// 		// 	console.log("end", key + '.' + i, child.text.length);
+		// 		// 	break;
+		// 		// } else if (len >= end) {
+		// 		// 	console.log("end", key + "." + i, end - len);
+		// 		// 	break;
+		// 		// }
+
+		// 		len += child.text?.length || 0;
+		// 	}
+		// }
 
 		buildKeys(tokens.children, selection, context, key);
 	}
