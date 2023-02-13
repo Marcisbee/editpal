@@ -133,7 +133,7 @@ export class Model extends Exome {
 		this.tokens = cloneToken(tokens);
 		this.recalculate(true);
 
-		console.log(this.tokens, this._idToKey);
+		// console.log(this.tokens, this._idToKey);
 	}
 
 	public update() {}
@@ -178,7 +178,7 @@ export class Model extends Exome {
 			const element = this.findElement(key);
 			const index = this.tokens.indexOf(element);
 			this.tokens.splice(index, 1);
-			console.log("🏴‍☠️ REMOVE ROOT", index);
+			// console.log("🏴‍☠️ REMOVE ROOT", index);
 
 			return;
 		}
@@ -189,7 +189,7 @@ export class Model extends Exome {
 
 		const index = parent.children.findIndex((c) => c.key === key);
 		parent.children.splice(index, 1);
-		console.log("🏴‍☠️ REMOVE CHILD", parent.key, key);
+		// console.log("🏴‍☠️ REMOVE CHILD", parent.key, key);
 	};
 
 	public keysBetween = (firstKey: string, lastKey: string) => {
@@ -389,7 +389,7 @@ export class Model extends Exome {
 
 		this._transformToParagraph(parent);
 
-		console.log("🟢 REMOVE INITIAL", (parent as any).index);
+		// console.log("🟢 REMOVE INITIAL", (parent as any).index);
 	};
 
 	private _handleTextTransforms = (element: TextToken, textAdded: string) => {
@@ -527,12 +527,12 @@ export class Model extends Exome {
 	};
 
 	public action = (type: number, data?: string) => {
-		if (!this.history.locked) {
-			console.log("ACTION", {
-				type,
-				data,
-			});
-		}
+		// if (!this.history.locked) {
+		// 	console.log("ACTION", {
+		// 		type,
+		// 		data,
+		// 	});
+		// }
 
 		if (type === ACTION._Undo) {
 			this.history.undo();
@@ -957,16 +957,16 @@ export class Model extends Exome {
 			return;
 		}
 
-		console.log(
-			"%c SELECT ",
-			"background-color: salmon; color: black; font-weight: bold;",
-			{
-				first: first.key,
-				firstOffset,
-				last: last.key,
-				lastOffset,
-			},
-		);
+		// console.log(
+		// 	"%c SELECT ",
+		// 	"background-color: salmon; color: black; font-weight: bold;",
+		// 	{
+		// 		first: first.key,
+		// 		firstOffset,
+		// 		last: last.key,
+		// 		lastOffset,
+		// 	},
+		// );
 
 		// this._selectSilent(first, firstOffset);
 		this._stack.push(() =>
