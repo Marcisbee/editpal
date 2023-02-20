@@ -262,6 +262,8 @@ li[data-ep-l="ul"][data-ep-i="3"]:before {
   width: 100%;
   padding: 8px 4px;
   background-color: transparent;
+  color: inherit;
+  font-size: 0.8em;
   border: 0;
   text-align: center;
   opacity: 0.5;
