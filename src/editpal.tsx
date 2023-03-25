@@ -5,6 +5,7 @@ import { useLayoutEffect, useRef, useState } from "preact/hooks";
 import type { AnyToken, TextToken } from "./tokens";
 import { ACTION, Model as EditorModel } from "./model";
 import { RenderImage } from "./plugin/image";
+import { FloatingToolbar } from "./floating-toolbar";
 import { Toolbar } from "./toolbar";
 
 import "./app.css";
@@ -349,7 +350,8 @@ export function Editpal({ model }: EditpalProps) {
 				editor: ref,
 			}}
 		>
-			<Toolbar />
+			{/* <Toolbar /> */}
+			<FloatingToolbar />
 
 			<div
 				ref={ref}

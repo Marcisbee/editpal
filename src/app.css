@@ -289,6 +289,50 @@ li[data-ep-l="ul"][data-ep-i="3"]:before {
   font-style: normal;
 }
 
+.e-fl-toolbar {
+  position: fixed;
+  display: block;
+  font-size: 10px;
+  background-color: #353535;
+  transform: translate(-50%, -100%);
+  margin: -10px 0 0 0;
+  z-index: 20;
+  padding: 4px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.e-fl-toolbar button {
+  padding: 8px 11px;
+  border: 0;
+  border-radius: 5px;
+  font-weight: 700;
+  background-color: transparent;
+  color: #ccc;
+  margin-right: 3px;
+  width: 35px;
+  cursor: pointer;
+  vertical-align: top;
+  font-size: 12px;
+}
+
+.e-fl-toolbar button:last-child {
+  margin-right: 0;
+}
+
+.e-fl-toolbar button:hover {
+  background-color: #434343;
+}
+
+.e-fl-toolbar button:active {
+  background-color: #2b2b2b;
+}
+
+.e-fl-toolbar button[data-e-tb-active] {
+  background-color: #2b2b2b;
+  color: orangered;
+}
+
 /* 
 img.ep-todo-capture {
   display: inline-block;

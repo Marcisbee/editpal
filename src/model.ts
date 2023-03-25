@@ -528,7 +528,7 @@ export class Model extends Exome {
 			.filter((a) => a.text);
 	};
 
-	public action = (type: number, data?: string) => {
+	public action = (type: number, data?: any) => {
 		// if (!this.history.locked) {
 		// 	console.log("ACTION", {
 		// 		type,

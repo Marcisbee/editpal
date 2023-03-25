@@ -8,6 +8,9 @@ export class ModelSelection extends Exome {
 
 	public format: Record<string, any> = {};
 
+	public offsetX: number = 0;
+	public offsetY: number = 0;
+
 	constructor(public model: Model) {
 		super();
 	}
@@ -58,5 +61,10 @@ export class ModelSelection extends Exome {
 
 	public setFormat(format: Record<string, any>) {
 		this.format = format;
+	}
+
+	public setOffset(x: number, y: number) {
+		this.offsetX = x;
+		this.offsetY = y;
 	}
 }
