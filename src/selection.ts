@@ -1,6 +1,6 @@
 import { Exome } from "exome";
 
-import { Model } from "./model";
+import type { Model } from "./model";
 
 export class ModelSelection extends Exome {
 	public first: [string, number] = ["0.0", 0];

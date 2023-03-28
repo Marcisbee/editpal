@@ -13,7 +13,7 @@ export function stringSplice(
 	return str.slice(0, start) + (add || "") + str.slice(end);
 }
 
-function getTextNode(id: string) {
+export function getTextNode(id: string) {
 	const element = document.querySelector(`[data-ep="${id}"`);
 	let textNode = element?.childNodes?.[0];
 

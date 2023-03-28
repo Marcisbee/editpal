@@ -6,7 +6,7 @@ import type { AnyToken, TextToken } from "./tokens";
 import { ACTION, Model as EditorModel } from "./model";
 import { RenderImage } from "./plugin/image";
 import { FloatingToolbar } from "./floating-toolbar";
-import { Toolbar } from "./toolbar";
+import { SlashDropdown } from "./slash-dropdown";
 
 import "./app.css";
 
@@ -354,8 +354,8 @@ export function Editpal({ model }: EditpalProps) {
 				editor: ref,
 			}}
 		>
-			{/* <Toolbar /> */}
 			<FloatingToolbar />
+			<SlashDropdown />
 
 			<div
 				ref={ref}
@@ -391,6 +391,11 @@ export function Editpal({ model }: EditpalProps) {
 
 					if (e.key.indexOf("Arrow") === 0) {
 						model.history.batch();
+						return;
+					}
+
+					if (model.slash.isOpen && model.slash.onKey(e.key)) {
+						e.preventDefault();
 						return;
 					}
 

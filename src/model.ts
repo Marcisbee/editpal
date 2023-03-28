@@ -2,6 +2,7 @@ import { Exome } from "exome";
 
 import { HistoryStore } from "./history";
 import { ModelSelection } from "./selection";
+import { Slash } from "./slash";
 import {
 	AnyToken,
 	BlockToken,
@@ -120,6 +121,7 @@ export class Model extends Exome {
 	// 	focusOffset: number;
 	// } | null = null;
 	public selection = new ModelSelection(this);
+	public slash = new Slash(this);
 	public history = new HistoryStore();
 
 	public _idToKey: Record<string, string> = {};

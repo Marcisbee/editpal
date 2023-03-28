@@ -333,6 +333,20 @@ li[data-ep-l="ul"][data-ep-i="3"]:before {
   color: orangered;
 }
 
+.e-fl-drop {
+  position: fixed;
+  display: block;
+  font-size: 10px;
+  width: 220px;
+  background-color: #353535;
+  margin: 0 0 0 0;
+  z-index: 20;
+  padding: 4px;
+  border-radius: 6px;
+  white-space: nowrap;
+  color: #fff;
+}
+
 /* 
 img.ep-todo-capture {
   display: inline-block;
