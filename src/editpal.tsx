@@ -274,6 +274,10 @@ export function Editpal({ model }: EditpalProps) {
 	}
 
 	function onBlur(event) {
+		model.selection.setSelection(
+			...model.selection.first,
+			...model.selection.first,
+		);
 		document.removeEventListener("selectionchange", onSelectionChange);
 		setFocus(increment);
 	}

@@ -1,4 +1,5 @@
 import { h } from "preact";
+import { createPortal } from "preact/compat";
 import { useStore } from "exome/preact";
 import { useContext, useMemo } from "preact/hooks";
 
@@ -7,7 +8,10 @@ import { Toolbar } from "./toolbar";
 
 export function FloatingToolbar() {
 	const { model } = useContext(EditorContext);
-	const { first, last, offsetX, offsetY } = useStore(model.selection);
+	const { first, last, getOffset, getPortal } = useStore(model.selection);
+	const { x, y } = getOffset();
+
+	const portalElement = useMemo(getPortal, [getPortal]);
 
 	const rect = useMemo(() => {
 		const sel = window.getSelection();
@@ -33,16 +37,22 @@ export function FloatingToolbar() {
 		return null;
 	}
 
-	return (
+	const output = (
 		<div
 			className="e-fl-toolbar"
 			onMouseDown={preventDefaultAndStop}
 			style={{
-				left: rect.left + rect.width / 2 - offsetX,
-				top: rect.top - offsetY,
+				left: rect.left + rect.width / 2 - x,
+				top: rect.top - y,
 			}}
 		>
 			<Toolbar />
 		</div>
 	);
+
+	if (portalElement) {
+		return createPortal(output, portalElement);
+	}
+
+	return output;
 }
