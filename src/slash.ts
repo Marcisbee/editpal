@@ -6,7 +6,7 @@ import type { TextToken } from "./tokens";
 import { getTextNode } from "./utils";
 
 function getTextSlice(text: TextToken, end: number) {
-	const chunks = (text.text || "").split(/( )/);
+	const chunks = (text?.text || "").split(/( )/);
 	let i = 0;
 
 	let c: string;
