@@ -1,6 +1,6 @@
 import { useStore } from "exome/preact";
 import { h, createContext, RefObject } from "preact";
-import { useLayoutEffect, useRef, useState } from "preact/hooks";
+import { useContext, useLayoutEffect, useRef, useState } from "preact/hooks";
 
 import type { AnyToken, TextToken } from "./tokens";
 import { ACTION, Model as EditorModel } from "./model";
@@ -27,6 +27,8 @@ function RenderText({ id, props, text, k }: TextToken & { k: string }) {
 }
 
 function RenderItem(item: AnyToken & { k: string }) {
+	const { model } = useContext(EditorContext);
+
 	if (item.type === "h") {
 		const { size, ...style } = item.props || {};
 
@@ -71,7 +73,7 @@ function RenderItem(item: AnyToken & { k: string }) {
 				key={item.id}
 				style={style}
 				data-ep={item.id}
-				data-ep-todo
+				data-ep-todo={done}
 				data-ep-i={indent}
 				// @TODO figure out if this is needed
 				// onKeyDown={(e) => {
@@ -87,9 +89,13 @@ function RenderItem(item: AnyToken & { k: string }) {
 					<input
 						type="checkbox"
 						readOnly
-						checked={done}
+						defaultChecked={done}
 						tabIndex={-1}
 						onMouseDown={preventDefault}
+						onChange={(e) => {
+							item.props.done = (e.target as HTMLInputElement).checked;
+							model.recalculate();
+						}}
 						onFocus={preventDefault}
 					/>
 				</span>

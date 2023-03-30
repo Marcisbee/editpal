@@ -63,6 +63,10 @@ p[data-ep-todo] {
   /* box-shadow: 0 0 0 1px pink; */
 }
 
+[data-ep-todo="true"] {
+  text-decoration: line-through;
+}
+
 [data-ep-todo-check] {
   user-select: none;
   position: absolute;
