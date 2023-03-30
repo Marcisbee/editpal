@@ -159,6 +159,7 @@ li[data-ep-l] {
   padding-left: 30px;
   display: block;
   list-style: none;
+  position: relative;
 }
 
 li[data-ep-l="ol"] {
