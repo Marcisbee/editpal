@@ -86,10 +86,9 @@ function RenderItem(item: AnyToken & { k: string }) {
 				onMouseDown={(e) => e.stopPropagation()}
 			>
 				<RenderMap items={item.children} />
-				<span data-ep-todo-check contentEditable={false}>
+				<label data-ep-todo-check contentEditable={false}>
 					<input
 						type="checkbox"
-						readOnly
 						defaultChecked={done}
 						tabIndex={-1}
 						onMouseDown={preventDefault}
@@ -99,7 +98,20 @@ function RenderItem(item: AnyToken & { k: string }) {
 						}}
 						onFocus={preventDefault}
 					/>
-				</span>
+					<span data-ep-todo-checkbox>
+						{done && (
+							<svg
+								xmlns="http://www.w3.org/2000/svg"
+								width="20"
+								height="14"
+								viewBox="0 0 148 128"
+								fill="none"
+							>
+								<path stroke="#fff" stroke-width="34" d="m13 64 37 39 86-90" />
+							</svg>
+						)}
+					</span>
+				</label>
 			</p>
 		);
 	}
@@ -339,7 +351,7 @@ export function Editpal({ model }: EditpalProps) {
 		e.addEventListener("compositionend", onCompositionEnd);
 		e.addEventListener("focus", onFocus);
 		e.addEventListener("selectstart", onSelectionStart, { once: true });
-		e.addEventListener("mousedown", onSelect);
+		e.addEventListener("mousedown", onSelect, true);
 		e.addEventListener("blur", onBlur);
 		e.addEventListener("drop", onDrop);
 
@@ -348,7 +360,7 @@ export function Editpal({ model }: EditpalProps) {
 			e.removeEventListener("compositionend", onCompositionEnd);
 			e.removeEventListener("focus", onFocus);
 			e.removeEventListener("selectstart", onSelectionStart);
-			e.removeEventListener("mousedown", onSelect);
+			e.removeEventListener("mousedown", onSelect, true);
 			e.removeEventListener("blur", onBlur);
 			e.removeEventListener("drop", onDrop);
 		};

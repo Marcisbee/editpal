@@ -59,7 +59,7 @@ p[data-ep-todo] {
   position: relative;
   /* margin: 0; */
   /* padding: 5px 0; */
-  padding-left: 26px;
+  padding-left: 30px;
   /* box-shadow: 0 0 0 1px pink; */
 }
 
@@ -72,10 +72,40 @@ p[data-ep-todo] {
   position: absolute;
   left: 0;
   top: 0;
+  cursor: pointer;
 }
 
 [data-ep-todo-check] input {
   margin: 5px;
+  position: absolute;
+  visibility: hidden;
+}
+
+[data-ep-todo-checkbox] {
+  margin-top: 1px;
+  background-color: orangered;
+  width: 20px;
+  height: 20px;
+  position: absolute;
+  border-radius: 20px;
+  border: 2px solid transparent;
+}
+
+[data-ep-todo-checkbox]:empty {
+  background-color: transparent;
+  border-color: rgba(0,0,0,0.2);
+}
+
+[data-ep-todo-checkbox]:empty:hover {
+  background-color: transparent;
+  border-color: rgba(0,0,0,0.4);
+}
+
+[data-ep-todo-checkbox] svg {
+  width: 15px;
+  height: 11px;
+  margin: 2px 1px;
+  display: block;
 }
 
 p[data-ep-i="1"],
