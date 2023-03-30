@@ -389,13 +389,13 @@ export function Editpal({ model }: EditpalProps) {
 						return;
 					}
 
-					if (e.key.indexOf("Arrow") === 0) {
-						model.history.batch();
+					if (model.slash.isOpen && model.slash.onKey(e.key)) {
+						e.preventDefault();
 						return;
 					}
 
-					if (model.slash.isOpen && model.slash.onKey(e.key)) {
-						e.preventDefault();
+					if (e.key.indexOf("Arrow") === 0) {
+						model.history.batch();
 						return;
 					}
 

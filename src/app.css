@@ -338,13 +338,31 @@ li[data-ep-l="ul"][data-ep-i="3"]:before {
   display: block;
   font-size: 10px;
   width: 220px;
+  max-height: 150px;
+  overflow-x: hidden;
+  overflow-y: auto;
   background-color: #353535;
   margin: 0 0 0 0;
   z-index: 20;
-  padding: 4px;
+  padding: 6px 0;
   border-radius: 6px;
   white-space: nowrap;
   color: #fff;
+}
+
+.e-fl-drop button {
+  display: block;
+  width: 100%;
+  border: 0;
+  text-align: left;
+  font-size: 15px;
+  background-color: transparent;
+  color: inherit;
+  padding: 7px 10px;
+}
+
+.e-fl-drop button[data-active] {
+  background-color: orangered;
 }
 
 /* 

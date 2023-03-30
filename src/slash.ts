@@ -99,5 +99,13 @@ export class Slash extends Exome {
 		if (key === "Enter") {
 			return true;
 		}
+
+		if (key === "ArrowUp") {
+			return true;
+		}
+
+		if (key === "ArrowDown") {
+			return true;
+		}
 	}
 }
