@@ -73,8 +73,9 @@ function RenderItem(item: AnyToken & { k: string }) {
 				key={item.id}
 				style={style}
 				data-ep={item.id}
-				data-ep-todo={done}
+				data-ep-todo
 				data-ep-i={indent}
+				data-ep-d={done}
 				// @TODO figure out if this is needed
 				// onKeyDown={(e) => {
 				// 	if (e.key.indexOf("Backspace") === 0) {
