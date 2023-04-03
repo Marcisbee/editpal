@@ -8,7 +8,7 @@ import { Toolbar } from "./toolbar";
 
 export function FloatingToolbar() {
 	const { model } = useContext(EditorContext);
-	const { first, last, getOffset, getPortal } = useStore(model.selection);
+	const { focus, first, last, getOffset, getPortal } = useStore(model.selection);
 	const { x, y } = getOffset();
 
 	const portalElement = useMemo(getPortal, [getPortal]);
@@ -34,6 +34,10 @@ export function FloatingToolbar() {
 	}
 
 	if (!rect) {
+		return null;
+	}
+
+	if (!focus) {
 		return null;
 	}
 

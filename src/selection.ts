@@ -3,6 +3,7 @@ import { Exome } from "exome";
 import type { Model } from "./model";
 
 export class ModelSelection extends Exome {
+	public focus = false;
 	public first: [string, number] = ["0.0", 0];
 	public last: [string, number] = this.first;
 
@@ -10,6 +11,10 @@ export class ModelSelection extends Exome {
 
 	constructor(public model: Model) {
 		super();
+	}
+
+	public setFocus(focus: boolean) {
+		this.focus = focus;
 	}
 
 	public setSelection(

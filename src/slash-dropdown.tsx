@@ -84,7 +84,7 @@ export function SlashDropdown() {
 	const {
 		model: { slash, selection, findElement, parent, recalculate },
 	} = useContext(EditorContext);
-	const { getOffset, getPortal } = selection;
+	const { getOffset, getPortal, focus } = useStore(selection);
 	const { isOpen, query } = useStore(slash);
 	const { x, y } = getOffset();
 	const ref = useRef<HTMLDivElement>(null);
@@ -178,6 +178,10 @@ export function SlashDropdown() {
 	}
 
 	if (!filteredOptions.length) {
+		return null;
+	}
+
+	if (!focus) {
 		return null;
 	}
 

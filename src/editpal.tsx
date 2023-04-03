@@ -289,10 +289,12 @@ export function Editpal({ model }: EditpalProps) {
 	}
 
 	function onFocus(event) {
+		model.selection.setFocus(true);
 		onSelectionStart(event);
 	}
 
 	function onBlur(event) {
+		model.selection.setFocus(false);
 		model.selection.setSelection(
 			...model.selection.first,
 			...model.selection.first,
