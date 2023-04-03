@@ -36,27 +36,6 @@ export class ModelSelection extends Exome {
 			return a[0].localeCompare(b[0], undefined, { numeric: true });
 		});
 
-		// Fixes Firefox issue where on double click on word it selects out or range elements
-		if (first[0] !== last[0]) {
-			if (this.model._elements[first[0]]?.text?.length === first[1]) {
-				const f = this.model.nextText(first[0]);
-
-				if (f?.key) {
-					first[0] = f.key;
-					first[1] = 0;
-				}
-			}
-
-			if (last[1] === 0) {
-				const f = this.model.previousText(last[0]);
-
-				if (f?.key) {
-					last[0] = f.key;
-					last[1] = f.text?.length || 0;
-				}
-			}
-		}
-
 		this.first = first;
 		this.last = last;
 	}

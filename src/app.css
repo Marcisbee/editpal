@@ -63,6 +63,10 @@ p[data-ep-todo] {
   /* box-shadow: 0 0 0 1px pink; */
 }
 
+p[data-ep-todo] > span {
+  display: block;
+}
+
 [data-ep-d="true"] {
   text-decoration: line-through;
 }
