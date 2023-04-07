@@ -112,6 +112,9 @@ function handleTab(
 	model.update();
 }
 
+const URL_REGEX =
+	/(https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|www\.[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9]+\.[^\s]{2,}|www\.[a-zA-Z0-9]+\.[^\s]{2,})/;
+
 export class Model extends Exome {
 	public tokens: TokenRoot;
 	// public selection: {
@@ -399,6 +402,14 @@ export class Model extends Exome {
 	private _handleTextTransforms = (element: TextToken, textAdded: string) => {
 		if (textAdded === "D") {
 			element.text = element.text.replace(/\:D/g, "😄");
+			return;
+		}
+
+		// Handle url insertion
+		if (URL_REGEX.test(textAdded)) {
+			const index = element.text.indexOf(textAdded);
+			this.select(element, index, element, index + textAdded.length);
+			this.action(ACTION._FormatAdd, ['url', textAdded]);
 			return;
 		}
 
@@ -886,17 +897,21 @@ export class Model extends Exome {
 
 			this.recalculate();
 
-			if (data && firstKey === lastKey && firstOffset === lastOffset) {
-				this._handleTextTransforms(firstElement, data);
+			if (
+				data &&
+				firstKey === lastKey &&
+				firstOffset === lastOffset &&
+				this._handleTextTransforms(firstElement, data)
+			) {
 				// const firstChild = parent.children[0] as any;
 				// this.select(firstChild, firstChild.text.length);
 				// return;
-				// this.recalculate();
+				this.recalculate();
 				// this._stack.push(() => {
 
 				// 	this.select(parent.children[index], firstText.length);
 				// });
-				// return;
+				return;
 			}
 
 			const correctedChild = parent.children[index] as any;

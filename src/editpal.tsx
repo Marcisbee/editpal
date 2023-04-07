@@ -5,6 +5,7 @@ import { useContext, useLayoutEffect, useRef, useState } from "preact/hooks";
 import type { AnyToken, TextToken } from "./tokens";
 import { ACTION, Model as EditorModel } from "./model";
 import { RenderImage } from "./plugin/image";
+import { RenderUrl } from "./plugin/url";
 import { FloatingToolbar } from "./floating-toolbar";
 import { SlashDropdown } from "./slash-dropdown";
 
@@ -12,7 +13,13 @@ import "./app.css";
 
 export const Model = EditorModel;
 
-function RenderText({ id, props, text, k }: TextToken & { k: string }) {
+function RenderText(item: TextToken & { k: string }) {
+	if (item.props?.url) {
+		return <RenderUrl {...item} key={item.id} />;
+	}
+
+	const { id, props, text, k } = item;
+
 	return (
 		<span
 			// Handle dead key insertion
@@ -120,6 +127,10 @@ function RenderItem(item: AnyToken & { k: string }) {
 		return <RenderImage {...item} key={item.id} />;
 	}
 
+	if (item.type === "url") {
+		return <RenderUrl {...item} key={item.id} />;
+	}
+
 	if (item.type === "t") {
 		return <RenderText {...item} key={item.id} />;
 	}
@@ -202,39 +213,46 @@ export function Editpal({ model }: EditpalProps) {
 			}
 		}
 
-		const anchor = first?.parentElement?.dataset.ep || first?.dataset.ep;
-		const focus = last?.parentElement?.dataset.ep || last?.dataset.ep;
+		try {
+			let anchor = first?.parentElement?.dataset.ep || first?.dataset.ep;
+			let focus = last?.parentElement?.dataset.ep || last?.dataset.ep;
 
-		if (!anchor || !focus) {
-			return;
-		}
+			if (!anchor) {
+				return;
+			}
 
-		let a = model._idToKey[anchor];
-		let f = model._idToKey[focus];
+			if (!focus) {
+				focus = anchor;
+				focusOffset = anchorOffset;
+			}
 
-		selection.setSelection(
-			/\./.test(a) ? a : `${a}.0`,
-			anchorOffset,
-			/\./.test(f) ? f : `${f}.0`,
-			focusOffset,
-		);
+			let a = model._idToKey[anchor];
+			let f = model._idToKey[focus];
 
-		const anchorProps = model.findElement(a).props as Record<string, any>;
-		const focusProps = model.findElement(f).props as Record<string, any>;
+			selection.setSelection(
+				/\./.test(a) ? a : `${a}.0`,
+				anchorOffset,
+				/\./.test(f) ? f : `${f}.0`,
+				focusOffset,
+			);
 
-		// Set formatting for current selection
-		selection.setFormat(
-			Object.entries(anchorProps || {}).reduce<Record<string, any>>(
-				(acc, [key, value]) => {
-					if (focusProps?.[key] === value) {
-						acc[key] = value;
-					}
+			const anchorProps = model.findElement(a).props as Record<string, any>;
+			const focusProps = model.findElement(f).props as Record<string, any>;
 
-					return acc;
-				},
-				{},
-			),
-		);
+			// Set formatting for current selection
+			selection.setFormat(
+				Object.entries(anchorProps || {}).reduce<Record<string, any>>(
+					(acc, [key, value]) => {
+						if (focusProps?.[key] === value) {
+							acc[key] = value;
+						}
+
+						return acc;
+					},
+					{},
+				),
+			);
+		} catch (e) {}
 	}
 
 	function onSelect(event: MouseEvent) {

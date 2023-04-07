@@ -312,6 +312,78 @@ li[data-ep-l="ul"][data-ep-i="3"]:before {
   font-size: 16px;
 }
 
+[data-ep-url] {
+  display: inline;
+  border-radius: 4px;
+  cursor: default;
+  padding: 4px 4px 4px 0;
+  background-color: #ededed;
+  position: relative;
+  user-select: none;
+}
+/* [data-ep-main]:focus-within [data-ep-url][data-ep-s], */
+[data-ep-main]:focus [data-ep-url][data-ep-s] {
+  box-shadow: 0 0 0 2px #98c9ff;
+}
+[data-ep-main] [data-ep-url] > i::before {
+  display: block;
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: transparent;
+  opacity: 0.2;
+  border-radius: inherit;
+}
+[data-ep-main]:focus [data-ep-url][data-ep-s] > i::before {
+  background-color: #98c9ff;
+}
+[data-ep-url]::after {
+  content: attr(data-ep-url);
+  display: inline-block;
+  max-width: 40%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.5em;
+  vertical-align: middle;
+}
+/* [data-ep-url] br {
+  line-height: 0;
+  font-size: 0;
+  color: transparent;
+} */
+[data-ep-url] > span {
+  /* user-select: none; */
+}
+[data-ep-url] > i {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  background-color: #d7d7d7;
+  background-size: auto 100%;
+  background-size: cover;
+  background-position: center;
+  vertical-align: top;
+  margin: 2px 5px 0 2px;
+  color: transparent;
+}
+[data-ep-url] > span > strong {
+  display: block;
+  margin-bottom: 4px;
+}
+[data-ep-url] > span > span {
+  display: block;
+  font-size: 0.9em;
+  white-space: nowrap;
+  height: 1.5em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 [data-debug] {
   box-shadow: 0 0 1px gray;
   line-height: inherit;

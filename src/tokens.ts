@@ -13,6 +13,10 @@ export interface TextToken extends Token {
 	type: "t";
 	text: string;
 }
+export interface UrlToken extends Token {
+	type: "url";
+	src: string;
+}
 export interface ImgToken extends Token {
 	type: "img";
 	src: string;
@@ -48,6 +52,6 @@ interface TodoToken extends Token {
 	children: InlineToken[];
 }
 export type BlockToken = ParagraphToken | HeadingToken | TodoToken | ListToken;
-export type InlineToken = TextToken | ImgToken;
+export type InlineToken = TextToken | ImgToken | UrlToken;
 export type AnyToken = InlineToken | BlockToken;
 export type TokenRoot = BlockToken[];
