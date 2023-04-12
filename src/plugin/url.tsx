@@ -44,7 +44,7 @@ export function RenderUrl(item: TextToken & { k: string }) {
 	return (
 		<span
 			data-ep={id}
-			data-ep-url={text}
+			data-ep-url={props.url}
 			data-ep-s={isSelected || undefined}
 			// If pointerEvents, then this is needed
 			// onMouseDown={isSelected ? undefined : (e) => {
@@ -58,8 +58,10 @@ export function RenderUrl(item: TextToken & { k: string }) {
 						? `url(${JSON.stringify(urlMeta.icon)})`
 						: undefined,
 				}}
+				// contentEditable={false}
 			/>
-			{/* <span contentEditable={false}>{text}</span> */}
+			{/* <span style={{ position: 'absolute' }}><br /></span> */}
+			{/* <span contentEditable={false}>{props.url}</span> */}
 		</span>
 	);
 }

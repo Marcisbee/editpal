@@ -27,6 +27,7 @@ function RenderText(item: TextToken & { k: string }) {
 			style={props}
 			data-ep={id}
 			// data-debug={k}
+			data-t={text ? true : "empty"}
 		>
 			{text.replace(/ /g, "\u00A0") || <br />}
 		</span>
@@ -196,26 +197,47 @@ export function Editpal({ model }: EditpalProps) {
 			return;
 		}
 
+		// if (first?.dataset?.ep && first?.dataset?.['t'] === 'empty' && first?.dataset?.['t'] === last?.dataset?.['t']) {
+		// 	console.log('yep');
+		// 	let a = model._idToKey[first?.dataset?.ep];
+		// 	let f = model._idToKey[first?.dataset?.ep];
+
+		// 	selection.setSelection(
+		// 		/\./.test(a) ? a : `${a}.0`,
+		// 		anchorOffset,
+		// 		/\./.test(f) ? f : `${f}.0`,
+		// 		focusOffset,
+		// 	);
+
+		// 	return;
+		// }
+
 		// Firefox selects parent element not text when double click on text
-		if (first?.dataset?.ep) {
-			const pl = first.childNodes[0].childNodes[0];
-			if (pl) {
-				first = first.childNodes[0].childNodes[0];
-				anchorOffset = 0;
-			}
-		}
-		if (last?.dataset?.ep) {
-			const p = last.childNodes[last.childNodes.length - 1];
-			const pl = p.childNodes[p.childNodes.length - 1];
-			if (p?.childNodes && pl) {
-				last = pl;
-				focusOffset = last.textContent?.length || 0;
-			}
-		}
+		// if (first?.dataset?.ep) {
+		// 	const pl = first.childNodes[0].childNodes[0];
+		// 	if (pl) {
+		// 		first = first.childNodes[0].childNodes[0];
+		// 		anchorOffset = 0;
+		// 	}
+		// }
+		// if (last?.dataset?.ep) {
+		// 	const p = last.childNodes[last.childNodes.length - 1];
+		// 	const pl = p.childNodes[p.childNodes.length - 1];
+		// 	if (p?.childNodes && pl) {
+		// 		last = pl;
+		// 		focusOffset = last.textContent?.length || 0;
+		// 	}
+		// }
 
 		try {
-			let anchor = first?.parentElement?.dataset.ep || first?.dataset.ep;
-			let focus = last?.parentElement?.dataset.ep || last?.dataset.ep;
+			let anchor =
+				first?.dataset?.["t"] === "empty"
+					? first?.dataset.ep
+					: first?.parentElement?.dataset.ep || first?.dataset.ep;
+			let focus =
+				last?.dataset?.["t"] === "empty"
+					? last?.dataset.ep
+					: last?.parentElement?.dataset.ep || last?.dataset.ep;
 
 			if (!anchor) {
 				return;

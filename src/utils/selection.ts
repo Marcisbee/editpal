@@ -82,6 +82,14 @@ export function buildKeys(
 					break check;
 				}
 
+				// Skip url blocks
+				if (
+					(lastChild?.type === "t" && lastChild?.props?.url) ||
+					(child?.type === "t" && child?.props?.url)
+				) {
+					break check;
+				}
+
 				if (!lastChild.text) {
 					tokens.children.splice(i - 1, 1);
 					i -= 1;

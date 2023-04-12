@@ -408,8 +408,10 @@ export class Model extends Exome {
 		// Handle url insertion
 		if (URL_REGEX.test(textAdded)) {
 			const index = element.text.indexOf(textAdded);
-			this.select(element, index, element, index + textAdded.length);
-			this.action(ACTION._FormatAdd, ['url', textAdded]);
+			this.history.lock(() => {
+				this.select(element, index, element, index + textAdded.length);
+				this.action(ACTION._FormatAdd, ["url", textAdded]);
+			});
 			return;
 		}
 
@@ -570,6 +572,26 @@ export class Model extends Exome {
 			last: [lastKey, lastOffset],
 		} = this.selection;
 
+		const ee = this.innerNode(firstKey);
+
+		// @TODO figure out how to delete url
+		if (ee.type === "t" && ee.props?.url) {
+			// delete ee.props.key;
+			delete ee.props.url;
+
+			if (type === ACTION._Key && data) {
+				// const next = this.nextText(ee.key);
+				// this.select(next!, next?.text?.length);
+				this.insert([createTextToken(undefined, data)], ee);
+			} else {
+				const prev = this.previousText(ee.key);
+				this.select(prev!, prev?.text?.length);
+			}
+
+			this.recalculate();
+			return;
+		}
+
 		if (
 			type === ACTION._Remove &&
 			(firstKey !== lastKey || firstOffset !== lastOffset)
@@ -596,13 +618,18 @@ export class Model extends Exome {
 				if (!isFirstChild) {
 					const prev = this.previousText(element.key);
 
-					if (prev) {
+					if (prev && prev.text) {
+						this.recalculate();
 						// const l = prev.text?.length;
 						this.select(this.findElement(prev.key)!, prev.text?.length);
 						// this._stack.push(() => {
 						// 	setCaret(prev.id, l);
 						// });
+						// return;
 					}
+
+					this.select(element, 0);
+					return;
 				} else if (!element.text) {
 					const next = this.nextText(lastKey);
 
@@ -652,6 +679,7 @@ export class Model extends Exome {
 			}
 
 			// if (!isFirstChild) {
+			// 	this.recalculate();
 			//   return;
 			// }
 
@@ -781,7 +809,19 @@ export class Model extends Exome {
 				const el = elements[0];
 				const rest = this._cut(el, firstOffset, lastOffset, newProps);
 
-				this.insert(rest, el);
+				if (key === "url") {
+					rest[0].text = "";
+					this.insert(
+						[
+							createTextToken(undefined, ""),
+							...rest,
+							createTextToken(undefined, ""),
+						],
+						el,
+					);
+				} else {
+					this.insert(rest, el);
+				}
 
 				this.recalculate();
 
