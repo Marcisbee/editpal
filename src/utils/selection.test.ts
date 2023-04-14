@@ -2522,4 +2522,80 @@ test("h(He[<llo ]{[<Wo>]}{rld}!) => h(He<llo {Wo>rld}!)", () => {
 	);
 });
 
+test("h(a[<URL>]b!) => h(a[]b!)", () => {
+	const tokens: AnyToken[] = [
+		{
+			type: "h",
+			id: "a",
+			key: "0",
+			props: {
+				size: 0,
+			},
+			children: [
+				{
+					type: "t",
+					id: "b",
+					key: "0.0",
+					props: {},
+					text: "a",
+				},
+				{
+					type: "t",
+					id: "c",
+					key: "0.1",
+					props: {
+						url: null, // deleted
+					},
+					text: "",
+				},
+				{
+					type: "t",
+					id: "d",
+					key: "0.2",
+					props: {},
+					text: "b!",
+				},
+			],
+		},
+	];
+	const context = buildKeys(tokens, [
+		["0.1", 0],
+		["0.1", 0],
+	]);
+
+	assert.equal(context._keys, {
+		a: "0",
+		b: "0.0",
+	});
+	assert.equal(tokens, [
+		{
+			type: "h",
+			id: "a",
+			key: "0",
+			props: {
+				size: 0,
+			},
+			children: [
+				{
+					type: "t",
+					id: "b",
+					key: "0.0",
+					props: {},
+					text: "ab!",
+				},
+			],
+		},
+	]);
+	assert.snapshot(
+		displaySelection(tokens, context._newSelection),
+		[
+			"ab!",
+			"(0.0 1 - 0.0 1)",
+			// SELECTION
+		]
+			.filter(Boolean)
+			.join("\n"),
+	);
+});
+
 test.run();

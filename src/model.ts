@@ -165,9 +165,9 @@ export class Model extends Exome {
 			return;
 		}
 
-		if (first[0] === last[0] && first[1] === last[1]) {
-			return;
-		}
+		// if (first[0] === last[0] && first[1] === last[1]) {
+		// 	return;
+		// }
 
 		this.select(
 			this.findElement(first[0]!),
@@ -581,35 +581,28 @@ export class Model extends Exome {
 		} = this.selection;
 
 		const f1 = this.innerNode(firstKey);
-		const f2 = this.innerNode(lastKey);
 
-		if (f1.type === "t" && f1.props?.url) {
-			f1.props.url = undefined;
+		const removeFirstUrl = f1.type === "t" && f1.props?.url;
+
+		if (removeFirstUrl && firstKey === lastKey) {
+			f1.props.url = null;
+
 			// @TODO set proper caret position
 			// this will fix:
-			//  - "a[(url)]b" + backspace
-			// 			=> "ab[]"
-			// 			=> "a[]b" (should be)
-			// 
-			//  - "a[(url)]b" + "c"
-			// 			=> "ab[]"
-			// 			=> "ac[]b" (should be)
-			// 
 			//  - "[a(url)]b" + backspace
 			// 			=> "[a]b"
 			// 			=> "[]b" (should be)
-			// 
+			//
 			//  - "a[(url)b]" + backspace
 			// 			=> "a[b]"
 			// 			=> "b[]" (should be)
-			// 
+			//
 			this.recalculate();
-			return;
-		}
 
-		if (f2.type === "t" && f2.props?.url) {
-			f2.props.url = undefined;
-			this.recalculate();
+			if (type === ACTION._Key) {
+				this.action(type, data);
+			}
+
 			return;
 		}
 

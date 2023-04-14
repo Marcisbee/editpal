@@ -82,6 +82,10 @@ export function buildKeys(
 					break check;
 				}
 
+				if (child?.type === "t" && child?.props?.url === null) {
+					p -= 1;
+				}
+
 				// Skip url blocks
 				if (
 					(lastChild?.type === "t" && lastChild?.props?.url) ||
@@ -127,13 +131,14 @@ export function buildKeys(
 		}
 
 		// console.log({
-		// 	start, end
+		// 	start,
+		// 	end,
 		// });
 
 		// @TODO make this in top loop
 		let solves = 0;
 		if (
-			!isCollapsed &&
+			// !isCollapsed &&
 			start != null &&
 			newStart == null &&
 			end != null &&
@@ -168,6 +173,10 @@ export function buildKeys(
 
 				len += child.text?.length || 0;
 			}
+		}
+
+		if (isCollapsed) {
+			context._newSelection[1] = context._newSelection[0];
 		}
 
 		// if (!isCollapsed && end != null && newEnd == null) {
