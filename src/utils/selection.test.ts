@@ -378,6 +378,94 @@ test("h(Hello[ World]!)", () => {
 	);
 });
 
+test("h(a[<URL>]b!)", () => {
+	const tokens: AnyToken[] = [
+		{
+			type: "h",
+			id: "a",
+			key: "",
+			props: {
+				size: 0,
+			},
+			children: [
+				{
+					type: "t",
+					id: "b",
+					key: "",
+					props: {},
+					text: "a",
+				},
+				{
+					type: "t",
+					id: "c",
+					key: "",
+					props: {
+						url: "strike.lv",
+					},
+					text: "",
+				},
+				{
+					type: "t",
+					id: "d",
+					key: "",
+					props: {},
+					text: "b!",
+				},
+			],
+		},
+	];
+	const context = buildKeys(tokens, [
+		["0.1", 0],
+		["0.1", 0],
+	]);
+
+	assert.equal(context._keys, {
+		a: "0",
+		b: "0.0",
+		c: "0.1",
+		d: "0.2",
+	});
+	assert.equal(tokens, [
+		{
+			type: "h",
+			id: "a",
+			key: "0",
+			props: {
+				size: 0,
+			},
+			children: [
+				{
+					type: "t",
+					id: "b",
+					key: "0.0",
+					props: {},
+					text: "a",
+				},
+				{
+					type: "t",
+					id: "c",
+					key: "0.1",
+					props: {
+						url: "strike.lv",
+					},
+					text: "",
+				},
+				{
+					type: "t",
+					id: "d",
+					key: "0.2",
+					props: {},
+					text: "b!",
+				},
+			],
+		},
+	]);
+	assert.snapshot(
+		displaySelection(tokens, context._newSelection),
+		"ab!\n(0.1 0 - 0.1 0)",
+	);
+});
+
 test("h(Hello <Wo>rld!) => h(Hello [<Wo>]rld!)", () => {
 	const tokensAdded: TextToken[] = [
 		{
