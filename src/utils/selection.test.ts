@@ -378,7 +378,7 @@ test("h(Hello[ World]!)", () => {
 	);
 });
 
-test("added style h(Hello <Wo>rld!) => h(Hello [<Wo>]rld!)", () => {
+test("h(Hello <Wo>rld!) => h(Hello [<Wo>]rld!)", () => {
 	const tokensAdded: TextToken[] = [
 		{
 			type: "t",
@@ -475,7 +475,7 @@ test("added style h(Hello <Wo>rld!) => h(Hello [<Wo>]rld!)", () => {
 	);
 });
 
-test("added style v2 h(Hello <Wo>rld!) => h(Hello [<Wo>]rld!)", () => {
+test("v2 h(Hello <Wo>rld!) => h(Hello [<Wo>]rld!)", () => {
 	const tokensAdded: TextToken[] = [
 		{
 			type: "t",
@@ -606,7 +606,7 @@ test("added style v2 h(Hello <Wo>rld!) => h(Hello [<Wo>]rld!)", () => {
 	);
 });
 
-test("added style h(<Hello>[ World]!) => h([<Hello> World]!)", () => {
+test("h(<Hello>[ World]!) => h([<Hello> World]!)", () => {
 	const tokensAdded: TextToken[] = [
 		{
 			type: "t",
@@ -704,7 +704,7 @@ test("added style h(<Hello>[ World]!) => h([<Hello> World]!)", () => {
 	);
 });
 
-test("added style h(Hello[ Wor<ld]!>) => h(Hello[ Wor<ld!>])", () => {
+test("h(Hello[ Wor<ld]!>) => h(Hello[ Wor<ld!>])", () => {
 	const tokensAdded1: TextToken[] = [
 		{
 			type: "t",
@@ -814,7 +814,7 @@ test("added style h(Hello[ Wor<ld]!>) => h(Hello[ Wor<ld!>])", () => {
 	);
 });
 
-test("added style h(He<ll>o[ World]!) => h(He[<ll>]o[ World]!)", () => {
+test("h(He<ll>o[ World]!) => h(He[<ll>]o[ World]!)", () => {
 	const tokensAdded: TextToken[] = [
 		{
 			type: "t",
@@ -945,7 +945,7 @@ test("added style h(He<ll>o[ World]!) => h(He[<ll>]o[ World]!)", () => {
 	);
 });
 
-test("added style h(He<llo>[ World]!) => h(He[<llo> World]!)", () => {
+test("h(He<llo>[ World]!) => h(He[<llo> World]!)", () => {
 	const tokensAdded: TextToken[] = [
 		{
 			type: "t",
@@ -1051,7 +1051,7 @@ test("added style h(He<llo>[ World]!) => h(He[<llo> World]!)", () => {
 	);
 });
 
-test("added style h(<He>llo[ World]!) => h([<He>]llo[ World]!)", () => {
+test("h(<He>llo[ World]!) => h([<He>]llo[ World]!)", () => {
 	const tokensAdded: TextToken[] = [
 		{
 			type: "t",
@@ -1174,7 +1174,7 @@ test("added style h(<He>llo[ World]!) => h([<He>]llo[ World]!)", () => {
 	);
 });
 
-test("added style h(Hello[< Wor>ld]!) => h(Hello< Wor>[ld]!)", () => {
+test("h(Hello[< Wor>ld]!) => h(Hello< Wor>[ld]!)", () => {
 	const tokensAdded: TextToken[] = [
 		{
 			type: "t",
@@ -1287,7 +1287,7 @@ test("added style h(Hello[< Wor>ld]!) => h(Hello< Wor>[ld]!)", () => {
 	);
 });
 
-test("added style h(Hello[< World>]!) => h(Hello< World>!)", () => {
+test("h(Hello[< World>]!) => h(Hello< World>!)", () => {
 	const tokensAdded: TextToken[] = [
 		{
 			type: "t",
@@ -1373,7 +1373,7 @@ test("added style h(Hello[< World>]!) => h(Hello< World>!)", () => {
 	);
 });
 
-test("added style h(Hello[ <Wor>ld]!) => h(Hello[ ]<Wor>[ld]!)", () => {
+test("h(Hello[ <Wor>ld]!) => h(Hello[ ]<Wor>[ld]!)", () => {
 	const tokensAdded: TextToken[] = [
 		{
 			type: "t",
@@ -1503,7 +1503,7 @@ test("added style h(Hello[ <Wor>ld]!) => h(Hello[ ]<Wor>[ld]!)", () => {
 	);
 });
 
-test("added style h(Hello[ <World>]!) => h(Hello[ ]<World>!)", () => {
+test("h(Hello[ <World>]!) => h(Hello[ ]<World>!)", () => {
 	const tokensAdded: TextToken[] = [
 		{
 			type: "t",
@@ -1607,7 +1607,7 @@ test("added style h(Hello[ <World>]!) => h(Hello[ ]<World>!)", () => {
 	);
 });
 
-test("added style h(<Hello[ World]!>) => h([<Hello World!>])", () => {
+test("h(<Hello[ World]!>) => h([<Hello World!>])", () => {
 	const tokens: AnyToken[] = [
 		{
 			type: "h",
@@ -1689,7 +1689,7 @@ test("added style h(<Hello[ World]!>) => h([<Hello World!>])", () => {
 	);
 });
 
-test("added style h(<Hello[ World]!> ..or Mars!) => h([<Hello World!>] ..or Mars!)", () => {
+test("h(<Hello[ World]!> ..or Mars!) => h([<Hello World!>] ..or Mars!)", () => {
 	const tokensAdded1: TextToken[] = [
 		{
 			type: "t",
@@ -1806,7 +1806,7 @@ test("added style h(<Hello[ World]!> ..or Mars!) => h([<Hello World!>] ..or Mars
 	);
 });
 
-test("added style h(H<ello[ World]!>) => h(H[<ello World!>])", () => {
+test("h(H<ello[ World]!>) => h(H[<ello World!>])", () => {
 	const tokensAdded: TextToken[] = [
 		{
 			type: "t",
@@ -1906,7 +1906,7 @@ test("added style h(H<ello[ World]!>) => h(H[<ello World!>])", () => {
 	);
 });
 
-test("added style h(H<ello[ World]!> ..or Mars!) => h(H[<ello World!>] ..or Mars!)", () => {
+test("h(H<ello[ World]!> ..or Mars!) => h(H[<ello World!>] ..or Mars!)", () => {
 	const tokensAdded1: TextToken[] = [
 		{
 			type: "t",
@@ -2024,7 +2024,7 @@ test("added style h(H<ello[ World]!> ..or Mars!) => h(H[<ello World!>] ..or Mars
 	);
 });
 
-test("added style h(Hello< [Earth] and [Mars] >from Me!) => h(Hello[< Earth and Mars >]from Me!)", () => {
+test("h(Hello< [Earth] and [Mars] >from Me!) => h(Hello[< Earth and Mars >]from Me!)", () => {
 	const tokensAdded1: TextToken[] = [
 		{
 			type: "t",
@@ -2160,7 +2160,7 @@ test("added style h(Hello< [Earth] and [Mars] >from Me!) => h(Hello[< Earth and 
 	);
 });
 
-test("added style h(He<llo {Wo>rld}!) => h(He[<llo ]{[<Wo>]}{rld}!)", () => {
+test("h(He<llo {Wo>rld}!) => h(He[<llo ]{[<Wo>]}{rld}!)", () => {
 	const tokensAdded1: TextToken[] = [
 		{
 			type: "t",
@@ -2300,7 +2300,7 @@ test("added style h(He<llo {Wo>rld}!) => h(He[<llo ]{[<Wo>]}{rld}!)", () => {
 	);
 });
 
-test("added style h(He[<llo ]{[<Wo>]}{rld}!) => h(He<llo {Wo>rld}!)", () => {
+test("h(He[<llo ]{[<Wo>]}{rld}!) => h(He<llo {Wo>rld}!)", () => {
 	const tokensAdded1: TextToken[] = [
 		{
 			type: "t",
