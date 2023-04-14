@@ -535,7 +535,6 @@ export class Model extends Exome {
 			createTextToken(
 				{
 					...el.props,
-					url: undefined,
 					...additionalProps,
 				},
 				middle,
@@ -584,8 +583,17 @@ export class Model extends Exome {
 
 		const removeFirstUrl = f1.type === "t" && f1.props?.url;
 
-		if (removeFirstUrl && firstKey === lastKey) {
-			f1.props.url = null;
+		if (
+			removeFirstUrl &&
+			firstKey === lastKey &&
+			[
+				ACTION._Tab,
+				ACTION._ShiftTab,
+				ACTION._FormatRemove,
+				ACTION._FormatAdd,
+			].indexOf(type) === -1
+		) {
+			f1.props.url = undefined;
 
 			// @TODO set proper caret position
 			// this will fix:
@@ -599,7 +607,7 @@ export class Model extends Exome {
 			//
 			this.recalculate();
 
-			if (type === ACTION._Key) {
+			if ([ACTION._Key, ACTION._Enter, ACTION._Compose].indexOf(type) > -1) {
 				this.action(type, data);
 			}
 
@@ -870,6 +878,7 @@ export class Model extends Exome {
 		// Handle new text being added after Dead key
 		if (type === ACTION._Compose && data != null) {
 			let el = this.innerText(firstKey)!;
+			el.props.url = undefined;
 
 			if (!el) {
 				return;
@@ -948,6 +957,9 @@ export class Model extends Exome {
 
 			const prev = parent.children[index - 1];
 			const previousLength = (prev as any)?.text?.length || 0;
+
+			firstElement.props.url = undefined;
+			lastElement.props.url = undefined;
 
 			this.recalculate();
 

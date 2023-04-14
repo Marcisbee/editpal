@@ -2544,7 +2544,7 @@ test("h(a[<URL>]b!) => h(a[]b!)", () => {
 					id: "c",
 					key: "0.1",
 					props: {
-						url: null, // deleted
+						url: undefined, // deleted
 					},
 					text: "",
 				},

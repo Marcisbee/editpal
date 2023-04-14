@@ -82,9 +82,9 @@ export function buildKeys(
 					break check;
 				}
 
-				if (child?.type === "t" && child?.props?.url === null) {
-					p -= 1;
-				}
+				// if (child?.type === "t" && child?.props?.url === null) {
+				// 	p -= 1;
+				// }
 
 				// Skip url blocks
 				if (
