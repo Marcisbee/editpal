@@ -2598,4 +2598,80 @@ test("h(a[<URL>]b!) => h(a[]b!)", () => {
 	);
 });
 
+test("h([a<URL>]b!) => h([]b!)", () => {
+	const tokens: AnyToken[] = [
+		{
+			type: "h",
+			id: "a",
+			key: "0",
+			props: {
+				size: 0,
+			},
+			children: [
+				{
+					type: "t",
+					id: "b",
+					key: "0.0",
+					props: {},
+					text: "",
+				},
+				{
+					type: "t",
+					id: "c",
+					key: "0.1",
+					props: {
+						url: undefined, // deleted
+					},
+					text: "",
+				},
+				{
+					type: "t",
+					id: "d",
+					key: "0.2",
+					props: {},
+					text: "b!",
+				},
+			],
+		},
+	];
+	const context = buildKeys(tokens, [
+		["0.0", 0],
+		["0.1", 0],
+	]);
+
+	assert.equal(context._keys, {
+		a: "0",
+		d: "0.0",
+	});
+	assert.equal(tokens, [
+		{
+			type: "h",
+			id: "a",
+			key: "0",
+			props: {
+				size: 0,
+			},
+			children: [
+				{
+					type: "t",
+					id: "d",
+					key: "0.0",
+					props: {},
+					text: "b!",
+				},
+			],
+		},
+	]);
+	assert.snapshot(
+		displaySelection(tokens, context._newSelection),
+		[
+			"b!",
+			"(0.0 0 - 0.0 0)",
+			// SELECTION
+		]
+			.filter(Boolean)
+			.join("\n"),
+	);
+});
+
 test.run();
