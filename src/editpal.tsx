@@ -428,7 +428,11 @@ export function Editpal({ model }: EditpalProps) {
 
 					const text = e.clipboardData.getData("text");
 
+					model.history.batch();
+
 					action(ACTION._Key, text);
+
+					model.history.batch();
 				}}
 				onKeyDown={(e) => {
 					if ((e.metaKey || e.ctrlKey) && (e.key === "z" || e.key === "Z")) {

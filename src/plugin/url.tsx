@@ -19,20 +19,23 @@ export function RenderUrl(item: TextToken & { k: string }) {
 			return;
 		}
 
-		fetch("http://localhost:8082/v1/meta/url", {
-			method: "post",
-			body: JSON.stringify({
-				url: props.url,
-			}),
-			headers: {
-				"Content-Type": "application/json",
-			},
-		})
-			.then((res) => res.json())
-			.then((data) => {
-				setUrlMeta(data || {});
-				item.meta = data || {};
-			});
+		setUrlMeta(item.meta = {
+			icon: 'https://strike.lv/favicon.ico',
+		});
+
+		// fetch("http://localhost:8082/v1/meta/url", {
+		// 	method: "post",
+		// 	body: JSON.stringify({
+		// 		url: props.url,
+		// 	}),
+		// 	headers: {
+		// 		"Content-Type": "application/json",
+		// 	},
+		// })
+		// 	.then((res) => res.json())
+		// 	.then((data) => {
+		// 		setUrlMeta(item.meta = data || {});
+		// 	});
 	}, [props.url]);
 
 	const isSelected =

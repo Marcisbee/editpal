@@ -411,6 +411,13 @@ export class Model extends Exome {
 			this.history.lock(() => {
 				this.select(element, index, element, index + textAdded.length);
 				this.action(ACTION._FormatAdd, ["url", textAdded]);
+
+				// Place cursor after url
+				requestAnimationFrame(() => {
+					const urlElement = this.nextText(element.key)!;
+					const nextElement = this.nextText(urlElement.key)!;
+					this.select(nextElement, 0);
+				});
 			});
 			return;
 		}
@@ -528,6 +535,7 @@ export class Model extends Exome {
 			createTextToken(
 				{
 					...el.props,
+					url: undefined,
 					...additionalProps,
 				},
 				middle,
@@ -572,22 +580,35 @@ export class Model extends Exome {
 			last: [lastKey, lastOffset],
 		} = this.selection;
 
-		const ee = this.innerNode(firstKey);
+		const f1 = this.innerNode(firstKey);
+		const f2 = this.innerNode(lastKey);
 
-		// @TODO figure out how to delete url
-		if (ee.type === "t" && ee.props?.url) {
-			// delete ee.props.key;
-			delete ee.props.url;
+		if (f1.type === "t" && f1.props?.url) {
+			f1.props.url = undefined;
+			// @TODO set proper caret position
+			// this will fix:
+			//  - "a[(url)]b" + backspace
+			// 			=> "ab[]"
+			// 			=> "a[]b" (should be)
+			// 
+			//  - "a[(url)]b" + "c"
+			// 			=> "ab[]"
+			// 			=> "ac[]b" (should be)
+			// 
+			//  - "[a(url)]b" + backspace
+			// 			=> "[a]b"
+			// 			=> "[]b" (should be)
+			// 
+			//  - "a[(url)b]" + backspace
+			// 			=> "a[b]"
+			// 			=> "b[]" (should be)
+			// 
+			this.recalculate();
+			return;
+		}
 
-			if (type === ACTION._Key && data) {
-				// const next = this.nextText(ee.key);
-				// this.select(next!, next?.text?.length);
-				this.insert([createTextToken(undefined, data)], ee);
-			} else {
-				const prev = this.previousText(ee.key);
-				this.select(prev!, prev?.text?.length);
-			}
-
+		if (f2.type === "t" && f2.props?.url) {
+			f2.props.url = undefined;
 			this.recalculate();
 			return;
 		}
