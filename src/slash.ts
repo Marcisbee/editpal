@@ -1,5 +1,4 @@
-import { Exome } from "exome";
-import { subscribe } from "exome/subscribe";
+import { Exome, subscribe } from "exome";
 
 import type { Model } from "./model";
 import type { TextToken } from "./tokens";

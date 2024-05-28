@@ -11,15 +11,15 @@
     "test": "uvu -r tsm src test.ts"
   },
   "dependencies": {
-    "exome": "^1.5.4",
-    "preact": "^10.11.3",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "exome": "^2.4.3",
+    "preact": "^10.22.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@types/react": "^18.0.19",
     "@types/react-dom": "^18.0.6",
-    "esbuild": "^0.17.2",
+    "esbuild": "^0.21.4",
     "rome": "^12.0.0",
     "tsm": "^2.3.0",
     "typescript": "^5.0.2",
