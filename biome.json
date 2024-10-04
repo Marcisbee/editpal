@@ -1,0 +1,30 @@
+{
+	"$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"recommended": true,
+			"suspicious": {
+				"noExplicitAny": "off",
+				"useValidTypeof": "off",
+				"noAssignInExpressions": "off",
+				"noPrototypeBuiltins": "off",
+				"noConfusingVoidType": "off"
+			},
+			"complexity": {
+				"noForEach": "off"
+			},
+			"performance": {
+				"noDelete": "off"
+			},
+			"style": {
+				"noNonNullAssertion": "off",
+				"useTemplate": "off",
+				"noCommaOperator": "off"
+			},
+			"correctness": {
+				"noConstructorReturn": "off"
+			}
+		}
+	}
+}

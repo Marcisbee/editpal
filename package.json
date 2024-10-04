@@ -17,10 +17,10 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@biomejs/biome": "^1.9.3",
     "@types/react": "^18.0.19",
     "@types/react-dom": "^18.0.6",
     "esbuild": "^0.21.4",
-    "rome": "^12.0.0",
     "tsm": "^2.3.0",
     "typescript": "^5.0.2",
     "uvu": "^0.5.6"
