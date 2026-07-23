@@ -10,72 +10,72 @@ import {
 	useState,
 } from "preact/hooks";
 
-import { EditorContext, preventDefaultAndStop } from "./editpal";
-import { Slash } from "./slash";
-import type { BlockToken, TextToken } from "./tokens";
+import { EditorContext, preventDefaultAndStop } from "./editpal.tsx";
+import { Slash } from "./slash.ts";
+import type { BlockToken, TextToken } from "./tokens.ts";
+import { setBlockType } from "./tokens.ts";
+
+function getIndent(token: BlockToken): number {
+	return "indent" in token.props ? token.props.indent ?? 0 : 0;
+}
 
 const slashOptions = [
 	{
 		label: "title",
 		action(parent: BlockToken, child: TextToken, query: string) {
-			parent.type = "h" as any;
 			child.text = child.text
 				.replace(` /${query}`, "")
 				.replace(`/${query}`, "");
-			parent.props = {
+			setBlockType(parent, "h", {
 				size: 1,
-			};
+			});
 		},
 	},
 	{
 		label: "sub title",
 		action(parent: BlockToken, child: TextToken, query: string) {
-			parent.type = "h" as any;
 			child.text = child.text
 				.replace(` /${query}`, "")
 				.replace(`/${query}`, "");
-			parent.props = {
+			setBlockType(parent, "h", {
 				size: 2,
-			};
+			});
 		},
 	},
 	{
 		label: "todo",
 		action(parent: BlockToken, child: TextToken, query: string) {
-			parent.type = "todo" as any;
 			child.text = child.text
 				.replace(` /${query}`, "")
 				.replace(`/${query}`, "");
-			parent.props = {
-				indent: parent.props?.indent || 0,
+			setBlockType(parent, "todo", {
+				indent: getIndent(parent),
 				done: false,
-			};
+			});
 		},
 	},
 	{
 		label: "unordered list",
 		action(parent: BlockToken, child: TextToken, query: string) {
-			parent.type = "l" as any;
 			child.text = child.text
 				.replace(` /${query}`, "")
 				.replace(`/${query}`, "");
-			parent.props = {
+			setBlockType(parent, "l", {
 				type: "ul",
-				indent: parent.props?.indent || 0,
-			};
+				indent: getIndent(parent),
+			});
 		},
 	},
 	{
 		label: "ordered list",
 		action(parent: BlockToken, child: TextToken, query: string) {
-			parent.type = "l" as any;
 			child.text = child.text
 				.replace(` /${query}`, "")
 				.replace(`/${query}`, "");
-			parent.props = {
+			setBlockType(parent, "l", {
 				type: "ol",
-				indent: parent.props?.indent || 0,
-			};
+				indent: getIndent(parent),
+			});
 		},
 	},
 ];
@@ -197,6 +197,7 @@ export function SlashDropdown() {
 		>
 			{filteredOptions.map(({ label, action }, index) => (
 				<button
+					type="button"
 					key={label}
 					onMouseEnter={() => setActiveIndex(index)}
 					onClick={() => runAction(action)}

@@ -1,4 +1,4 @@
-import type { AnyToken } from "./tokens";
+import type { AnyToken } from "./tokens.ts";
 
 export function ranID() {
 	return Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
@@ -33,7 +33,7 @@ export function setCaret(
 	last: string = first,
 	lastOffset: number = firstOffset,
 ) {
-	const sel = window.getSelection();
+	const sel = globalThis.getSelection();
 
 	if (!sel) {
 		return;

@@ -1,13 +1,14 @@
 import { useStore } from "exome/preact";
-import { h, createContext, RefObject } from "preact";
+import { createContext, h } from "preact";
+import type { RefObject } from "preact";
 import { useContext, useLayoutEffect, useRef, useState } from "preact/hooks";
 
-import type { AnyToken, TextToken } from "./tokens";
-import { ACTION, Model as EditorModel } from "./model";
-import { RenderImage } from "./plugin/image";
-import { RenderUrl } from "./plugin/url";
-import { FloatingToolbar } from "./floating-toolbar";
-import { SlashDropdown } from "./slash-dropdown";
+import type { AnyToken, TextToken } from "./tokens.ts";
+import { ACTION, Model as EditorModel } from "./model.ts";
+import { RenderImage } from "./plugin/image.tsx";
+import { RenderUrl } from "./plugin/url.tsx";
+import { FloatingToolbar } from "./floating-toolbar.tsx";
+import { SlashDropdown } from "./slash-dropdown.tsx";
 
 import "./app.css";
 
@@ -149,8 +150,12 @@ function RenderMap({ items }: RenderMapProps) {
 	}
 
 	return items.map((item) => (
-		<RenderItem {...item} k={item.key} key={item.id} />
-	)) as unknown as JSX.Element;
+		<RenderItem
+			{...item}
+			k={item.key}
+			key={item.id}
+		/>
+	));
 }
 
 // rome-ignore lint/suspicious/noExplicitAny: <explanation>
@@ -230,14 +235,14 @@ export function Editpal({ model }: EditpalProps) {
 		// }
 
 		try {
-			let anchor =
-				first?.dataset?.["t"] === "empty"
-					? first?.dataset.ep
-					: first?.parentElement?.dataset.ep || first?.dataset.ep;
-			let focus =
-				last?.dataset?.["t"] === "empty"
-					? last?.dataset.ep
-					: last?.parentElement?.dataset.ep || last?.dataset.ep;
+			const firstElement = first instanceof HTMLElement
+				? first
+				: first.parentElement;
+			const lastElement = last instanceof HTMLElement
+				? last
+				: last.parentElement;
+			const anchor = firstElement?.dataset.ep;
+			let focus = lastElement?.dataset.ep;
 
 			if (!anchor) {
 				return;
@@ -248,8 +253,8 @@ export function Editpal({ model }: EditpalProps) {
 				focusOffset = anchorOffset;
 			}
 
-			let a = model._idToKey[anchor];
-			let f = model._idToKey[focus];
+			const a = model._idToKey[anchor];
+			const f = model._idToKey[focus];
 
 			selection.setSelection(
 				/\./.test(a) ? a : `${a}.0`,
@@ -284,12 +289,20 @@ export function Editpal({ model }: EditpalProps) {
 		if (document.caretRangeFromPoint) {
 			// edge, chrome, android
 			range = document.caretRangeFromPoint(event.clientX, event.clientY);
-		} else {
+		} else if (document.caretPositionFromPoint) {
 			// firefox
-			const pos = [event.rangeParent, event.rangeOffset] as const;
+			const position = document.caretPositionFromPoint(
+				event.clientX,
+				event.clientY,
+			);
+			if (!position) {
+				return;
+			}
 			range = document.createRange();
-			range.setStart(...pos);
-			range.setEnd(...pos);
+			range.setStart(position.offsetNode, position.offset);
+			range.setEnd(position.offsetNode, position.offset);
+		} else {
+			return;
 		}
 
 		if (!range) {
@@ -307,11 +320,11 @@ export function Editpal({ model }: EditpalProps) {
 	}
 
 	// Arrow keys doesn't update selection in FireFox
-	function onSelectionStart(event) {
+	function onSelectionStart() {
 		document.addEventListener("selectionchange", onSelectionChange);
 	}
 
-	function onSelectionChange(event) {
+	function onSelectionChange() {
 		const selection = document.getSelection();
 
 		// console.log("SELEEEECT", selection);
@@ -328,12 +341,12 @@ export function Editpal({ model }: EditpalProps) {
 		);
 	}
 
-	function onFocus(event) {
+	function onFocus() {
 		model.selection.setFocus(true);
-		onSelectionStart(event);
+		onSelectionStart();
 	}
 
-	function onBlur(event) {
+	function onBlur() {
 		model.selection.setFocus(false);
 		model.selection.setSelection(
 			...model.selection.first,
@@ -366,7 +379,7 @@ export function Editpal({ model }: EditpalProps) {
 		const fn = () => {
 			model._isComposing = false;
 			action(ACTION._Compose, e.data);
-			onSelectionChange(e);
+			onSelectionChange();
 			setReload(increment);
 		};
 
@@ -426,7 +439,7 @@ export function Editpal({ model }: EditpalProps) {
 				onPaste={(e) => {
 					preventDefaultAndStop(e);
 
-					const text = e.clipboardData.getData("text");
+					const text = e.clipboardData?.getData("text") ?? "";
 
 					model.history.batch();
 

@@ -1,8 +1,8 @@
 import { Exome, subscribe } from "exome";
 
-import type { Model } from "./model";
-import type { TextToken } from "./tokens";
-import { getTextNode } from "./utils";
+import type { Model } from "./model.ts";
+import type { TextToken } from "./tokens.ts";
+import { getTextNode } from "./utils.ts";
 
 function getTextSlice(text: TextToken, end: number) {
 	const chunks = (text?.text || "").split(/( )/);

@@ -1,6 +1,6 @@
 import { Exome } from "exome";
 
-import type { Model } from "./model";
+import type { Model } from "./model.ts";
 
 export class ModelSelection extends Exome {
 	public focus = false;

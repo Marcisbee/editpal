@@ -3,18 +3,20 @@ import { createPortal } from "preact/compat";
 import { useStore } from "exome/preact";
 import { useContext, useMemo } from "preact/hooks";
 
-import { EditorContext, preventDefaultAndStop } from "./editpal";
-import { Toolbar } from "./toolbar";
+import { EditorContext, preventDefaultAndStop } from "./editpal.tsx";
+import { Toolbar } from "./toolbar.tsx";
 
 export function FloatingToolbar() {
 	const { model } = useContext(EditorContext);
-	const { focus, first, last, getOffset, getPortal } = useStore(model.selection);
+	const { focus, first, last, getOffset, getPortal } = useStore(
+		model.selection,
+	);
 	const { x, y } = getOffset();
 
 	const portalElement = useMemo(getPortal, [getPortal]);
 
 	const rect = useMemo(() => {
-		const sel = window.getSelection();
+		const sel = globalThis.getSelection();
 
 		if (!sel) {
 			return null;

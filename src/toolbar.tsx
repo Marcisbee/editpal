@@ -2,8 +2,8 @@ import { useStore } from "exome/preact";
 import { h } from "preact";
 import { useContext } from "preact/hooks";
 
-import { EditorContext, preventDefaultAndStop } from "./editpal";
-import { ACTION } from "./model";
+import { EditorContext, preventDefaultAndStop } from "./editpal.tsx";
+import { ACTION } from "./model.ts";
 
 export function Toolbar() {
 	const { model } = useContext(EditorContext);
@@ -18,10 +18,9 @@ export function Toolbar() {
 				onMouseDown={preventDefaultAndStop}
 				onClick={(e) => {
 					preventDefaultAndStop(e);
-					const type =
-						format.fontWeight === "bold"
-							? ACTION._FormatRemove
-							: ACTION._FormatAdd;
+					const type = format.fontWeight === "bold"
+						? ACTION._FormatRemove
+						: ACTION._FormatAdd;
 					action(type, ["fontWeight", "bold"]);
 				}}
 			>
@@ -33,10 +32,9 @@ export function Toolbar() {
 				onMouseDown={preventDefaultAndStop}
 				onClick={(e) => {
 					preventDefaultAndStop(e);
-					const type =
-						format.fontStyle === "italic"
-							? ACTION._FormatRemove
-							: ACTION._FormatAdd;
+					const type = format.fontStyle === "italic"
+						? ACTION._FormatRemove
+						: ACTION._FormatAdd;
 					action(type, ["fontStyle", "italic"]);
 				}}
 			>
@@ -44,16 +42,15 @@ export function Toolbar() {
 			</button>
 			<button
 				type="button"
-				data-e-tb-active={
-					format.textDecoration === "underline" ? true : undefined
-				}
+				data-e-tb-active={format.textDecoration === "underline"
+					? true
+					: undefined}
 				onMouseDown={preventDefaultAndStop}
 				onClick={(e) => {
 					preventDefaultAndStop(e);
-					const type =
-						format.textDecoration === "underline"
-							? ACTION._FormatRemove
-							: ACTION._FormatAdd;
+					const type = format.textDecoration === "underline"
+						? ACTION._FormatRemove
+						: ACTION._FormatAdd;
 					action(type, ["textDecoration", "underline"]);
 				}}
 			>
@@ -65,10 +62,9 @@ export function Toolbar() {
 				onMouseDown={preventDefaultAndStop}
 				onClick={(e) => {
 					preventDefaultAndStop(e);
-					const type =
-						format.color === "orangered"
-							? ACTION._FormatRemove
-							: ACTION._FormatAdd;
+					const type = format.color === "orangered"
+						? ACTION._FormatRemove
+						: ACTION._FormatAdd;
 					action(type, ["color", "orangered"]);
 				}}
 			>

@@ -1,11 +1,10 @@
-import { test } from "uvu";
-import * as assert from "uvu/assert";
+import { assertEquals } from "@std/assert";
 
-import type { AnyToken, TextToken } from "../tokens";
+import type { BlockToken, TextToken } from "../tokens.ts";
 
-import { buildKeys, type BuildKeysSelection } from "./selection";
+import { buildKeys, type BuildKeysSelection } from "./selection.ts";
 
-function displaySelection(tokens: AnyToken[], selection: BuildKeysSelection) {
+function displaySelection(tokens: BlockToken[], selection: BuildKeysSelection) {
 	// console.log([selection[0].join(" "), selection[1].join(" ")].join(" - "));
 
 	// Sort focus and anchor to match browser behavior
@@ -18,7 +17,8 @@ function displaySelection(tokens: AnyToken[], selection: BuildKeysSelection) {
 		.map((a) => parseInt(a, 10)) || [0, 0];
 	const firstOffset = selection[0][1] || 0;
 	const lastChunk = selection[1][0]?.split(".").map((a) => parseInt(a, 10)) || [
-		0, 0,
+		0,
+		0,
 	];
 	const lastOffset = selection[1][1] || 0;
 
@@ -34,13 +34,15 @@ function displaySelection(tokens: AnyToken[], selection: BuildKeysSelection) {
 
 			const children = token.children
 				.map((child, childIndex) => {
+					const text = child.type === "t" ? child.text : "";
+
 					if (selectionIsRange) {
 						const lastSize =
 							lastChunk[0] === parentIndex && lastChunk[1] === childIndex
 								? lastOffset
-								: child.text.length;
+								: text.length;
 
-						let leftover = child.text.length;
+						let leftover = text.length;
 
 						// if (lastChunk[1] === childIndex) {
 						// 	range += "^".repeat(leftover);
@@ -89,7 +91,7 @@ function displaySelection(tokens: AnyToken[], selection: BuildKeysSelection) {
 						}
 					}
 
-					return child.text;
+					return text;
 				})
 				.join("");
 
@@ -97,17 +99,19 @@ function displaySelection(tokens: AnyToken[], selection: BuildKeysSelection) {
 		})
 		.join("\n");
 
-	return `${textLines}(${[selection[0].join(" "), selection[1].join(" ")].join(
-		" - ",
-	)})`;
+	return `${textLines}(${
+		[selection[0].join(" "), selection[1].join(" ")].join(
+			" - ",
+		)
+	})`;
 }
 
 // Selection: <...>
 // Bold format: [...]
 // Italic format: {...}
 
-test("empty", () => {
-	assert.equal(
+Deno.test("empty", () => {
+	assertEquals(
 		buildKeys(
 			[],
 			[
@@ -126,8 +130,8 @@ test("empty", () => {
 	);
 });
 
-test("h", () => {
-	const tokens: AnyToken[] = [
+Deno.test("h", () => {
+	const tokens: BlockToken[] = [
 		{
 			type: "h",
 			id: "a",
@@ -143,10 +147,10 @@ test("h", () => {
 		["0.0", 0],
 	]);
 
-	assert.equal(context._keys, {
+	assertEquals(context._keys, {
 		a: "0",
 	});
-	assert.equal(tokens, [
+	assertEquals(tokens, [
 		{
 			type: "h",
 			id: "a",
@@ -157,7 +161,7 @@ test("h", () => {
 			children: [],
 		},
 	]);
-	assert.snapshot(
+	assertEquals(
 		displaySelection(tokens, context._newSelection),
 		"\n(0.0 0 - 0.0 0)",
 	);
@@ -175,8 +179,8 @@ test("h", () => {
 // 	return letter;
 // }
 
-test("h,t", () => {
-	const tokens: AnyToken[] = [
+Deno.test("h,t", () => {
+	const tokens: BlockToken[] = [
 		{
 			type: "h",
 			id: "a",
@@ -200,11 +204,11 @@ test("h,t", () => {
 		["0.0", 0],
 	]);
 
-	assert.equal(context._keys, {
+	assertEquals(context._keys, {
 		a: "0",
 		b: "0.0",
 	});
-	assert.equal(tokens, [
+	assertEquals(tokens, [
 		{
 			type: "h",
 			id: "a",
@@ -223,14 +227,14 @@ test("h,t", () => {
 			],
 		},
 	]);
-	assert.snapshot(
+	assertEquals(
 		displaySelection(tokens, context._newSelection),
 		"Hello\n(0.0 0 - 0.0 0)",
 	);
 });
 
-test("h(Hello World)", () => {
-	const tokens: AnyToken[] = [
+Deno.test("h(Hello World)", () => {
+	const tokens: BlockToken[] = [
 		{
 			type: "h",
 			id: "a",
@@ -261,11 +265,11 @@ test("h(Hello World)", () => {
 		["0.0", 0],
 	]);
 
-	assert.equal(context._keys, {
+	assertEquals(context._keys, {
 		a: "0",
 		b: "0.0",
 	});
-	assert.equal(tokens, [
+	assertEquals(tokens, [
 		{
 			type: "h",
 			id: "a",
@@ -284,14 +288,14 @@ test("h(Hello World)", () => {
 			],
 		},
 	]);
-	assert.snapshot(
+	assertEquals(
 		displaySelection(tokens, context._newSelection),
 		"Hello World\n(0.0 0 - 0.0 0)",
 	);
 });
 
-test("h(Hello[ World]!)", () => {
-	const tokens: AnyToken[] = [
+Deno.test("h(Hello[ World]!)", () => {
+	const tokens: BlockToken[] = [
 		{
 			type: "h",
 			id: "a",
@@ -331,13 +335,13 @@ test("h(Hello[ World]!)", () => {
 		["0.0", 0],
 	]);
 
-	assert.equal(context._keys, {
+	assertEquals(context._keys, {
 		a: "0",
 		b: "0.0",
 		c: "0.1",
 		d: "0.2",
 	});
-	assert.equal(tokens, [
+	assertEquals(tokens, [
 		{
 			type: "h",
 			id: "a",
@@ -372,14 +376,14 @@ test("h(Hello[ World]!)", () => {
 			],
 		},
 	]);
-	assert.snapshot(
+	assertEquals(
 		displaySelection(tokens, context._newSelection),
 		"Hello World!\n(0.0 0 - 0.0 0)",
 	);
 });
 
-test("h(a[<URL>]b!)", () => {
-	const tokens: AnyToken[] = [
+Deno.test("h(a[<URL>]b!)", () => {
+	const tokens: BlockToken[] = [
 		{
 			type: "h",
 			id: "a",
@@ -419,13 +423,13 @@ test("h(a[<URL>]b!)", () => {
 		["0.1", 0],
 	]);
 
-	assert.equal(context._keys, {
+	assertEquals(context._keys, {
 		a: "0",
 		b: "0.0",
 		c: "0.1",
 		d: "0.2",
 	});
-	assert.equal(tokens, [
+	assertEquals(tokens, [
 		{
 			type: "h",
 			id: "a",
@@ -460,13 +464,13 @@ test("h(a[<URL>]b!)", () => {
 			],
 		},
 	]);
-	assert.snapshot(
+	assertEquals(
 		displaySelection(tokens, context._newSelection),
 		"ab!\n(0.1 0 - 0.1 0)",
 	);
 });
 
-test("h(Hello <Wo>rld!) => h(Hello [<Wo>]rld!)", () => {
+Deno.test("h(Hello <Wo>rld!) => h(Hello [<Wo>]rld!)", () => {
 	const tokensAdded: TextToken[] = [
 		{
 			type: "t",
@@ -485,7 +489,7 @@ test("h(Hello <Wo>rld!) => h(Hello [<Wo>]rld!)", () => {
 			text: "rld!",
 		},
 	];
-	const tokens: AnyToken[] = [
+	const tokens: BlockToken[] = [
 		{
 			type: "h",
 			id: "a",
@@ -510,13 +514,13 @@ test("h(Hello <Wo>rld!) => h(Hello [<Wo>]rld!)", () => {
 		["0.0", 8],
 	]);
 
-	assert.equal(context._keys, {
+	assertEquals(context._keys, {
 		a: "0",
 		b: "0.0",
 		z1: "0.1",
 		z2: "0.2",
 	});
-	assert.equal(tokens, [
+	assertEquals(tokens, [
 		{
 			type: "h",
 			id: "a",
@@ -551,7 +555,7 @@ test("h(Hello <Wo>rld!) => h(Hello [<Wo>]rld!)", () => {
 			],
 		},
 	]);
-	assert.snapshot(
+	assertEquals(
 		displaySelection(tokens, context._newSelection),
 		[
 			"Hello World!",
@@ -563,7 +567,7 @@ test("h(Hello <Wo>rld!) => h(Hello [<Wo>]rld!)", () => {
 	);
 });
 
-test("v2 h(Hello <Wo>rld!) => h(Hello [<Wo>]rld!)", () => {
+Deno.test("v2 h(Hello <Wo>rld!) => h(Hello [<Wo>]rld!)", () => {
 	const tokensAdded: TextToken[] = [
 		{
 			type: "t",
@@ -582,7 +586,7 @@ test("v2 h(Hello <Wo>rld!) => h(Hello [<Wo>]rld!)", () => {
 			text: "rld!",
 		},
 	];
-	const tokens: AnyToken[] = [
+	const tokens: BlockToken[] = [
 		{
 			type: "p",
 			id: "a",
@@ -622,7 +626,7 @@ test("v2 h(Hello <Wo>rld!) => h(Hello [<Wo>]rld!)", () => {
 		["1.0", 8],
 	]);
 
-	assert.equal(context._keys, {
+	assertEquals(context._keys, {
 		a: "0",
 		b: "0.0",
 		c: "1",
@@ -630,7 +634,7 @@ test("v2 h(Hello <Wo>rld!) => h(Hello [<Wo>]rld!)", () => {
 		z1: "1.1",
 		z2: "1.2",
 	});
-	assert.equal(tokens, [
+	assertEquals(tokens, [
 		{
 			type: "p",
 			id: "a",
@@ -680,7 +684,7 @@ test("v2 h(Hello <Wo>rld!) => h(Hello [<Wo>]rld!)", () => {
 			],
 		},
 	]);
-	assert.snapshot(
+	assertEquals(
 		displaySelection(tokens, context._newSelection),
 		[
 			"Previous",
@@ -694,7 +698,7 @@ test("v2 h(Hello <Wo>rld!) => h(Hello [<Wo>]rld!)", () => {
 	);
 });
 
-test("h(<Hello>[ World]!) => h([<Hello> World]!)", () => {
+Deno.test("h(<Hello>[ World]!) => h([<Hello> World]!)", () => {
 	const tokensAdded: TextToken[] = [
 		{
 			type: "t",
@@ -706,7 +710,7 @@ test("h(<Hello>[ World]!) => h([<Hello> World]!)", () => {
 			text: "Hello",
 		},
 	];
-	const tokens: AnyToken[] = [
+	const tokens: BlockToken[] = [
 		{
 			type: "h",
 			id: "a",
@@ -747,12 +751,12 @@ test("h(<Hello>[ World]!) => h([<Hello> World]!)", () => {
 		["0.0", 5],
 	]);
 
-	assert.equal(context._keys, {
+	assertEquals(context._keys, {
 		a: "0",
 		e: "0.0",
 		d: "0.1",
 	});
-	assert.equal(tokens, [
+	assertEquals(tokens, [
 		{
 			type: "h",
 			id: "a",
@@ -780,7 +784,7 @@ test("h(<Hello>[ World]!) => h([<Hello> World]!)", () => {
 			],
 		},
 	]);
-	assert.snapshot(
+	assertEquals(
 		displaySelection(tokens, context._newSelection),
 		[
 			"Hello World!",
@@ -792,7 +796,7 @@ test("h(<Hello>[ World]!) => h([<Hello> World]!)", () => {
 	);
 });
 
-test("h(Hello[ Wor<ld]!>) => h(Hello[ Wor<ld!>])", () => {
+Deno.test("h(Hello[ Wor<ld]!>) => h(Hello[ Wor<ld!>])", () => {
 	const tokensAdded1: TextToken[] = [
 		{
 			type: "t",
@@ -815,7 +819,7 @@ test("h(Hello[ Wor<ld]!>) => h(Hello[ Wor<ld!>])", () => {
 			text: "!",
 		},
 	];
-	const tokens: AnyToken[] = [
+	const tokens: BlockToken[] = [
 		{
 			type: "h",
 			id: "a",
@@ -857,12 +861,12 @@ test("h(Hello[ Wor<ld]!>) => h(Hello[ Wor<ld!>])", () => {
 		["0.2", 1],
 	]);
 
-	assert.equal(context._keys, {
+	assertEquals(context._keys, {
 		a: "0",
 		b: "0.0",
 		c: "0.1",
 	});
-	assert.equal(tokens, [
+	assertEquals(tokens, [
 		{
 			type: "h",
 			id: "a",
@@ -890,7 +894,7 @@ test("h(Hello[ Wor<ld]!>) => h(Hello[ Wor<ld!>])", () => {
 			],
 		},
 	]);
-	assert.snapshot(
+	assertEquals(
 		displaySelection(tokens, context._newSelection),
 		[
 			"Hello World!",
@@ -902,7 +906,7 @@ test("h(Hello[ Wor<ld]!>) => h(Hello[ Wor<ld!>])", () => {
 	);
 });
 
-test("h(He<ll>o[ World]!) => h(He[<ll>]o[ World]!)", () => {
+Deno.test("h(He<ll>o[ World]!) => h(He[<ll>]o[ World]!)", () => {
 	const tokensAdded: TextToken[] = [
 		{
 			type: "t",
@@ -921,7 +925,7 @@ test("h(He<ll>o[ World]!) => h(He[<ll>]o[ World]!)", () => {
 			text: "o",
 		},
 	];
-	const tokens: AnyToken[] = [
+	const tokens: BlockToken[] = [
 		{
 			type: "h",
 			id: "a",
@@ -962,7 +966,7 @@ test("h(He<ll>o[ World]!) => h(He[<ll>]o[ World]!)", () => {
 		["0.0", 4],
 	]);
 
-	assert.equal(context._keys, {
+	assertEquals(context._keys, {
 		a: "0",
 		b: "0.0",
 		e: "0.1",
@@ -970,7 +974,7 @@ test("h(He<ll>o[ World]!) => h(He[<ll>]o[ World]!)", () => {
 		c: "0.3",
 		d: "0.4",
 	});
-	assert.equal(tokens, [
+	assertEquals(tokens, [
 		{
 			type: "h",
 			id: "a",
@@ -1021,7 +1025,7 @@ test("h(He<ll>o[ World]!) => h(He[<ll>]o[ World]!)", () => {
 			],
 		},
 	]);
-	assert.snapshot(
+	assertEquals(
 		displaySelection(tokens, context._newSelection),
 		[
 			"Hello World!",
@@ -1033,7 +1037,7 @@ test("h(He<ll>o[ World]!) => h(He[<ll>]o[ World]!)", () => {
 	);
 });
 
-test("h(He<llo>[ World]!) => h(He[<llo> World]!)", () => {
+Deno.test("h(He<llo>[ World]!) => h(He[<llo> World]!)", () => {
 	const tokensAdded: TextToken[] = [
 		{
 			type: "t",
@@ -1045,7 +1049,7 @@ test("h(He<llo>[ World]!) => h(He[<llo> World]!)", () => {
 			text: "llo",
 		},
 	];
-	const tokens: AnyToken[] = [
+	const tokens: BlockToken[] = [
 		{
 			type: "h",
 			id: "a",
@@ -1086,13 +1090,13 @@ test("h(He<llo>[ World]!) => h(He[<llo> World]!)", () => {
 		["0.0", 5],
 	]);
 
-	assert.equal(context._keys, {
+	assertEquals(context._keys, {
 		a: "0",
 		b: "0.0",
 		e: "0.1",
 		d: "0.2",
 	});
-	assert.equal(tokens, [
+	assertEquals(tokens, [
 		{
 			type: "h",
 			id: "a",
@@ -1127,7 +1131,7 @@ test("h(He<llo>[ World]!) => h(He[<llo> World]!)", () => {
 			],
 		},
 	]);
-	assert.snapshot(
+	assertEquals(
 		displaySelection(tokens, context._newSelection),
 		[
 			"Hello World!",
@@ -1139,7 +1143,7 @@ test("h(He<llo>[ World]!) => h(He[<llo> World]!)", () => {
 	);
 });
 
-test("h(<He>llo[ World]!) => h([<He>]llo[ World]!)", () => {
+Deno.test("h(<He>llo[ World]!) => h([<He>]llo[ World]!)", () => {
 	const tokensAdded: TextToken[] = [
 		{
 			type: "t",
@@ -1158,7 +1162,7 @@ test("h(<He>llo[ World]!) => h([<He>]llo[ World]!)", () => {
 			text: "llo",
 		},
 	];
-	const tokens: AnyToken[] = [
+	const tokens: BlockToken[] = [
 		{
 			type: "h",
 			id: "a",
@@ -1199,14 +1203,14 @@ test("h(<He>llo[ World]!) => h([<He>]llo[ World]!)", () => {
 		["0.0", 2],
 	]);
 
-	assert.equal(context._keys, {
+	assertEquals(context._keys, {
 		a: "0",
 		e: "0.0",
 		f: "0.1",
 		c: "0.2",
 		d: "0.3",
 	});
-	assert.equal(tokens, [
+	assertEquals(tokens, [
 		{
 			type: "h",
 			id: "a",
@@ -1250,7 +1254,7 @@ test("h(<He>llo[ World]!) => h([<He>]llo[ World]!)", () => {
 			],
 		},
 	]);
-	assert.snapshot(
+	assertEquals(
 		displaySelection(tokens, context._newSelection),
 		[
 			"Hello World!",
@@ -1262,7 +1266,7 @@ test("h(<He>llo[ World]!) => h([<He>]llo[ World]!)", () => {
 	);
 });
 
-test("h(Hello[< Wor>ld]!) => h(Hello< Wor>[ld]!)", () => {
+Deno.test("h(Hello[< Wor>ld]!) => h(Hello< Wor>[ld]!)", () => {
 	const tokensAdded: TextToken[] = [
 		{
 			type: "t",
@@ -1281,7 +1285,7 @@ test("h(Hello[< Wor>ld]!) => h(Hello< Wor>[ld]!)", () => {
 			text: "ld",
 		},
 	];
-	const tokens: AnyToken[] = [
+	const tokens: BlockToken[] = [
 		{
 			type: "h",
 			id: "a",
@@ -1322,13 +1326,13 @@ test("h(Hello[< Wor>ld]!) => h(Hello< Wor>[ld]!)", () => {
 		["0.1", 4],
 	]);
 
-	assert.equal(context._keys, {
+	assertEquals(context._keys, {
 		a: "0",
 		b: "0.0",
 		f: "0.1",
 		d: "0.2",
 	});
-	assert.equal(tokens, [
+	assertEquals(tokens, [
 		{
 			type: "h",
 			id: "a",
@@ -1363,7 +1367,7 @@ test("h(Hello[< Wor>ld]!) => h(Hello< Wor>[ld]!)", () => {
 			],
 		},
 	]);
-	assert.snapshot(
+	assertEquals(
 		displaySelection(tokens, context._newSelection),
 		[
 			"Hello World!",
@@ -1375,7 +1379,7 @@ test("h(Hello[< Wor>ld]!) => h(Hello< Wor>[ld]!)", () => {
 	);
 });
 
-test("h(Hello[< World>]!) => h(Hello< World>!)", () => {
+Deno.test("h(Hello[< World>]!) => h(Hello< World>!)", () => {
 	const tokensAdded: TextToken[] = [
 		{
 			type: "t",
@@ -1385,7 +1389,7 @@ test("h(Hello[< World>]!) => h(Hello< World>!)", () => {
 			text: " World",
 		},
 	];
-	const tokens: AnyToken[] = [
+	const tokens: BlockToken[] = [
 		{
 			type: "h",
 			id: "a",
@@ -1426,11 +1430,11 @@ test("h(Hello[< World>]!) => h(Hello< World>!)", () => {
 		["0.1", 6],
 	]);
 
-	assert.equal(context._keys, {
+	assertEquals(context._keys, {
 		a: "0",
 		b: "0.0",
 	});
-	assert.equal(tokens, [
+	assertEquals(tokens, [
 		{
 			type: "h",
 			id: "a",
@@ -1449,7 +1453,7 @@ test("h(Hello[< World>]!) => h(Hello< World>!)", () => {
 			],
 		},
 	]);
-	assert.snapshot(
+	assertEquals(
 		displaySelection(tokens, context._newSelection),
 		[
 			"Hello World!",
@@ -1461,7 +1465,7 @@ test("h(Hello[< World>]!) => h(Hello< World>!)", () => {
 	);
 });
 
-test("h(Hello[ <Wor>ld]!) => h(Hello[ ]<Wor>[ld]!)", () => {
+Deno.test("h(Hello[ <Wor>ld]!) => h(Hello[ ]<Wor>[ld]!)", () => {
 	const tokensAdded: TextToken[] = [
 		{
 			type: "t",
@@ -1480,7 +1484,7 @@ test("h(Hello[ <Wor>ld]!) => h(Hello[ ]<Wor>[ld]!)", () => {
 			text: "ld",
 		},
 	];
-	const tokens: AnyToken[] = [
+	const tokens: BlockToken[] = [
 		{
 			type: "h",
 			id: "a",
@@ -1521,14 +1525,14 @@ test("h(Hello[ <Wor>ld]!) => h(Hello[ ]<Wor>[ld]!)", () => {
 		["0.1", 4],
 	]);
 
-	assert.equal(context._keys, {
+	assertEquals(context._keys, {
 		a: "0",
 		b: "0.0",
 		c: "0.3",
 		e: "0.2",
 		d: "0.4",
 	});
-	assert.equal(tokens, [
+	assertEquals(tokens, [
 		{
 			type: "h",
 			id: "a",
@@ -1579,7 +1583,7 @@ test("h(Hello[ <Wor>ld]!) => h(Hello[ ]<Wor>[ld]!)", () => {
 			],
 		},
 	]);
-	assert.snapshot(
+	assertEquals(
 		displaySelection(tokens, context._newSelection),
 		[
 			"Hello World!",
@@ -1591,7 +1595,7 @@ test("h(Hello[ <Wor>ld]!) => h(Hello[ ]<Wor>[ld]!)", () => {
 	);
 });
 
-test("h(Hello[ <World>]!) => h(Hello[ ]<World>!)", () => {
+Deno.test("h(Hello[ <World>]!) => h(Hello[ ]<World>!)", () => {
 	const tokensAdded: TextToken[] = [
 		{
 			type: "t",
@@ -1601,7 +1605,7 @@ test("h(Hello[ <World>]!) => h(Hello[ ]<World>!)", () => {
 			text: "World",
 		},
 	];
-	const tokens: AnyToken[] = [
+	const tokens: BlockToken[] = [
 		{
 			type: "h",
 			id: "a",
@@ -1642,13 +1646,13 @@ test("h(Hello[ <World>]!) => h(Hello[ ]<World>!)", () => {
 		["0.1", 6],
 	]);
 
-	assert.equal(context._keys, {
+	assertEquals(context._keys, {
 		a: "0",
 		b: "0.0",
 		c: "0.1",
 		e: "0.2",
 	});
-	assert.equal(tokens, [
+	assertEquals(tokens, [
 		{
 			type: "h",
 			id: "a",
@@ -1683,7 +1687,7 @@ test("h(Hello[ <World>]!) => h(Hello[ ]<World>!)", () => {
 			],
 		},
 	]);
-	assert.snapshot(
+	assertEquals(
 		displaySelection(tokens, context._newSelection),
 		[
 			"Hello World!",
@@ -1695,8 +1699,8 @@ test("h(Hello[ <World>]!) => h(Hello[ ]<World>!)", () => {
 	);
 });
 
-test("h(<Hello[ World]!>) => h([<Hello World!>])", () => {
-	const tokens: AnyToken[] = [
+Deno.test("h(<Hello[ World]!>) => h([<Hello World!>])", () => {
+	const tokens: BlockToken[] = [
 		{
 			type: "h",
 			id: "a",
@@ -1740,11 +1744,11 @@ test("h(<Hello[ World]!>) => h([<Hello World!>])", () => {
 		["0.2", 1],
 	]);
 
-	assert.equal(context._keys, {
+	assertEquals(context._keys, {
 		a: "0",
 		b: "0.0",
 	});
-	assert.equal(tokens, [
+	assertEquals(tokens, [
 		{
 			type: "h",
 			id: "a",
@@ -1765,7 +1769,7 @@ test("h(<Hello[ World]!>) => h([<Hello World!>])", () => {
 			],
 		},
 	]);
-	assert.snapshot(
+	assertEquals(
 		displaySelection(tokens, context._newSelection),
 		[
 			"Hello World!",
@@ -1777,7 +1781,7 @@ test("h(<Hello[ World]!>) => h([<Hello World!>])", () => {
 	);
 });
 
-test("h(<Hello[ World]!> ..or Mars!) => h([<Hello World!>] ..or Mars!)", () => {
+Deno.test("h(<Hello[ World]!> ..or Mars!) => h([<Hello World!>] ..or Mars!)", () => {
 	const tokensAdded1: TextToken[] = [
 		{
 			type: "t",
@@ -1807,7 +1811,7 @@ test("h(<Hello[ World]!> ..or Mars!) => h([<Hello World!>] ..or Mars!)", () => {
 			text: " ..or Mars!",
 		},
 	];
-	const tokens: AnyToken[] = [
+	const tokens: BlockToken[] = [
 		{
 			type: "h",
 			id: "a",
@@ -1849,12 +1853,12 @@ test("h(<Hello[ World]!> ..or Mars!) => h([<Hello World!>] ..or Mars!)", () => {
 		["0.2", 1],
 	]);
 
-	assert.equal(context._keys, {
+	assertEquals(context._keys, {
 		a: "0",
 		z1: "0.0",
 		z3: "0.1",
 	});
-	assert.equal(tokens, [
+	assertEquals(tokens, [
 		{
 			type: "h",
 			id: "a",
@@ -1882,7 +1886,7 @@ test("h(<Hello[ World]!> ..or Mars!) => h([<Hello World!>] ..or Mars!)", () => {
 			],
 		},
 	]);
-	assert.snapshot(
+	assertEquals(
 		displaySelection(tokens, context._newSelection),
 		[
 			"Hello World! ..or Mars!",
@@ -1894,7 +1898,7 @@ test("h(<Hello[ World]!> ..or Mars!) => h([<Hello World!>] ..or Mars!)", () => {
 	);
 });
 
-test("h(H<ello[ World]!>) => h(H[<ello World!>])", () => {
+Deno.test("h(H<ello[ World]!>) => h(H[<ello World!>])", () => {
 	const tokensAdded: TextToken[] = [
 		{
 			type: "t",
@@ -1906,7 +1910,7 @@ test("h(H<ello[ World]!>) => h(H[<ello World!>])", () => {
 			text: "ello",
 		},
 	];
-	const tokens: AnyToken[] = [
+	const tokens: BlockToken[] = [
 		{
 			type: "h",
 			id: "a",
@@ -1949,12 +1953,12 @@ test("h(H<ello[ World]!>) => h(H[<ello World!>])", () => {
 		["0.2", 1],
 	]);
 
-	assert.equal(context._keys, {
+	assertEquals(context._keys, {
 		a: "0",
 		b: "0.0",
 		e: "0.1",
 	});
-	assert.equal(tokens, [
+	assertEquals(tokens, [
 		{
 			type: "h",
 			id: "a",
@@ -1982,7 +1986,7 @@ test("h(H<ello[ World]!>) => h(H[<ello World!>])", () => {
 			],
 		},
 	]);
-	assert.snapshot(
+	assertEquals(
 		displaySelection(tokens, context._newSelection),
 		[
 			"Hello World!",
@@ -1994,7 +1998,7 @@ test("h(H<ello[ World]!>) => h(H[<ello World!>])", () => {
 	);
 });
 
-test("h(H<ello[ World]!> ..or Mars!) => h(H[<ello World!>] ..or Mars!)", () => {
+Deno.test("h(H<ello[ World]!> ..or Mars!) => h(H[<ello World!>] ..or Mars!)", () => {
 	const tokensAdded1: TextToken[] = [
 		{
 			type: "t",
@@ -2017,7 +2021,7 @@ test("h(H<ello[ World]!> ..or Mars!) => h(H[<ello World!>] ..or Mars!)", () => {
 			text: "!",
 		},
 	];
-	const tokens: AnyToken[] = [
+	const tokens: BlockToken[] = [
 		{
 			type: "h",
 			id: "a",
@@ -2059,13 +2063,13 @@ test("h(H<ello[ World]!> ..or Mars!) => h(H[<ello World!>] ..or Mars!)", () => {
 		["0.2", 1],
 	]);
 
-	assert.equal(context._keys, {
+	assertEquals(context._keys, {
 		a: "0",
 		b: "0.0",
 		e: "0.1",
 		d: "0.2",
 	});
-	assert.equal(tokens, [
+	assertEquals(tokens, [
 		{
 			type: "h",
 			id: "a",
@@ -2100,7 +2104,7 @@ test("h(H<ello[ World]!> ..or Mars!) => h(H[<ello World!>] ..or Mars!)", () => {
 			],
 		},
 	]);
-	assert.snapshot(
+	assertEquals(
 		displaySelection(tokens, context._newSelection),
 		[
 			"Hello World! ..or Mars!",
@@ -2112,7 +2116,7 @@ test("h(H<ello[ World]!> ..or Mars!) => h(H[<ello World!>] ..or Mars!)", () => {
 	);
 });
 
-test("h(Hello< [Earth] and [Mars] >from Me!) => h(Hello[< Earth and Mars >]from Me!)", () => {
+Deno.test("h(Hello< [Earth] and [Mars] >from Me!) => h(Hello[< Earth and Mars >]from Me!)", () => {
 	const tokensAdded1: TextToken[] = [
 		{
 			type: "t",
@@ -2135,7 +2139,7 @@ test("h(Hello< [Earth] and [Mars] >from Me!) => h(Hello[< Earth and Mars >]from 
 			text: " ",
 		},
 	];
-	const tokens: AnyToken[] = [
+	const tokens: BlockToken[] = [
 		{
 			type: "h",
 			id: "a",
@@ -2195,13 +2199,13 @@ test("h(Hello< [Earth] and [Mars] >from Me!) => h(Hello[< Earth and Mars >]from 
 		["0.4", 1],
 	]);
 
-	assert.equal(context._keys, {
+	assertEquals(context._keys, {
 		a: "0",
 		b: "0.0",
 		z1: "0.1",
 		f: "0.2",
 	});
-	assert.equal(tokens, [
+	assertEquals(tokens, [
 		{
 			type: "h",
 			id: "a",
@@ -2236,7 +2240,7 @@ test("h(Hello< [Earth] and [Mars] >from Me!) => h(Hello[< Earth and Mars >]from 
 			],
 		},
 	]);
-	assert.snapshot(
+	assertEquals(
 		displaySelection(tokens, context._newSelection),
 		[
 			"Hello Earth and Mars from Me!",
@@ -2248,7 +2252,7 @@ test("h(Hello< [Earth] and [Mars] >from Me!) => h(Hello[< Earth and Mars >]from 
 	);
 });
 
-test("h(He<llo {Wo>rld}!) => h(He[<llo ]{[<Wo>]}{rld}!)", () => {
+Deno.test("h(He<llo {Wo>rld}!) => h(He[<llo ]{[<Wo>]}{rld}!)", () => {
 	const tokensAdded1: TextToken[] = [
 		{
 			type: "t",
@@ -2272,7 +2276,7 @@ test("h(He<llo {Wo>rld}!) => h(He[<llo ]{[<Wo>]}{rld}!)", () => {
 			text: "Wo",
 		},
 	];
-	const tokens: AnyToken[] = [
+	const tokens: BlockToken[] = [
 		{
 			type: "h",
 			id: "a",
@@ -2314,7 +2318,7 @@ test("h(He<llo {Wo>rld}!) => h(He[<llo ]{[<Wo>]}{rld}!)", () => {
 		["0.1", 2],
 	]);
 
-	assert.equal(context._keys, {
+	assertEquals(context._keys, {
 		a: "0",
 		b: "0.0",
 		z1: "0.1",
@@ -2322,7 +2326,7 @@ test("h(He<llo {Wo>rld}!) => h(He[<llo ]{[<Wo>]}{rld}!)", () => {
 		c: "0.3",
 		d: "0.4",
 	});
-	assert.equal(tokens, [
+	assertEquals(tokens, [
 		{
 			type: "h",
 			id: "a",
@@ -2376,7 +2380,7 @@ test("h(He<llo {Wo>rld}!) => h(He[<llo ]{[<Wo>]}{rld}!)", () => {
 			],
 		},
 	]);
-	assert.snapshot(
+	assertEquals(
 		displaySelection(tokens, context._newSelection),
 		[
 			"Hello World!",
@@ -2388,7 +2392,7 @@ test("h(He<llo {Wo>rld}!) => h(He[<llo ]{[<Wo>]}{rld}!)", () => {
 	);
 });
 
-test("h(He[<llo ]{[<Wo>]}{rld}!) => h(He<llo {Wo>rld}!)", () => {
+Deno.test("h(He[<llo ]{[<Wo>]}{rld}!) => h(He<llo {Wo>rld}!)", () => {
 	const tokensAdded1: TextToken[] = [
 		{
 			type: "t",
@@ -2409,7 +2413,7 @@ test("h(He[<llo ]{[<Wo>]}{rld}!) => h(He<llo {Wo>rld}!)", () => {
 			text: "Wo",
 		},
 	];
-	const tokens: AnyToken[] = [
+	const tokens: BlockToken[] = [
 		{
 			type: "h",
 			id: "a",
@@ -2469,13 +2473,13 @@ test("h(He[<llo ]{[<Wo>]}{rld}!) => h(He<llo {Wo>rld}!)", () => {
 		["0.2", 2],
 	]);
 
-	assert.equal(context._keys, {
+	assertEquals(context._keys, {
 		a: "0",
 		b: "0.0",
 		z2: "0.1",
 		f: "0.2",
 	});
-	assert.equal(tokens, [
+	assertEquals(tokens, [
 		{
 			type: "h",
 			id: "a",
@@ -2510,7 +2514,7 @@ test("h(He[<llo ]{[<Wo>]}{rld}!) => h(He<llo {Wo>rld}!)", () => {
 			],
 		},
 	]);
-	assert.snapshot(
+	assertEquals(
 		displaySelection(tokens, context._newSelection),
 		[
 			"Hello World!",
@@ -2522,8 +2526,8 @@ test("h(He[<llo ]{[<Wo>]}{rld}!) => h(He<llo {Wo>rld}!)", () => {
 	);
 });
 
-test("h(a[<URL>]b!) => h(a[]b!)", () => {
-	const tokens: AnyToken[] = [
+Deno.test("h(a[<URL>]b!) => h(a[]b!)", () => {
+	const tokens: BlockToken[] = [
 		{
 			type: "h",
 			id: "a",
@@ -2563,11 +2567,11 @@ test("h(a[<URL>]b!) => h(a[]b!)", () => {
 		["0.1", 0],
 	]);
 
-	assert.equal(context._keys, {
+	assertEquals(context._keys, {
 		a: "0",
 		b: "0.0",
 	});
-	assert.equal(tokens, [
+	assertEquals(tokens, [
 		{
 			type: "h",
 			id: "a",
@@ -2586,7 +2590,7 @@ test("h(a[<URL>]b!) => h(a[]b!)", () => {
 			],
 		},
 	]);
-	assert.snapshot(
+	assertEquals(
 		displaySelection(tokens, context._newSelection),
 		[
 			"ab!",
@@ -2598,8 +2602,8 @@ test("h(a[<URL>]b!) => h(a[]b!)", () => {
 	);
 });
 
-test("h([a<URL>]b!) => h([]b!)", () => {
-	const tokens: AnyToken[] = [
+Deno.test("h([a<URL>]b!) => h([]b!)", () => {
+	const tokens: BlockToken[] = [
 		{
 			type: "h",
 			id: "a",
@@ -2639,11 +2643,11 @@ test("h([a<URL>]b!) => h([]b!)", () => {
 		["0.1", 0],
 	]);
 
-	assert.equal(context._keys, {
+	assertEquals(context._keys, {
 		a: "0",
 		d: "0.0",
 	});
-	assert.equal(tokens, [
+	assertEquals(tokens, [
 		{
 			type: "h",
 			id: "a",
@@ -2662,7 +2666,7 @@ test("h([a<URL>]b!) => h([]b!)", () => {
 			],
 		},
 	]);
-	assert.snapshot(
+	assertEquals(
 		displaySelection(tokens, context._newSelection),
 		[
 			"b!",
@@ -2673,5 +2677,3 @@ test("h([a<URL>]b!) => h([]b!)", () => {
 			.join("\n"),
 	);
 });
-
-test.run();

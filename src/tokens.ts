@@ -4,38 +4,61 @@ export interface PluginToken {
 	props: Record<string, any>;
 	children: any[];
 }
-export interface Token {
+
+export interface UrlMetadata {
+	icon?: string;
+}
+
+export interface Token<
+	Props extends Record<string, any> = Record<string, any>,
+> {
 	id: string;
 	key: string;
-	props: Record<string, any>;
+	props: Props;
 }
-export interface TextToken extends Token {
+
+export interface TextTokenProps extends Record<string, any> {
+	url?: string;
+}
+
+export interface TextToken extends Token<TextTokenProps> {
 	type: "t";
 	text: string;
+	meta?: UrlMetadata;
 }
+
 export interface UrlToken extends Token {
 	type: "url";
 	src: string;
+	meta?: UrlMetadata;
 }
-export interface ImgToken extends Token {
+
+export interface ImgTokenProps extends Record<string, any> {
+	alt?: string;
+}
+
+export interface ImgToken extends Token<ImgTokenProps> {
 	type: "img";
 	src: string;
 }
-interface ParagraphToken extends Token {
+
+export interface ParagraphToken extends Token {
 	type: "p";
 	props: {
 		indent?: number;
 	};
 	children: InlineToken[];
 }
-interface HeadingToken extends Token {
+
+export interface HeadingToken extends Token {
 	type: "h";
 	props: {
 		size: number;
 	};
 	children: InlineToken[];
 }
-interface ListToken extends Token {
+
+export interface ListToken extends Token {
 	type: "l";
 	props: {
 		type: string;
@@ -43,7 +66,8 @@ interface ListToken extends Token {
 	};
 	children: InlineToken[];
 }
-interface TodoToken extends Token {
+
+export interface TodoToken extends Token {
 	type: "todo";
 	props: {
 		indent?: number;
@@ -51,7 +75,34 @@ interface TodoToken extends Token {
 	};
 	children: InlineToken[];
 }
+
 export type BlockToken = ParagraphToken | HeadingToken | TodoToken | ListToken;
 export type InlineToken = TextToken | ImgToken | UrlToken;
 export type AnyToken = InlineToken | BlockToken;
 export type TokenRoot = BlockToken[];
+
+export type BlockType = BlockToken["type"];
+export type BlockTokenOfType<Type extends BlockType> = Extract<
+	BlockToken,
+	{ type: Type }
+>;
+export type BlockProps<Type extends BlockType> = BlockTokenOfType<
+	Type
+>["props"];
+
+export function isBlockToken(token: AnyToken): token is BlockToken {
+	return "children" in token;
+}
+
+export function isInlineToken(token: AnyToken): token is InlineToken {
+	return !isBlockToken(token);
+}
+
+export function setBlockType<Type extends BlockType>(
+	token: BlockToken,
+	type: Type,
+	props: BlockProps<Type>,
+): BlockTokenOfType<Type> {
+	Object.assign(token, { type, props });
+	return token as BlockTokenOfType<Type>;
+}

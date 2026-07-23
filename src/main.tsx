@@ -1,9 +1,9 @@
 import { h, render } from "preact";
 
-import { Editpal } from "./editpal";
-import { Model } from "./model";
-import { ranID } from "./utils";
-import { Debug } from "./debug";
+import { Editpal } from "./editpal.tsx";
+import { Model } from "./model.ts";
+import { ranID } from "./utils.ts";
+import { Debug } from "./debug.tsx";
 
 import "./index.css";
 
@@ -187,7 +187,8 @@ const root = [
 				props: {
 					alt: "Genji cyberdemon skin",
 				},
-				src: "https://img.strike.lv/photos/7110acef-3ad0-4382-a88f-93e854128be8.jpeg",
+				src:
+					"https://img.strike.lv/photos/7110acef-3ad0-4382-a88f-93e854128be8.jpeg",
 			},
 		],
 	},

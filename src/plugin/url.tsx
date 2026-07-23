@@ -1,12 +1,13 @@
 import { useStore } from "exome/preact";
-import { h, Fragment } from "preact";
+import { Fragment, h } from "preact";
 import { useContext, useLayoutEffect, useRef, useState } from "preact/hooks";
 
-import { EditorContext, preventDefaultAndStop } from "../editpal";
-import type { TextToken } from "../tokens";
+import { EditorContext, preventDefaultAndStop } from "../editpal.tsx";
+import type { TextToken, UrlToken } from "../tokens.ts";
 
-export function RenderUrl(item: TextToken & { k: string }) {
-	const { id, props, text, k, meta } = item;
+export function RenderUrl(item: (TextToken | UrlToken) & { k: string }) {
+	const { id, k, meta } = item;
+	const url = item.type === "url" ? item.src : item.props.url;
 	const { model } = useContext(EditorContext);
 	const {
 		first: [first],
@@ -19,9 +20,11 @@ export function RenderUrl(item: TextToken & { k: string }) {
 			return;
 		}
 
-		setUrlMeta(item.meta = {
-			icon: 'https://strike.lv/favicon.ico',
-		});
+		setUrlMeta(
+			item.meta = {
+				icon: "https://strike.lv/favicon.ico",
+			},
+		);
 
 		// fetch("http://localhost:8082/v1/meta/url", {
 		// 	method: "post",
@@ -36,18 +39,17 @@ export function RenderUrl(item: TextToken & { k: string }) {
 		// 	.then((data) => {
 		// 		setUrlMeta(item.meta = data || {});
 		// 	});
-	}, [props.url]);
+	}, [url]);
 
-	const isSelected =
-		[
-			...model.keysBetween(first, last),
-			...model.keysBetween(last, first),
-		].indexOf(k) > -1;
+	const isSelected = [
+		...model.keysBetween(first, last),
+		...model.keysBetween(last, first),
+	].indexOf(k) > -1;
 
 	return (
 		<span
 			data-ep={id}
-			data-ep-url={props.url}
+			data-ep-url={url}
 			data-ep-s={isSelected || undefined}
 			// If pointerEvents, then this is needed
 			// onMouseDown={isSelected ? undefined : (e) => {

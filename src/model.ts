@@ -1,18 +1,19 @@
 import { Exome } from "exome";
 
-import { HistoryStore } from "./history";
-import { ModelSelection } from "./selection";
-import { Slash } from "./slash";
-import {
+import { HistoryStore } from "./history.ts";
+import { ModelSelection } from "./selection.ts";
+import { Slash } from "./slash.ts";
+import type {
 	AnyToken,
 	BlockToken,
 	InlineToken,
 	TextToken,
 	TokenRoot,
-} from "./tokens";
-import { setCaret, cloneToken, stringSplice, ranID } from "./utils";
-import { createBlockToken, createTextToken } from "./utils/create-token";
-import { buildKeys } from "./utils/selection";
+} from "./tokens.ts";
+import { isBlockToken, isInlineToken, setBlockType } from "./tokens.ts";
+import { cloneToken, ranID, setCaret, stringSplice } from "./utils.ts";
+import { createBlockToken, createTextToken } from "./utils/create-token.ts";
+import { buildKeys } from "./utils/selection.ts";
 
 export const ACTION = {
 	_Key: 0,
@@ -38,19 +39,17 @@ function handleEnter(
 	}
 
 	if (fromParent.type === "todo") {
-		toParent.type = fromParent.type as any;
-		toParent.props = {
+		setBlockType(toParent, "todo", {
 			indent: fromParent.props?.indent,
-		};
+		});
 		return;
 	}
 
 	if (fromParent.type === "l") {
-		toParent.type = fromParent.type as any;
-		toParent.props = {
+		setBlockType(toParent, "l", {
 			indent: fromParent.props?.indent || 0,
 			type: fromParent.props?.type || "ul",
-		};
+		});
 		return;
 	}
 }
@@ -72,6 +71,9 @@ function handleTab(
 
 	for (const key of keys) {
 		const element = model.findElement(key);
+		if (!isBlockToken(element)) {
+			continue;
+		}
 
 		const mod = shift ? -1 : 1;
 
@@ -81,8 +83,7 @@ function handleTab(
 
 		if (element.type === "h") {
 			if (mod === -1 && !element.props.size) {
-				(element as any).type = "p";
-				(element as any).props = null;
+				setBlockType(element, "p", {});
 				continue;
 			}
 
@@ -183,6 +184,9 @@ export class Model extends Exome {
 		// Handle root text nodes
 		if (parent === null) {
 			const element = this.findElement(key);
+			if (!isBlockToken(element)) {
+				return;
+			}
 			const index = this.tokens.indexOf(element);
 			this.tokens.splice(index, 1);
 			// console.log("🏴‍☠️ REMOVE ROOT", index);
@@ -236,13 +240,8 @@ export class Model extends Exome {
 	};
 
 	public innerNode = (key: string): InlineToken => {
-		let el = this.findElement(key) as any;
-
-		if (el?.children) {
-			el = el.children[0];
-		}
-
-		return el;
+		const element = this.findElement(key);
+		return isBlockToken(element) ? element.children[0] : element;
 	};
 
 	public innerText = (key: string) => {
@@ -267,7 +266,7 @@ export class Model extends Exome {
 		return this.findElement(parentKey) as BlockToken;
 	};
 
-	public nextSiblings = (key: string, selfIncluded = false): AnyToken[] => {
+	public nextSiblings = (key: string, selfIncluded = false): InlineToken[] => {
 		const selfKey = key.split(".").pop()!;
 
 		const parent = this.parent(key);
@@ -320,16 +319,12 @@ export class Model extends Exome {
 	};
 
 	public _transformToParagraph(element: BlockToken) {
-		element.type = "p";
-		element.props = undefined as any;
+		setBlockType(element, "p", {});
 		this.select(element.children[0]);
 	}
 
 	private _handleInitialRemove = (element: AnyToken) => {
-		const parent =
-			element.type === "t" || element.type === "img"
-				? this.parent(element.key)!
-				: element;
+		const parent = isInlineToken(element) ? this.parent(element.key)! : element;
 
 		if (element.type === "img") {
 			parent.children = [createTextToken()];
@@ -351,7 +346,12 @@ export class Model extends Exome {
 				return;
 			}
 
-			if (parent.children.length === 1 && !parent.children[0].text) {
+			const onlyChild = parent.children[0];
+			if (
+				parent.children.length === 1 &&
+				onlyChild?.type === "t" &&
+				!onlyChild.text
+			) {
 				const prev = this.previousText(parent.key);
 				this.remove(parent.key);
 				const l = prev!.text.length;
@@ -379,7 +379,7 @@ export class Model extends Exome {
 			const prevAfterCalculation = this.innerText(prev.key);
 
 			this._stack.push(() => {
-				if (prevAfterCalculation !== prev) {
+				if (prevAfterCalculation && prevAfterCalculation !== prev) {
 					setCaret(prevAfterCalculation.id, prevLength);
 					return;
 				}
@@ -426,39 +426,50 @@ export class Model extends Exome {
 
 		// "-|[space]" => "• |"
 		if (textAdded === " " && parent.type === "p" && element.text === "- ") {
-			parent.type = "l" as any;
 			element.text = "";
-			parent.props = {
+			setBlockType(parent, "l", {
 				indent: 0,
 				...parent.props,
 				type: "ul",
-			};
+			});
 			return;
 		}
 
 		// "1.|[space]" => "1. |"
 		if (textAdded === " " && parent.type === "p" && element.text === "1. ") {
-			parent.type = "l" as any;
 			element.text = "";
-			parent.props = {
+			setBlockType(parent, "l", {
 				indent: 0,
 				...parent.props,
 				type: "ol",
-			};
+			});
 			return;
 		}
 	};
 
-	public insert = <T = AnyToken, E = AnyToken>(
-		tokens: T[],
-		element: E,
+	public insert(
+		tokens: BlockToken[],
+		element: BlockToken,
+		direction?: number,
+	): BlockToken[];
+	public insert(
+		tokens: InlineToken[],
+		element: InlineToken,
+		direction?: number,
+	): InlineToken[];
+	public insert(
+		tokens: AnyToken[],
+		element: AnyToken,
 		direction = 1,
-	): T[] => {
+	): AnyToken[] {
 		const parent = this.parent(element.key);
 
 		const newTokens = tokens.map(cloneToken);
 
 		if (!parent) {
+			if (!isBlockToken(element) || !newTokens.every(isBlockToken)) {
+				throw new TypeError("Only block tokens can be inserted at the root");
+			}
 			this.tokens.splice(
 				this.tokens.indexOf(element) + direction,
 				0,
@@ -468,6 +479,9 @@ export class Model extends Exome {
 			return newTokens;
 		}
 
+		if (!isInlineToken(element) || !newTokens.every(isInlineToken)) {
+			throw new TypeError("Only inline tokens can be inserted into a block");
+		}
 		parent.children.splice(
 			parent.children.indexOf(element) + direction,
 			0,
@@ -475,7 +489,7 @@ export class Model extends Exome {
 		);
 
 		return newTokens;
-	};
+	}
 
 	private _pushToHistory = (type: number, data?: string) => {
 		const first = this.selection.first.slice() as [string, number];
@@ -587,11 +601,11 @@ export class Model extends Exome {
 			removeFirstUrl &&
 			firstKey === lastKey &&
 			[
-				ACTION._Tab,
-				ACTION._ShiftTab,
-				ACTION._FormatRemove,
-				ACTION._FormatAdd,
-			].indexOf(type) === -1
+					ACTION._Tab,
+					ACTION._ShiftTab,
+					ACTION._FormatRemove,
+					ACTION._FormatAdd,
+				].indexOf(type) === -1
 		) {
 			f1.props.url = undefined;
 
@@ -629,7 +643,7 @@ export class Model extends Exome {
 
 			const isFirstChild = element.key?.endsWith(".0") ?? true;
 
-			if (firstOffset === 1) {
+			if (firstOffset === 1 && element.type === "t") {
 				element.text = stringSplice(
 					element.text,
 					firstOffset - 1,
@@ -749,10 +763,10 @@ export class Model extends Exome {
 			let firstParent = this.parent(firstElement.key)!;
 			let lastParent = this.parent(lastElement.key)!;
 
-			const siblings: any[] = this.nextSiblings(lastElement.key, true)
+			const siblings = this.nextSiblings(lastElement.key, true)
 				.filter((e) => e.key >= lastElement!.key)
 				.map(cloneToken);
-			if (siblings[0]?.text) {
+			if (siblings[0]?.type === "t" && siblings[0].text) {
 				siblings[0].text = siblings[0].text.slice(lastOffset);
 			}
 
@@ -768,13 +782,13 @@ export class Model extends Exome {
 				String(parseInt(lastKeyChunks[0], 10) + 1),
 				false,
 			);
-			const clonedTokens = this.insert([newToken] as any, firstParent);
+			const clonedTokens = this.insert([newToken], firstParent);
 			this.recalculate();
 			this.select(this.nextText(clonedTokens[0].key)!, 0);
 			// this._stack.push(() => setCaret(this.nextText(clonedTokens[0].key)!.id, 0));
 
 			if (firstParent === lastParent) {
-				handleEnter(firstParent, clonedTokens[0] as any, this);
+				handleEnter(firstParent, clonedTokens[0], this);
 			}
 
 			return;
@@ -877,13 +891,12 @@ export class Model extends Exome {
 
 		// Handle new text being added after Dead key
 		if (type === ACTION._Compose && data != null) {
-			let el = this.innerText(firstKey)!;
-			el.props.url = undefined;
-
+			const el = this.innerText(firstKey);
 			if (!el) {
 				return;
 			}
 
+			el.props.url = undefined;
 			el.text = stringSplice(el.text, firstOffset, firstOffset, data);
 
 			this.recalculate();
@@ -929,10 +942,10 @@ export class Model extends Exome {
 			const firstText = firstElement.text;
 
 			if (firstElement !== lastElement) {
-				const siblings: any[] = this.nextSiblings(lastElement.key, true)
+				const siblings = this.nextSiblings(lastElement.key, true)
 					.filter((e) => e.key >= lastElement.key)
 					.map(cloneToken);
-				if (siblings[0]?.text) {
+				if (siblings[0]?.type === "t" && siblings[0].text) {
 					siblings[0].text = siblings[0].text.slice(lastOffset);
 				}
 
@@ -1055,7 +1068,7 @@ export class Model extends Exome {
 
 		// this._selectSilent(first, firstOffset);
 		this._stack.push(() =>
-			setCaret(first.id, firstOffset, last.id, lastOffset),
+			setCaret(first.id, firstOffset, last.id, lastOffset)
 		);
 
 		this.update();

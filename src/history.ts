@@ -28,7 +28,7 @@ export class HistoryStore extends Exome {
 		this.locked = true;
 		fn();
 		this.locked = false;
-	}
+	};
 
 	public undo() {
 		this.lock(() => {

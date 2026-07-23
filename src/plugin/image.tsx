@@ -2,8 +2,8 @@ import { useStore } from "exome/preact";
 import { h } from "preact";
 import { useContext, useLayoutEffect, useRef } from "preact/hooks";
 
-import { EditorContext, preventDefaultAndStop } from "../editpal";
-import type { ImgToken } from "../tokens";
+import { EditorContext, preventDefaultAndStop } from "../editpal.tsx";
+import type { ImgToken } from "../tokens.ts";
 
 export function RenderImage(item: ImgToken & { k: string }) {
 	const { id, src, k } = item;
@@ -30,12 +30,10 @@ export function RenderImage(item: ImgToken & { k: string }) {
 		<span
 			data-ep={id}
 			data-ep-img
-			data-ep-s={
-				[
-					...model.keysBetween(first, last),
-					...model.keysBetween(last, first),
-				].indexOf(k) > -1 || undefined
-			}
+			data-ep-s={[
+						...model.keysBetween(first, last),
+						...model.keysBetween(last, first),
+					].indexOf(k) > -1 || undefined}
 			// If pointerEvents, then this is needed
 			// onMouseDown={(e) => {
 			// 	document.execCommand("selectAll", false, null);
@@ -55,7 +53,7 @@ export function RenderImage(item: ImgToken & { k: string }) {
 					placeholder="Type caption here..."
 					defaultValue={item.props.alt}
 					onInput={(e) => {
-						item.props.alt = e.target.value;
+						item.props.alt = e.currentTarget.value;
 					}}
 				/>
 			</span>

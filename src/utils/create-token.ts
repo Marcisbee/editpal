@@ -1,4 +1,12 @@
-import type { BlockToken, ImgToken, InlineToken, TextToken } from "../tokens";
+import type {
+	BlockProps,
+	BlockToken,
+	BlockTokenOfType,
+	BlockType,
+	ImgToken,
+	InlineToken,
+	TextToken,
+} from "../tokens.ts";
 
 let id = 0;
 
@@ -29,16 +37,16 @@ export function createImgToken(
 	};
 }
 
-export function createBlockToken(
-	type: BlockToken["type"],
-	props: Record<string, any> = {},
+export function createBlockToken<Type extends BlockType>(
+	type: Type,
+	props: BlockProps<Type> = {} as BlockProps<Type>,
 	children: InlineToken[] = [],
-): BlockToken {
+): BlockTokenOfType<Type> {
 	return {
 		type,
 		id: "" + id++,
 		key: "",
 		props,
 		children,
-	};
+	} as BlockTokenOfType<Type>;
 }

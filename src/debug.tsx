@@ -1,8 +1,8 @@
-import { h, Fragment } from "preact";
+import { Fragment, h } from "preact";
 import { useStore } from "exome/preact";
 
-import { Model } from "./model";
-import { AnyToken } from "./tokens";
+import { Model } from "./model.ts";
+import type { AnyToken } from "./tokens.ts";
 
 function buildIndent(indent: number) {
 	return " ".repeat(indent);
@@ -10,11 +10,11 @@ function buildIndent(indent: number) {
 
 /**
  root
-  ├ (1) heading  
+  ├ (1) heading
   | └ (2) text  "Welcome to the playground"
-  ├ (3) quote  
+  ├ (3) quote
   | └ (4) text  "In case you were wondering what the black box at the bottom is – it's the debug view, showing the current state of editor. You can disable it by pressing on the settings control in the bottom-left of your screen and toggling the debug view setting."
-  ├ (5) paragraph  
+  ├ (5) paragraph
   | ├ (6) text  "The playground is a demo environment built with "
   | ├ (7) text  "@lexical/react" { format: code }
   | ├ (8) text  ". Try typing in "
@@ -23,7 +23,7 @@ function buildIndent(indent: number) {
   | ├ (12) text  "different" { format: italic }
   | └ (13) text  " formats."
 
- selection: range 
+ selection: range
   ├ anchor { key: 30, offset: 5, type: text }
   └ focus { key: 38, offset: 4, type: text }
  */
@@ -62,7 +62,7 @@ function debug(tokens: AnyToken | AnyToken[], indent = 0): string[] {
 		output[0] += " " + JSON.stringify(tokens.props);
 	}
 
-	if (tokens.children?.length) {
+	if ("children" in tokens && tokens.children.length) {
 		output.push(...debug(tokens.children, indent));
 	}
 

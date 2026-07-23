@@ -1,6 +1,6 @@
-import type { AnyToken } from "../tokens";
+import type { AnyToken } from "../tokens.ts";
 
-import { propsEqual } from "./props-equal";
+import { propsEqual } from "./props-equal.ts";
 
 export type BuildKeysSelection = [
 	[null | string, null | number],
@@ -45,10 +45,10 @@ export function buildKeys(
 	context._elements[tokens.key] = tokens;
 	context._keys[tokens.id] = tokens.key;
 
-	const isCollapsed =
-		selection[0][0] === selection[1][0] && selection[0][1] === selection[1][1];
+	const isCollapsed = selection[0][0] === selection[1][0] &&
+		selection[0][1] === selection[1][1];
 
-	if (tokens.type !== "t" && Array.isArray(tokens.children)) {
+	if ("children" in tokens && Array.isArray(tokens.children)) {
 		let lastChild;
 		let p = -1;
 		let i = p;
@@ -62,15 +62,15 @@ export function buildKeys(
 			p += 1;
 			i += 1;
 
-			const childTextLength = child.text?.length || 0;
+			const childTextLength = child.type === "t" ? child.text.length : 0;
 			// console.log("T", child.text, i, p);
 
 			if (selection[0][0] === key + "." + p && start == null) {
-				start = index + selection[0][1];
+				start = index + (selection[0][1] ?? 0);
 			}
 
 			if (selection[1][0] === key + "." + p) {
-				end = index + selection[1][1];
+				end = index + (selection[1][1] ?? 0);
 			}
 
 			index += childTextLength;
@@ -120,6 +120,7 @@ export function buildKeys(
 
 			if (
 				!child.key &&
+				child.type === "t" &&
 				child.text &&
 				(oldTokens[i + 1]?.key === key + "." + i || !oldTokens[i + 1]?.key)
 			) {
