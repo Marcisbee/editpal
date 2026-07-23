@@ -18,6 +18,12 @@ export interface Token<
 }
 
 export interface TextTokenProps extends Record<string, any> {
+	boldMarker?: string;
+	code?: boolean;
+	highlight?: boolean;
+	italicMarker?: string;
+	link?: string;
+	markdownEscape?: boolean;
 	url?: string;
 }
 
@@ -76,7 +82,36 @@ export interface TodoToken extends Token {
 	children: InlineToken[];
 }
 
-export type BlockToken = ParagraphToken | HeadingToken | TodoToken | ListToken;
+export interface QuoteToken extends Token {
+	type: "quote";
+	props: {
+		level?: number;
+	};
+	children: InlineToken[];
+}
+
+export interface CodeToken extends Token {
+	type: "code";
+	props: {
+		language?: string;
+	};
+	children: InlineToken[];
+}
+
+export interface HorizontalRuleToken extends Token {
+	type: "hr";
+	props: Record<string, never>;
+	children: InlineToken[];
+}
+
+export type BlockToken =
+	| ParagraphToken
+	| HeadingToken
+	| TodoToken
+	| ListToken
+	| QuoteToken
+	| CodeToken
+	| HorizontalRuleToken;
 export type InlineToken = TextToken | ImgToken | UrlToken;
 export type AnyToken = InlineToken | BlockToken;
 export type TokenRoot = BlockToken[];
@@ -90,12 +125,16 @@ export type BlockProps<Type extends BlockType> = BlockTokenOfType<
 	Type
 >["props"];
 
-export function isBlockToken(token: AnyToken): token is BlockToken {
-	return "children" in token;
+export function isBlockToken(
+	token: AnyToken | null | undefined,
+): token is BlockToken {
+	return Boolean(token && typeof token === "object" && "children" in token);
 }
 
-export function isInlineToken(token: AnyToken): token is InlineToken {
-	return !isBlockToken(token);
+export function isInlineToken(
+	token: AnyToken | null | undefined,
+): token is InlineToken {
+	return Boolean(token && !isBlockToken(token));
 }
 
 export function setBlockType<Type extends BlockType>(

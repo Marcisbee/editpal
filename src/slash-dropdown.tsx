@@ -1,18 +1,18 @@
 import { h } from "preact";
 import { useStore } from "exome/preact";
-import { onAction } from "exome";
 import { createPortal } from "preact/compat";
 import {
 	useContext,
+	useId,
 	useLayoutEffect,
 	useMemo,
 	useRef,
 	useState,
 } from "preact/hooks";
 
-import { EditorContext, preventDefaultAndStop } from "./editpal.tsx";
-import { Slash } from "./slash.ts";
-import type { BlockToken, TextToken } from "./tokens.ts";
+import { EditorContext } from "./editpal.tsx";
+import { removeSlashTrigger } from "./slash.ts";
+import type { BlockToken } from "./tokens.ts";
 import { setBlockType } from "./tokens.ts";
 
 function getIndent(token: BlockToken): number {
@@ -22,10 +22,7 @@ function getIndent(token: BlockToken): number {
 const slashOptions = [
 	{
 		label: "title",
-		action(parent: BlockToken, child: TextToken, query: string) {
-			child.text = child.text
-				.replace(` /${query}`, "")
-				.replace(`/${query}`, "");
+		action(parent: BlockToken) {
 			setBlockType(parent, "h", {
 				size: 1,
 			});
@@ -33,10 +30,7 @@ const slashOptions = [
 	},
 	{
 		label: "sub title",
-		action(parent: BlockToken, child: TextToken, query: string) {
-			child.text = child.text
-				.replace(` /${query}`, "")
-				.replace(`/${query}`, "");
+		action(parent: BlockToken) {
 			setBlockType(parent, "h", {
 				size: 2,
 			});
@@ -44,10 +38,7 @@ const slashOptions = [
 	},
 	{
 		label: "todo",
-		action(parent: BlockToken, child: TextToken, query: string) {
-			child.text = child.text
-				.replace(` /${query}`, "")
-				.replace(`/${query}`, "");
+		action(parent: BlockToken) {
 			setBlockType(parent, "todo", {
 				indent: getIndent(parent),
 				done: false,
@@ -55,11 +46,33 @@ const slashOptions = [
 		},
 	},
 	{
+		label: "blockquote",
+		action(parent: BlockToken) {
+			setBlockType(parent, "quote", {
+				level: 1,
+			});
+		},
+	},
+	{
+		label: "code block",
+		action(parent: BlockToken) {
+			setBlockType(parent, "code", {});
+		},
+	},
+	{
+		label: "horizontal rule",
+		action(parent: BlockToken) {
+			parent.children.forEach((child) => {
+				if (child.type === "t") {
+					child.text = "";
+				}
+			});
+			setBlockType(parent, "hr", {});
+		},
+	},
+	{
 		label: "unordered list",
-		action(parent: BlockToken, child: TextToken, query: string) {
-			child.text = child.text
-				.replace(` /${query}`, "")
-				.replace(`/${query}`, "");
+		action(parent: BlockToken) {
 			setBlockType(parent, "l", {
 				type: "ul",
 				indent: getIndent(parent),
@@ -68,10 +81,7 @@ const slashOptions = [
 	},
 	{
 		label: "ordered list",
-		action(parent: BlockToken, child: TextToken, query: string) {
-			child.text = child.text
-				.replace(` /${query}`, "")
-				.replace(`/${query}`, "");
+		action(parent: BlockToken) {
 			setBlockType(parent, "l", {
 				type: "ol",
 				indent: getIndent(parent),
@@ -81,27 +91,27 @@ const slashOptions = [
 ];
 
 export function SlashDropdown() {
-	const {
-		model: { slash, selection, findElement, parent, recalculate },
-	} = useContext(EditorContext);
+	const { model, editor } = useContext(EditorContext);
+	const { slash, selection } = model;
 	const { getOffset, getPortal, focus } = useStore(selection);
 	const { isOpen, query } = useStore(slash);
 	const { x, y } = getOffset();
-	const ref = useRef<HTMLDivElement>(null);
+	const optionsRef = useRef<HTMLDivElement>(null);
+	const inputRef = useRef<HTMLInputElement>(null);
+	const listId = useId();
 
 	const portalElement = useMemo(getPortal, [getPortal]);
 
 	const [activeIndex, setActiveIndex] = useState(0);
 	const filteredOptions = useMemo(() => {
+		const normalizedQuery = query?.toLowerCase() || "";
 		return slashOptions
 			.filter(({ label }) => {
-				if (query) {
-					return ~label.indexOf(query);
-				}
-
-				return true;
+				return label.includes(normalizedQuery);
 			})
-			.sort((a, b) => a.label.indexOf(query!) - b.label.indexOf(query!));
+			.sort((a, b) =>
+				a.label.indexOf(normalizedQuery) - b.label.indexOf(normalizedQuery)
+			);
 	}, [query]);
 
 	useLayoutEffect(() => {
@@ -110,74 +120,92 @@ export function SlashDropdown() {
 			return;
 		}
 
-		if (filteredOptions.length >= activeIndex && activeIndex >= 0) {
+		if (activeIndex < filteredOptions.length && activeIndex >= 0) {
 			return;
 		}
 
 		setActiveIndex(0);
-	}, [activeIndex, filteredOptions.length]);
+	}, [activeIndex, filteredOptions.length, slash]);
 
-	function runAction(
-		action: (parent: BlockToken, child: TextToken, query: string) => void,
-	) {
-		const textEl = findElement(selection.first[0])! as TextToken;
-		const parentEl = parent(selection.first[0])!;
+	useLayoutEffect(() => {
+		setActiveIndex(filteredOptions.length ? 0 : -1);
+	}, [query, filteredOptions.length]);
 
-		action?.(parentEl, textEl, slash.query!);
+	function restoreEditorFocus() {
+		const [key, offset] = selection.first;
+		requestAnimationFrame(() => {
+			editor.current?.focus({ preventScroll: true });
+			const element = model.findElement(key);
+			if (element) {
+				model.select(element, offset);
+			}
+		});
+	}
 
-		recalculate();
+	function runAction(action?: (parent: BlockToken) => void) {
+		const triggerKey = slash.triggerKey;
+		const textEl = triggerKey ? model.findElement(triggerKey) : undefined;
+		const parentEl = triggerKey ? model.parent(triggerKey) : undefined;
+
+		if (
+			!action ||
+			textEl?.type !== "t" ||
+			!parentEl ||
+			slash.triggerStart === undefined ||
+			slash.triggerEnd === undefined
+		) {
+			return;
+		}
+
+		const result = removeSlashTrigger(
+			textEl.text,
+			slash.triggerStart,
+			slash.triggerEnd,
+		);
+		textEl.text = result.text;
+		action(parentEl);
+
+		slash.close();
+		selection.setSelection(
+			textEl.key,
+			result.offset,
+			textEl.key,
+			result.offset,
+		);
+		model.recalculate();
+		restoreEditorFocus();
 	}
 
 	useLayoutEffect(() => {
-		return onAction(Slash, "onKey", (instance, _, [key]) => {
-			if (instance !== slash) {
-				return;
-			}
+		if (!isOpen) {
+			return;
+		}
 
-			if (key === "ArrowUp") {
-				setActiveIndex(
-					activeIndex
-						? (activeIndex - 1) % filteredOptions.length
-						: filteredOptions.length - 1,
-				);
-				return;
-			}
-
-			if (key === "ArrowDown") {
-				setActiveIndex((activeIndex + 1) % filteredOptions.length);
-				return;
-			}
-
-			if (key === "Enter") {
-				runAction(filteredOptions[activeIndex]?.action);
-				return;
-			}
+		const frame = requestAnimationFrame(() => {
+			inputRef.current?.focus({ preventScroll: true });
 		});
-	}, [activeIndex, filteredOptions.length]);
+		return () => cancelAnimationFrame(frame);
+	}, [isOpen]);
 
 	useLayoutEffect(() => {
 		if (!filteredOptions[activeIndex]) {
 			return;
 		}
 
-		if (!ref.current) {
+		if (!optionsRef.current) {
 			return;
 		}
 
-		const el = ref.current.children[activeIndex];
+		const el = optionsRef.current.children[activeIndex];
 
 		if (!el) {
 			return;
 		}
 
-		el.scrollIntoView?.({ behavior: "smooth", block: "center" });
+		el.scrollIntoView?.({ block: "nearest" });
 	}, [filteredOptions[activeIndex]]);
 
 	if (!isOpen) {
-		return null;
-	}
-
-	if (!filteredOptions.length) {
 		return null;
 	}
 
@@ -187,25 +215,97 @@ export function SlashDropdown() {
 
 	const output = (
 		<div
-			ref={ref}
 			className="e-fl-drop"
-			onMouseDown={preventDefaultAndStop}
+			onMouseDown={(event) => event.stopPropagation()}
 			style={{
 				left: slash.x! - x,
 				top: slash.y! - y,
 			}}
 		>
-			{filteredOptions.map(({ label, action }, index) => (
-				<button
-					type="button"
-					key={label}
-					onMouseEnter={() => setActiveIndex(index)}
-					onClick={() => runAction(action)}
-					data-active={activeIndex === index || undefined}
-				>
-					{label}
-				</button>
-			))}
+			<input
+				ref={inputRef}
+				type="search"
+				autoFocus
+				value={query || ""}
+				placeholder="Search commands…"
+				aria-label="Search commands"
+				aria-controls={listId}
+				aria-activedescendant={activeIndex >= 0
+					? `${listId}-option-${activeIndex}`
+					: undefined}
+				onInput={(event) => slash.setSearchQuery(event.currentTarget.value)}
+				onKeyDown={(event) => {
+					if (event.key === "Escape") {
+						event.preventDefault();
+						event.stopPropagation();
+						slash.dismiss();
+						restoreEditorFocus();
+						return;
+					}
+
+					if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+						event.preventDefault();
+						event.stopPropagation();
+						if (!filteredOptions.length) {
+							return;
+						}
+						const direction = event.key === "ArrowUp" ? -1 : 1;
+						setActiveIndex(
+							(activeIndex + direction + filteredOptions.length) %
+								filteredOptions.length,
+						);
+						return;
+					}
+
+					if (event.key === "Enter") {
+						event.preventDefault();
+						event.stopPropagation();
+						runAction(filteredOptions[activeIndex]?.action);
+					}
+				}}
+				onBlur={(event) => {
+					const next = event.relatedTarget;
+					if (
+						next instanceof Node &&
+						event.currentTarget.parentElement?.contains(next)
+					) {
+						return;
+					}
+					slash.dismiss();
+					if (next instanceof Node && editor.current?.contains(next)) {
+						return;
+					}
+					selection.setFocus(false);
+					selection.setSelection(
+						...selection.first,
+						...selection.first,
+					);
+				}}
+			/>
+			<div
+				ref={optionsRef}
+				id={listId}
+				className="e-fl-drop-options"
+				role="listbox"
+			>
+				{filteredOptions.map(({ label, action }, index) => (
+					<button
+						type="button"
+						id={`${listId}-option-${index}`}
+						role="option"
+						aria-selected={activeIndex === index}
+						key={label}
+						onMouseEnter={() => setActiveIndex(index)}
+						onClick={() => runAction(action)}
+						data-active={activeIndex === index || undefined}
+					>
+						{label}
+					</button>
+				))}
+				{!filteredOptions.length && (
+					<div className="e-fl-drop-empty">No matching commands</div>
+				)}
+			</div>
 		</div>
 	);
 

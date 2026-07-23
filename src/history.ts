@@ -24,10 +24,14 @@ export class HistoryStore extends Exome {
 	public _undo: TraceBatch[] = [];
 	public _redo: TraceBatch[] = [];
 
-	public lock = (fn: Function) => {
+	public lock = <Value>(fn: () => Value): Value => {
+		const wasLocked = this.locked;
 		this.locked = true;
-		fn();
-		this.locked = false;
+		try {
+			return fn();
+		} finally {
+			this.locked = wasLocked;
+		}
 	};
 
 	public undo() {

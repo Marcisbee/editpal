@@ -16,13 +16,14 @@ export function RenderImage(item: ImgToken & { k: string }) {
 
 	useLayoutEffect(() => {
 		const handler = (e: any) => preventDefaultAndStop(e);
+		const input = inputRef.current;
 
-		inputRef.current?.addEventListener("compositionstart", handler);
-		inputRef.current?.addEventListener("compositionend", handler);
+		input?.addEventListener("compositionstart", handler);
+		input?.addEventListener("compositionend", handler);
 
 		return () => {
-			inputRef.current?.removeEventListener("compositionstart", handler);
-			inputRef.current?.removeEventListener("compositionend", handler);
+			input?.removeEventListener("compositionstart", handler);
+			input?.removeEventListener("compositionend", handler);
 		};
 	}, []);
 
@@ -42,7 +43,7 @@ export function RenderImage(item: ImgToken & { k: string }) {
 		>
 			<br />
 			<span contentEditable={false}>
-				<img src={src} alt={item.props.alt} />
+				<img src={src} alt={item.props.alt} draggable={false} />
 				<input
 					ref={inputRef}
 					type="text"
@@ -51,9 +52,10 @@ export function RenderImage(item: ImgToken & { k: string }) {
 						e.stopPropagation();
 					}}
 					placeholder="Type caption here..."
-					defaultValue={item.props.alt}
+					value={item.props.alt || ""}
 					onInput={(e) => {
 						item.props.alt = e.currentTarget.value;
+						model.update();
 					}}
 				/>
 			</span>

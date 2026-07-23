@@ -5,23 +5,28 @@ import type { TextToken } from "./tokens.ts";
 import { getTextNode } from "./utils.ts";
 
 function getTextSlice(text: TextToken, end: number) {
-	const chunks = (text?.text || "").split(/( )/);
-	let i = 0;
+	const beforeCaret = (text?.text || "").slice(0, Math.max(0, end));
+	return beforeCaret.match(/(?:^|\s)(\S*)$/)?.[1]?.toLowerCase();
+}
 
-	let c: string;
-	let count = 0;
-	while ((c = chunks[i]) != null) {
-		const endCount = count + c.length;
+export function removeSlashTrigger(
+	text: string,
+	start: number,
+	end: number,
+): { text: string; offset: number } {
+	const safeStart = Math.max(0, Math.min(start, text.length));
+	const safeEnd = Math.max(safeStart, Math.min(end, text.length));
+	const trigger = text.slice(safeStart, safeEnd);
+	const validBoundary = safeStart === 0 || /\s/.test(text[safeStart - 1]);
 
-		if (end <= endCount && end >= count) {
-			return c?.toLowerCase();
-		}
-
-		count = endCount;
-		i += 1;
+	if (!validBoundary || trigger[0] !== "/" || /\s/.test(trigger)) {
+		return { text, offset: safeEnd };
 	}
 
-	return;
+	return {
+		text: text.slice(0, safeStart) + text.slice(safeEnd),
+		offset: safeStart,
+	};
 }
 
 export class Slash extends Exome {
@@ -29,6 +34,11 @@ export class Slash extends Exome {
 	public y?: number;
 	public isOpen = false;
 	public query?: string;
+	public triggerKey?: string;
+	public triggerStart?: number;
+	public triggerEnd?: number;
+
+	private dismissedTrigger?: string;
 
 	constructor(public model: Model) {
 		super();
@@ -48,6 +58,9 @@ export class Slash extends Exome {
 					selection.first[1] === selection.last[1]
 				)
 			) {
+				lastQuery = undefined;
+				this.dismissedTrigger = undefined;
+				this.close();
 				return;
 			}
 
@@ -61,7 +74,19 @@ export class Slash extends Exome {
 			lastQuery = query;
 
 			if (query?.[0] !== "/" || query?.[1] === "/") {
+				this.dismissedTrigger = undefined;
 				this.close();
+				return;
+			}
+
+			const triggerStart = selection.last[1] - query.length;
+			const trigger = `${el.id}:${triggerStart}`;
+			if (this.dismissedTrigger === trigger) {
+				this.close();
+				return;
+			}
+
+			if (typeof document === "undefined") {
 				return;
 			}
 
@@ -72,11 +97,26 @@ export class Slash extends Exome {
 			}
 
 			const range = document.createRange();
-			range.selectNode(text);
-			const rect = range.getBoundingClientRect();
+			const maxOffset = text.nodeType === Node.TEXT_NODE
+				? text.textContent?.length || 0
+				: text.childNodes.length;
+			range.setStart(text, Math.max(0, Math.min(selection.last[1], maxOffset)));
+			range.collapse(true);
+			let rect = range.getBoundingClientRect();
+			const textElement = text instanceof Element ? text : text.parentElement;
+			if (!rect.height && textElement) {
+				rect = textElement.getBoundingClientRect();
+			}
 			range.detach();
 
-			this.setQuery(query.slice(1), rect.left, rect.top + rect.height);
+			this.setQuery(
+				query.slice(1),
+				rect.left,
+				rect.top + rect.height,
+				el.key,
+				triggerStart,
+				selection.last[1],
+			);
 		};
 
 		subscribe(selection, handler);
@@ -85,26 +125,37 @@ export class Slash extends Exome {
 
 	public close() {
 		this.isOpen = false;
+		this.query = undefined;
 	}
 
-	public setQuery(query: string, x: number, y: number) {
+	public dismiss() {
+		const element = this.triggerKey
+			? this.model.findElement(this.triggerKey)
+			: undefined;
+		if (element && this.triggerStart !== undefined) {
+			this.dismissedTrigger = `${element.id}:${this.triggerStart}`;
+		}
+		this.close();
+	}
+
+	public setQuery(
+		query: string,
+		x: number,
+		y: number,
+		triggerKey: string,
+		triggerStart: number,
+		triggerEnd: number,
+	) {
 		this.query = query;
 		this.isOpen = true;
 		this.x = x;
 		this.y = y;
+		this.triggerKey = triggerKey;
+		this.triggerStart = triggerStart;
+		this.triggerEnd = triggerEnd;
 	}
 
-	public onKey(key: string) {
-		if (key === "Enter") {
-			return true;
-		}
-
-		if (key === "ArrowUp") {
-			return true;
-		}
-
-		if (key === "ArrowDown") {
-			return true;
-		}
+	public setSearchQuery(query: string) {
+		this.query = query;
 	}
 }

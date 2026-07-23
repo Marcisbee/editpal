@@ -136,7 +136,6 @@ export function buildKeys(
 		// 	end,
 		// });
 
-		// @TODO make this in top loop
 		let solves = 0;
 		if (
 			// !isCollapsed &&
@@ -147,15 +146,31 @@ export function buildKeys(
 		) {
 			let i = -1;
 			let len = 0;
+			let lastTextIndex = -1;
+			for (
+				let childIndex = tokens.children.length - 1;
+				childIndex >= 0;
+				childIndex--
+			) {
+				if (tokens.children[childIndex].type === "t") {
+					lastTextIndex = childIndex;
+					break;
+				}
+			}
 
 			for (const child of tokens.children) {
 				i += 1;
 
-				if (lastChild?.type !== "t" || child?.type !== "t") {
+				if (child.type !== "t") {
 					continue;
 				}
 
-				if (len + child.text.length > start && !solves) {
+				const childEnd = len + child.text.length;
+				const hasLaterText = i < lastTextIndex;
+				if (
+					(childEnd > start || (childEnd === start && !hasLaterText)) &&
+					!solves
+				) {
 					context._newSelection[0] = [key + "." + i, start - len];
 					solves++;
 					if (solves >= 2) {

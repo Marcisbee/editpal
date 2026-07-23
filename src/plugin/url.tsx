@@ -1,8 +1,8 @@
 import { useStore } from "exome/preact";
-import { Fragment, h } from "preact";
-import { useContext, useLayoutEffect, useRef, useState } from "preact/hooks";
+import { h } from "preact";
+import { useContext } from "preact/hooks";
 
-import { EditorContext, preventDefaultAndStop } from "../editpal.tsx";
+import { EditorContext } from "../editpal.tsx";
 import type { TextToken, UrlToken } from "../tokens.ts";
 
 export function RenderUrl(item: (TextToken | UrlToken) & { k: string }) {
@@ -13,33 +13,6 @@ export function RenderUrl(item: (TextToken | UrlToken) & { k: string }) {
 		first: [first],
 		last: [last],
 	} = useStore(model.selection);
-	const [urlMeta, setUrlMeta] = useState(meta);
-
-	useLayoutEffect(() => {
-		if (urlMeta !== undefined) {
-			return;
-		}
-
-		setUrlMeta(
-			item.meta = {
-				icon: "https://strike.lv/favicon.ico",
-			},
-		);
-
-		// fetch("http://localhost:8082/v1/meta/url", {
-		// 	method: "post",
-		// 	body: JSON.stringify({
-		// 		url: props.url,
-		// 	}),
-		// 	headers: {
-		// 		"Content-Type": "application/json",
-		// 	},
-		// })
-		// 	.then((res) => res.json())
-		// 	.then((data) => {
-		// 		setUrlMeta(item.meta = data || {});
-		// 	});
-	}, [url]);
 
 	const isSelected = [
 		...model.keysBetween(first, last),
@@ -59,14 +32,11 @@ export function RenderUrl(item: (TextToken | UrlToken) & { k: string }) {
 		>
 			<i
 				style={{
-					backgroundImage: urlMeta?.icon
-						? `url(${JSON.stringify(urlMeta.icon)})`
+					backgroundImage: meta?.icon
+						? `url(${JSON.stringify(meta.icon)})`
 						: undefined,
 				}}
-				// contentEditable={false}
 			/>
-			{/* <span style={{ position: 'absolute' }}><br /></span> */}
-			{/* <span contentEditable={false}>{props.url}</span> */}
 		</span>
 	);
 }

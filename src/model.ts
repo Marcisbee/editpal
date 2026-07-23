@@ -1,7 +1,7 @@
 import { Exome } from "exome";
 
 import { HistoryStore } from "./history.ts";
-import { ModelSelection } from "./selection.ts";
+import { type MarkdownBoundary, ModelSelection } from "./selection.ts";
 import { Slash } from "./slash.ts";
 import type {
 	AnyToken,
@@ -11,9 +11,26 @@ import type {
 	TokenRoot,
 } from "./tokens.ts";
 import { isBlockToken, isInlineToken, setBlockType } from "./tokens.ts";
-import { cloneToken, ranID, setCaret, stringSplice } from "./utils.ts";
+import {
+	cloneToken,
+	nextGraphemeBoundary,
+	nextWordBoundary,
+	previousGraphemeBoundary,
+	previousWordBoundary,
+	ranID,
+	setCaret,
+	setInlineMarkdownCaret,
+	setMarkdownBoundaryCaret,
+	snapGraphemeBoundary,
+	stringSplice,
+} from "./utils.ts";
 import { createBlockToken, createTextToken } from "./utils/create-token.ts";
 import { buildKeys } from "./utils/selection.ts";
+import {
+	inlineMarkdownChunks,
+	markdownBaseProps,
+	parseInlineMarkdownDetailed,
+} from "./markdown-parser.ts";
 
 export const ACTION = {
 	_Key: 0,
@@ -27,7 +44,67 @@ export const ACTION = {
 	_FormatRemove: 8,
 	_Undo: 9,
 	_Redo: 10,
+	_RemoveWord: 11,
+	_DeleteWord: 12,
+	_RemoveLine: 13,
+	_DeleteLine: 14,
+	_Todo: 15,
+	_KeyMarkdownBoundary: 16,
+	_RemoveMarkdownFormat: 17,
+	_EditMarkdown: 18,
 };
+
+interface MarkdownFormatRegion {
+	blockId: string;
+	end: number;
+	key: string;
+	start: number;
+	value: any;
+}
+
+interface RemoveMarkdownFormatData {
+	caret: {
+		blockId: string;
+		offset: number;
+	};
+	regions: MarkdownFormatRegion[];
+}
+
+interface EditMarkdownData {
+	blockId: string;
+	end: number;
+	start: number;
+	text: string;
+}
+
+function parsedMarkdownCaret(
+	parsed: ReturnType<typeof parseInlineMarkdownDetailed>,
+	sourceOffset: number,
+): { id: string; offset: number } | undefined {
+	let lastText: TextToken | undefined;
+	for (const entry of parsed) {
+		if (entry.token.type !== "t") {
+			continue;
+		}
+		lastText = entry.token;
+		if (entry.origins.length === 0) {
+			if (sourceOffset <= entry.sourceStart) {
+				return { id: entry.token.id, offset: 0 };
+			}
+			continue;
+		}
+		if (sourceOffset <= entry.sourceEnd) {
+			return {
+				id: entry.token.id,
+				offset: entry.origins.filter((origin) => origin < sourceOffset).length,
+			};
+		}
+	}
+
+	return lastText
+		? { id: lastText.id, offset: lastText.text.length }
+		: undefined;
+}
 
 function handleEnter(
 	fromParent: BlockToken,
@@ -51,6 +128,17 @@ function handleEnter(
 			type: fromParent.props?.type || "ul",
 		});
 		return;
+	}
+
+	if (fromParent.type === "quote") {
+		setBlockType(toParent, "quote", {
+			level: fromParent.props.level || 1,
+		});
+		return;
+	}
+
+	if (fromParent.type === "code") {
+		setBlockType(toParent, "code", {});
 	}
 }
 
@@ -82,7 +170,7 @@ function handleTab(
 		}
 
 		if (element.type === "h") {
-			if (mod === -1 && !element.props.size) {
+			if (mod === -1 && element.props.size <= 1) {
 				setBlockType(element, "p", {});
 				continue;
 			}
@@ -91,9 +179,13 @@ function handleTab(
 				1,
 				Math.min((element.props.size || 0) + mod, 6),
 			);
-		} else {
+		} else if (
+			element.type === "p" ||
+			element.type === "l" ||
+			element.type === "todo"
+		) {
 			if (mod === -1 && !element.props.indent) {
-				element.type = "p";
+				setBlockType(element, "p", {});
 				model.select(
 					model.findElement(model.selection.first[0]),
 					model.selection.first[1],
@@ -107,6 +199,15 @@ function handleTab(
 				0,
 				Math.min((element.props.indent || 0) + mod, 4),
 			);
+		} else if (element.type === "quote") {
+			if (mod === -1 && (element.props.level || 1) <= 1) {
+				setBlockType(element, "p", {});
+			} else {
+				element.props.level = Math.max(
+					1,
+					Math.min((element.props.level || 1) + mod, 6),
+				);
+			}
 		}
 	}
 
@@ -115,6 +216,11 @@ function handleTab(
 
 const URL_REGEX =
 	/(https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|www\.[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9]+\.[^\s]{2,}|www\.[a-zA-Z0-9]+\.[^\s]{2,})/;
+const COMPLETE_URL_REGEX = new RegExp(`^(?:${URL_REGEX.source})$`);
+
+function trimUrlPunctuation(value: string): string {
+	return value.replace(/[),.!?;:'"]+$/g, "");
+}
 
 export class Model extends Exome {
 	public tokens: TokenRoot;
@@ -131,14 +237,15 @@ export class Model extends Exome {
 	public _idToKey: Record<string, string> = {};
 	public _elements: Record<string, AnyToken> = {};
 	public _isComposing = false;
-	public _stack: Function[] = [];
+	public _stack: Array<() => void> = [];
 
 	constructor(
 		tokens: TokenRoot = [createBlockToken("p", {}, [createTextToken()])],
 	) {
 		super();
 
-		this.tokens = cloneToken(tokens);
+		this.tokens = cloneToken(Array.isArray(tokens) ? tokens : []);
+		this._ensureEditableDocument();
 		this.recalculate(true);
 
 		// console.log(this.tokens, this._idToKey);
@@ -146,10 +253,92 @@ export class Model extends Exome {
 
 	public update() {}
 
+	private _ensureEditableDocument() {
+		if (!Array.isArray(this.tokens)) {
+			this.tokens = [];
+		}
+
+		if (this.tokens.length === 0) {
+			this.tokens.push(createBlockToken("p", {}, [createTextToken()]));
+		}
+
+		const usedIds = new Set<string>();
+		const ensureUniqueId = (token: AnyToken) => {
+			while (
+				typeof token.id !== "string" ||
+				!token.id ||
+				usedIds.has(token.id)
+			) {
+				token.id = ranID();
+			}
+			usedIds.add(token.id);
+		};
+
+		for (const block of this.tokens) {
+			ensureUniqueId(block);
+			block.props ||= {} as never;
+			if (!Array.isArray(block.children)) {
+				block.children = [];
+			}
+			if (block.children.length === 0) {
+				block.children.push(createTextToken());
+			}
+
+			for (const child of block.children) {
+				ensureUniqueId(child);
+				child.props ||= {};
+				if (child.type === "t" && typeof child.text !== "string") {
+					child.text = child.text == null ? "" : String(child.text);
+				}
+			}
+		}
+	}
+
+	private _resolveSelectionPoint(
+		point: [null | string, null | number],
+		preferEnd = false,
+	): [string, number] {
+		const requestedKey = point[0] || "";
+		let element = this.findElement(requestedKey);
+
+		if (element && isBlockToken(element)) {
+			element = preferEnd
+				? element.children[element.children.length - 1]
+				: element.children[0];
+		}
+
+		if (!element || isBlockToken(element)) {
+			const requestedBlock = Number.parseInt(requestedKey.split(".")[0], 10);
+			const blockIndex = Number.isFinite(requestedBlock)
+				? Math.max(0, Math.min(requestedBlock, this.tokens.length - 1))
+				: preferEnd
+				? this.tokens.length - 1
+				: 0;
+			const block = this.tokens[blockIndex];
+			const useEnd = preferEnd || requestedBlock >= this.tokens.length;
+			element = useEnd
+				? block.children[block.children.length - 1]
+				: block.children[0];
+			preferEnd = useEnd;
+		}
+
+		const maxOffset = element.type === "t" ? element.text.length : 0;
+		const requestedOffset = point[1] ?? (preferEnd ? maxOffset : 0);
+		const offset = Math.max(0, Math.min(requestedOffset, maxOffset));
+		return [
+			element.key,
+			element.type === "t"
+				? snapGraphemeBoundary(element.text, offset, preferEnd)
+				: 0,
+		];
+	}
+
 	public recalculate = (initial = false) => {
 		if (this._isComposing) {
 			return;
 		}
+
+		this._ensureEditableDocument();
 
 		const {
 			_keys,
@@ -161,20 +350,24 @@ export class Model extends Exome {
 		this._elements = _elements;
 		this.update();
 
-		// Don't heal initial selection
+		const selectionIsCollapsed = first[0] === last[0] && first[1] === last[1];
+		const resolvedFirst = this._resolveSelectionPoint(first);
+		const resolvedLast = this._resolveSelectionPoint(
+			last,
+			!selectionIsCollapsed,
+		);
+
 		if (initial) {
+			this.selection.setSelection(...resolvedFirst, ...resolvedLast);
+			this.selection.setFormat(this.getSelectionFormat());
 			return;
 		}
 
-		// if (first[0] === last[0] && first[1] === last[1]) {
-		// 	return;
-		// }
-
 		this.select(
-			this.findElement(first[0]!),
-			first[1]!,
-			this.findElement(last[0]!),
-			last[1]!,
+			this.findElement(resolvedFirst[0]),
+			resolvedFirst[1],
+			this.findElement(resolvedLast[0]),
+			resolvedLast[1],
 		);
 	};
 
@@ -188,7 +381,9 @@ export class Model extends Exome {
 				return;
 			}
 			const index = this.tokens.indexOf(element);
-			this.tokens.splice(index, 1);
+			if (index >= 0) {
+				this.tokens.splice(index, 1);
+			}
 			// console.log("🏴‍☠️ REMOVE ROOT", index);
 
 			return;
@@ -199,19 +394,29 @@ export class Model extends Exome {
 		}
 
 		const index = parent.children.findIndex((c) => c.key === key);
-		parent.children.splice(index, 1);
+		if (index >= 0) {
+			parent.children.splice(index, 1);
+		}
 		// console.log("🏴‍☠️ REMOVE CHILD", parent.key, key);
 	};
 
 	public keysBetween = (firstKey: string, lastKey: string) => {
 		const keys = Object.values(this._idToKey);
-		const li = keys.indexOf(lastKey);
+		const firstIndex = keys.indexOf(firstKey);
+		const lastIndex = keys.indexOf(lastKey);
 
-		if (li === -1) {
-			return keys.slice(keys.indexOf(firstKey));
+		if (firstIndex === -1) {
+			return [];
 		}
 
-		return keys.slice(keys.indexOf(firstKey), li + 1);
+		if (lastIndex === -1) {
+			return keys.slice(firstIndex);
+		}
+
+		return keys.slice(
+			Math.min(firstIndex, lastIndex),
+			Math.max(firstIndex, lastIndex) + 1,
+		);
 	};
 
 	public removeBetween = (
@@ -241,11 +446,11 @@ export class Model extends Exome {
 
 	public innerNode = (key: string): InlineToken => {
 		const element = this.findElement(key);
-		return isBlockToken(element) ? element.children[0] : element;
+		return isBlockToken(element) ? element.children[0] : element as InlineToken;
 	};
 
 	public innerText = (key: string) => {
-		let el = this.innerNode(key);
+		const el = this.innerNode(key);
 
 		if (el.type !== "t") {
 			return;
@@ -253,6 +458,27 @@ export class Model extends Exome {
 
 		return el;
 	};
+
+	private _replaceInlineWithText(key: string): TextToken | undefined {
+		const element = this.innerNode(key);
+		if (!element || element.type === "t") {
+			return element?.type === "t" ? element : undefined;
+		}
+
+		const parent = this.parent(element.key);
+		const index = parent?.children.indexOf(element) ?? -1;
+		if (!parent || index < 0) {
+			return;
+		}
+
+		const replacement = {
+			...createTextToken(),
+			id: element.id,
+			key: element.key,
+		};
+		parent.children.splice(index, 1, replacement);
+		return replacement;
+	}
 
 	public parent = (key: string): BlockToken | null => {
 		const keyChunks = key.split(".");
@@ -284,38 +510,197 @@ export class Model extends Exome {
 		const keys = Object.values(this._idToKey);
 		const index = keys.indexOf(key);
 
-		if (index < 1) {
+		if (index < 0) {
 			return null;
 		}
 
-		const lastKey = keys[index - 1];
-
-		const el = this.findElement(lastKey);
-
-		if (el?.type === "t") {
-			return el;
+		for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+			const element = this.findElement(keys[cursor]);
+			if (element?.type === "t") {
+				return element;
+			}
 		}
 
-		return this.previousText(lastKey);
+		return null;
 	};
 
 	public nextText = (currentKey: string): TextToken | null => {
 		const keys = Object.values(this._idToKey);
 		const index = keys.indexOf(currentKey);
 
-		if (index < 1) {
+		if (index < 0) {
 			return null;
 		}
 
-		const lastKey = keys[index + 1];
-
-		const el = this.findElement(lastKey);
-
-		if (el?.type === "t") {
-			return el;
+		for (let cursor = index + 1; cursor < keys.length; cursor += 1) {
+			const element = this.findElement(keys[cursor]);
+			if (element?.type === "t") {
+				return element;
+			}
 		}
 
-		return this.nextText(lastKey);
+		return null;
+	};
+
+	public selectedText = (): string => {
+		const collapsed = this.selection.first[0] === this.selection.last[0] &&
+			this.selection.first[1] === this.selection.last[1];
+		const [firstKey, firstOffset] = this._resolveSelectionPoint(
+			this.selection.first,
+		);
+		const [lastKey, lastOffset] = this._resolveSelectionPoint(
+			this.selection.last,
+			!collapsed,
+		);
+		const [firstBlock, firstChild] = firstKey.split(".").map(Number);
+		const [lastBlock, lastChild] = lastKey.split(".").map(Number);
+		const output: string[] = [];
+
+		for (let blockIndex = firstBlock; blockIndex <= lastBlock; blockIndex++) {
+			const block = this.tokens[blockIndex];
+			if (!block) {
+				continue;
+			}
+
+			const start = blockIndex === firstBlock ? firstChild : 0;
+			const end = blockIndex === lastBlock
+				? lastChild
+				: block.children.length - 1;
+			let line = "";
+
+			for (let childIndex = start; childIndex <= end; childIndex++) {
+				const child = block.children[childIndex];
+				if (!child) {
+					continue;
+				}
+
+				if (child.type === "img") {
+					line += child.props.alt || "";
+					continue;
+				}
+				if (child.type === "url") {
+					line += child.src;
+					continue;
+				}
+				if (child.props.url && !child.props.link) {
+					line += child.props.url;
+					continue;
+				}
+
+				const from = blockIndex === firstBlock && childIndex === firstChild
+					? firstOffset
+					: 0;
+				const to = blockIndex === lastBlock && childIndex === lastChild
+					? lastOffset
+					: child.text.length;
+				line += child.text.slice(from, to);
+			}
+
+			output.push(line);
+		}
+
+		return output.join("\n");
+	};
+
+	private _textPointAtBlockOffset(
+		block: BlockToken,
+		requestedOffset: number,
+		preferPrevious = false,
+	): { element: TextToken; offset: number } | undefined {
+		const textChildren = block.children.filter((child): child is TextToken =>
+			child.type === "t"
+		);
+		const maxOffset = textChildren.reduce(
+			(total, child) => total + child.text.length,
+			0,
+		);
+		const offset = Math.max(0, Math.min(requestedOffset, maxOffset));
+		let currentOffset = 0;
+
+		for (const [index, child] of textChildren.entries()) {
+			const end = currentOffset + child.text.length;
+			const isLast = index === textChildren.length - 1;
+			if (
+				offset < end ||
+				(offset === end && (preferPrevious || isLast))
+			) {
+				return {
+					element: child,
+					offset: offset - currentOffset,
+				};
+			}
+			currentOffset = end;
+		}
+
+		const last = textChildren[textChildren.length - 1];
+		return last ? { element: last, offset: last.text.length } : undefined;
+	}
+
+	private _selectedTextRanges = (): Array<{
+		element: TextToken;
+		start: number;
+		end: number;
+	}> => {
+		const [firstKey, firstOffset] = this.selection.first;
+		const [lastKey, lastOffset] = this.selection.last;
+
+		return this.keysBetween(firstKey, lastKey).reduce<
+			Array<{
+				element: TextToken;
+				start: number;
+				end: number;
+			}>
+		>((ranges, key) => {
+			const element = this.findElement(key);
+			if (element?.type !== "t") {
+				return ranges;
+			}
+
+			const start = key === firstKey ? firstOffset : 0;
+			const end = key === lastKey ? lastOffset : element.text.length;
+			if (end > start) {
+				ranges.push({ element, start, end });
+			}
+
+			return ranges;
+		}, []);
+	};
+
+	public getSelectionFormat = (): Record<string, any> => {
+		const collapsed = this.selection.first[0] === this.selection.last[0] &&
+			this.selection.first[1] === this.selection.last[1];
+
+		if (collapsed) {
+			const element = this.findElement(this.selection.first[0]);
+			return element && !isBlockToken(element)
+				? Object.fromEntries(
+					Object.entries(element.props || {}).filter(([, value]) =>
+						value !== undefined
+					),
+				)
+				: {};
+		}
+
+		const selectedProps = this._selectedTextRanges().map(
+			({ element }) => element.props || {},
+		);
+		const firstProps = selectedProps[0];
+		if (!firstProps) {
+			return {};
+		}
+
+		return Object.entries(firstProps).reduce<Record<string, any>>(
+			(common, [key, value]) => {
+				if (
+					value !== undefined &&
+					selectedProps.every((props) => props[key] === value)
+				) {
+					common[key] = value;
+				}
+				return common;
+			},
+			{},
+		);
 	};
 
 	public _transformToParagraph(element: BlockToken) {
@@ -342,7 +727,7 @@ export class Model extends Exome {
 		}
 
 		if (parent.type === "p") {
-			if (parent.children.length === 1 && parent.key.startsWith("0")) {
+			if (parent.children.length === 1 && parent.key === "0") {
 				return;
 			}
 
@@ -353,11 +738,17 @@ export class Model extends Exome {
 				!onlyChild.text
 			) {
 				const prev = this.previousText(parent.key);
+				if (!prev) {
+					return;
+				}
+
+				const previousLength = prev.text.length;
 				this.remove(parent.key);
-				const l = prev!.text.length;
-				this._stack.push(() => {
-					setCaret(prev!.id, l);
-				});
+				this.recalculate();
+				const previousAfterCalculation = this.findElement(prev.key);
+				if (previousAfterCalculation?.type === "t") {
+					this.select(previousAfterCalculation, previousLength);
+				}
 				return;
 			}
 
@@ -366,7 +757,11 @@ export class Model extends Exome {
 				return;
 			}
 
-			const prev = this.previousText(parent.key)!;
+			const prev = this.previousText(parent.key);
+			if (!prev) {
+				return;
+			}
+
 			const siblings = parent.children.map(cloneToken);
 
 			this.insert(siblings, prev);
@@ -377,20 +772,24 @@ export class Model extends Exome {
 			this.recalculate();
 
 			const prevAfterCalculation = this.innerText(prev.key);
-
-			this._stack.push(() => {
-				if (prevAfterCalculation && prevAfterCalculation !== prev) {
-					setCaret(prevAfterCalculation.id, prevLength);
-					return;
-				}
-
-				setCaret(prev.id, prevLength);
-			});
+			if (prevAfterCalculation) {
+				this.select(prevAfterCalculation, prevLength);
+			}
 			return;
 		}
 
-		if (parent.props.indent && parent.props.indent > 0) {
+		if (
+			(parent.type === "l" || parent.type === "todo") &&
+			parent.props.indent &&
+			parent.props.indent > 0
+		) {
 			handleTab(parent, parent, this, true);
+			return;
+		}
+
+		if (parent.type === "quote" && (parent.props.level || 1) > 1) {
+			parent.props.level = (parent.props.level || 1) - 1;
+			this.update();
 			return;
 		}
 
@@ -399,51 +798,310 @@ export class Model extends Exome {
 		// console.log("🟢 REMOVE INITIAL", (parent as any).index);
 	};
 
-	private _handleTextTransforms = (element: TextToken, textAdded: string) => {
-		if (textAdded === "D") {
-			element.text = element.text.replace(/\:D/g, "😄");
-			return;
+	private _transformInlineMarkdown(
+		parent: BlockToken,
+		caretElement: TextToken,
+		caretOffset: number,
+	): boolean {
+		if (parent.type === "code" || parent.type === "hr") {
+			return false;
 		}
 
-		// Handle url insertion
-		if (URL_REGEX.test(textAdded)) {
-			const index = element.text.indexOf(textAdded);
-			this.history.lock(() => {
-				this.select(element, index, element, index + textAdded.length);
-				this.action(ACTION._FormatAdd, ["url", textAdded]);
+		const chunks = inlineMarkdownChunks(parent.children);
+		const baseProps = new Map<number, Record<string, any>>();
+		let source = "";
+		let caretSourceOffset = -1;
 
-				// Place cursor after url
-				requestAnimationFrame(() => {
-					const urlElement = this.nextText(element.key)!;
-					const nextElement = this.nextText(urlElement.key)!;
-					this.select(nextElement, 0);
-				});
-			});
-			return;
+		for (const chunk of chunks) {
+			const start = source.length;
+			source += chunk.text;
+			if (chunk.token === caretElement && chunk.props) {
+				caretSourceOffset = start + Math.max(
+					0,
+					Math.min(caretOffset, chunk.text.length),
+				);
+			}
+			if (chunk.props) {
+				const props = markdownBaseProps(chunk.props);
+				for (let index = 0; index < chunk.text.length; index++) {
+					baseProps.set(start + index, props);
+				}
+			}
+		}
+
+		if (caretSourceOffset < 0) {
+			return false;
+		}
+
+		const parsed = parseInlineMarkdownDetailed(source, {
+			basePropsAt: (index) => baseProps.get(index) || {},
+		});
+		const semantic = (items: InlineToken[]) =>
+			JSON.stringify(
+				items.map((item) =>
+					item.type === "t"
+						? { props: item.props, text: item.text, type: item.type }
+						: item.type === "img"
+						? {
+							props: item.props,
+							src: item.src,
+							type: item.type,
+						}
+						: { props: item.props, src: item.src, type: item.type }
+				),
+			);
+		const nextChildren = parsed.map(({ token }) => token);
+		if (semantic(parent.children) === semantic(nextChildren)) {
+			return false;
+		}
+
+		const prefix = parseInlineMarkdownDetailed(
+			source.slice(0, caretSourceOffset),
+			{
+				basePropsAt: (index) => baseProps.get(index) || {},
+			},
+		);
+		const prefixText = prefix.filter(({ token }) => token.type === "t");
+		const caretTextIndex = Math.max(0, prefixText.length - 1);
+		const caretTextOffset = prefixText[caretTextIndex]?.token.type === "t"
+			? prefixText[caretTextIndex].token.text.length
+			: 0;
+		const parentId = parent.id;
+
+		parent.children = nextChildren;
+		this.recalculate();
+
+		const currentParentKey = this._idToKey[parentId];
+		const currentParent = currentParentKey
+			? this.findElement(currentParentKey)
+			: undefined;
+		if (currentParent && isBlockToken(currentParent)) {
+			const textChildren = currentParent.children.filter(
+				(child): child is TextToken => child.type === "t",
+			);
+			const caretText = textChildren[
+				Math.min(caretTextIndex, Math.max(0, textChildren.length - 1))
+			];
+			if (caretText) {
+				this.select(
+					caretText,
+					Math.min(caretTextOffset, caretText.text.length),
+				);
+				const outsideFormat = markdownBaseProps(caretText.props);
+				if (
+					Object.keys(caretText.props).some((key) =>
+						!(key in outsideFormat) &&
+						caretText.props[key] !== undefined
+					)
+				) {
+					this.selection.setMarkdownBoundary({
+						format: outsideFormat,
+						side: "after",
+						tokenId: caretText.id,
+					});
+					this.selection.setFormat(outsideFormat);
+					this._stack.push(() =>
+						setMarkdownBoundaryCaret(caretText.id, "after")
+					);
+				}
+			}
+		}
+
+		return true;
+	}
+
+	private _handleTextTransforms = (
+		element: TextToken,
+		textAdded: string,
+		insertionOffset: number,
+	): "inline" | "url" | { caret: number } | undefined => {
+		const insertionEnd = insertionOffset + textAdded.length;
+		if (
+			element.text.slice(Math.max(0, insertionEnd - 2), insertionEnd) === ":D"
+		) {
+			element.text = stringSplice(
+				element.text,
+				Math.max(0, insertionEnd - 2),
+				insertionEnd,
+				"😄",
+			);
+			return { caret: insertionEnd };
 		}
 
 		const parent = this.parent(element.key)!;
+		const isFirstChild = parent.children[0] === element;
+		const completesPrefix = (length: number) =>
+			insertionOffset < length && insertionEnd >= length;
+
+		if (
+			isFirstChild &&
+			parent.type === "p" &&
+			/^\s{0,3}(?:-{3,}|\*{3,}|_{3,})\s*$/.test(element.text)
+		) {
+			element.text = "";
+			setBlockType(parent, "hr", {});
+			return { caret: 0 };
+		}
+
+		if (isFirstChild && parent.type === "p") {
+			const quote = element.text.match(/^((?:>\s*)+)(.*)$/);
+			if (
+				quote &&
+				insertionEnd >= quote[1].length &&
+				(/\s/.test(quote[1]) || textAdded.length > 1)
+			) {
+				element.text = quote[2];
+				setBlockType(parent, "quote", {
+					level: (quote[1].match(/>/g) || []).length,
+				});
+				return {
+					caret: Math.max(0, insertionEnd - quote[1].length),
+				};
+			}
+		}
+
+		if (
+			/[\\`*_~=[\]()!]/.test(textAdded) &&
+			this._transformInlineMarkdown(parent, element, insertionEnd)
+		) {
+			return "inline";
+		}
+
+		let urlMatch = URL_REGEX.exec(textAdded);
+		let url = urlMatch ? trimUrlPunctuation(urlMatch[0]) : undefined;
+		let index = urlMatch
+			? Math.max(0, insertionOffset + (urlMatch.index || 0))
+			: -1;
+
+		if (!url && /\s/.test(textAdded)) {
+			const beforeInsertion = element.text.slice(0, insertionOffset);
+			const wordStart = Math.max(
+				beforeInsertion.lastIndexOf(" "),
+				beforeInsertion.lastIndexOf("\t"),
+				beforeInsertion.lastIndexOf("\n"),
+			) + 1;
+			const candidate = trimUrlPunctuation(beforeInsertion.slice(wordStart));
+			if (COMPLETE_URL_REGEX.test(candidate)) {
+				url = candidate;
+				index = wordStart;
+			}
+		}
+
+		// Handle a pasted URL immediately, or a typed URL once a delimiter is added.
+		if (url) {
+			const caretAfterUrl = Math.max(
+				0,
+				insertionOffset + textAdded.length - (index + url.length),
+			);
+			this.history.lock(() => {
+				this.select(element, index, element, index + url.length);
+				this.action(ACTION._FormatAdd, ["url", url]);
+
+				const urlElement = Object.values(this._elements).find((token) =>
+					token.type === "t" && token.props.url === url
+				);
+				const nextElement = urlElement
+					? this.nextText(urlElement.key)
+					: undefined;
+				if (nextElement) {
+					this.select(nextElement, caretAfterUrl);
+				}
+			});
+			return "url";
+		}
+
+		if (
+			isFirstChild &&
+			insertionOffset === 0 &&
+			textAdded.startsWith("#") &&
+			(parent.type === "p" || parent.type === "h")
+		) {
+			const requested = textAdded.match(/^#+/)?.[0].length || 0;
+			const currentSize = parent.type === "h" ? parent.props.size : 0;
+			const consumedHashes = Math.min(requested, 6 - currentSize);
+
+			if (consumedHashes > 0) {
+				const trailingWhitespace =
+					element.text.slice(consumedHashes).match(/^\s+/)?.[0].length || 0;
+				const consumed = consumedHashes + trailingWhitespace;
+				element.text = element.text.slice(consumed);
+				setBlockType(parent, "h", {
+					size: currentSize + consumedHashes,
+				});
+				return {
+					caret: Math.max(0, insertionEnd - consumed),
+				};
+			}
+		}
+
+		if (
+			isFirstChild &&
+			parent.type === "h" &&
+			element.text === textAdded &&
+			/^\s+$/.test(textAdded)
+		) {
+			element.text = "";
+			return { caret: 0 };
+		}
+
+		if (isFirstChild && (parent.type === "p" || parent.type === "l")) {
+			const beforeCaret = element.text.slice(0, insertionEnd);
+			const todo = element.text.match(
+				/^(\s*)(?:(?:[-+*])\s+)?\[([ xX])\]\s+/,
+			);
+			const canTransformTodo = parent.type === "p" ||
+				(parent.type === "l" && parent.props.type === "ul");
+
+			if (
+				canTransformTodo &&
+				todo &&
+				completesPrefix(todo[0].length) &&
+				beforeCaret.startsWith(todo[0])
+			) {
+				element.text = element.text.slice(todo[0].length);
+				setBlockType(parent, "todo", {
+					indent: Math.max(
+						parent.props.indent || 0,
+						Math.floor(todo[1].length / 2),
+					),
+					done: todo[2].toLowerCase() === "x",
+				});
+				return {
+					caret: Math.max(0, insertionEnd - todo[0].length),
+				};
+			}
+		}
 
 		// "-|[space]" => "• |"
-		if (textAdded === " " && parent.type === "p" && element.text === "- ") {
-			element.text = "";
+		const unordered = isFirstChild && parent.type === "p"
+			? element.text.match(/^(\s*)[-+*]\s+/)
+			: null;
+		if (unordered && completesPrefix(unordered[0].length)) {
+			element.text = element.text.slice(unordered[0].length);
 			setBlockType(parent, "l", {
-				indent: 0,
+				indent: Math.floor(unordered[1].length / 2),
 				...parent.props,
 				type: "ul",
 			});
-			return;
+			return {
+				caret: Math.max(0, insertionEnd - unordered[0].length),
+			};
 		}
 
 		// "1.|[space]" => "1. |"
-		if (textAdded === " " && parent.type === "p" && element.text === "1. ") {
-			element.text = "";
+		const ordered = isFirstChild && parent.type === "p"
+			? element.text.match(/^(\s*)\d+[.)]\s+/)
+			: null;
+		if (ordered && completesPrefix(ordered[0].length)) {
+			element.text = element.text.slice(ordered[0].length);
 			setBlockType(parent, "l", {
-				indent: 0,
+				indent: Math.floor(ordered[1].length / 2),
 				...parent.props,
 				type: "ol",
 			});
-			return;
+			return {
+				caret: Math.max(0, insertionEnd - ordered[0].length),
+			};
 		}
 	};
 
@@ -491,7 +1149,7 @@ export class Model extends Exome {
 		return newTokens;
 	}
 
-	private _pushToHistory = (type: number, data?: string) => {
+	private _pushToHistory = (type: number, data?: any) => {
 		const first = this.selection.first.slice() as [string, number];
 		const last = this.selection.last.slice() as [string, number];
 		const tokensString = JSON.stringify(this.tokens);
@@ -531,8 +1189,12 @@ export class Model extends Exome {
 			},
 		};
 
-		// this.history.push(trace);
-		this.history.push(trace, type === ACTION._Compose ? ACTION._Key : type);
+		const batch = type === ACTION._Todo
+			? undefined
+			: type === ACTION._Compose
+			? ACTION._Key
+			: type;
+		this.history.push(trace, batch);
 	};
 
 	private _cut = (
@@ -582,11 +1244,235 @@ export class Model extends Exome {
 			return;
 		}
 
+		const markdownBoundary = this.selection.markdownBoundary;
+		const selectionIsCollapsed =
+			this.selection.first[0] === this.selection.last[0] &&
+			this.selection.first[1] === this.selection.last[1];
+		const safeFirst = this._resolveSelectionPoint(this.selection.first);
+		const safeLast = this._resolveSelectionPoint(
+			this.selection.last,
+			!selectionIsCollapsed,
+		);
+		this.selection.setSelection(...safeFirst, ...safeLast);
+
+		if (
+			(type === ACTION._Key || type === ACTION._Compose) &&
+			typeof data === "string" &&
+			data &&
+			!/\r|\n/.test(data) &&
+			selectionIsCollapsed &&
+			markdownBoundary
+		) {
+			this.action(ACTION._KeyMarkdownBoundary, {
+				boundary: markdownBoundary,
+				text: data,
+			});
+			return;
+		}
+
 		if (type === ACTION._Key && data === " ") {
 			this.history.batch();
 		}
 
 		this._pushToHistory(type, data);
+
+		if (type === ACTION._EditMarkdown && data) {
+			const request = data as EditMarkdownData;
+			const blockKey = this._idToKey[request.blockId];
+			const block = blockKey ? this.findElement(blockKey) : undefined;
+			if (
+				!block ||
+				!isBlockToken(block) ||
+				block.type === "code" ||
+				block.type === "hr"
+			) {
+				return;
+			}
+
+			const chunks = inlineMarkdownChunks(block.children);
+			const baseProps = new Map<number, Record<string, any>>();
+			let source = "";
+			for (const chunk of chunks) {
+				const sourceStart = source.length;
+				source += chunk.text;
+				if (!chunk.props) {
+					continue;
+				}
+				const props = markdownBaseProps(chunk.props);
+				for (let index = sourceStart; index < source.length; index++) {
+					baseProps.set(index, props);
+				}
+			}
+
+			const start = Math.max(0, Math.min(request.start, source.length));
+			const end = Math.max(start, Math.min(request.end, source.length));
+			const inserted = request.text || "";
+			const nextSource = stringSplice(source, start, end, inserted);
+			const insertedBaseProps = baseProps.get(start) ||
+				baseProps.get(Math.max(0, start - 1)) || {};
+			const parsed = parseInlineMarkdownDetailed(nextSource, {
+				basePropsAt: (index) => {
+					if (index < start) {
+						return baseProps.get(index) || {};
+					}
+					if (index < start + inserted.length) {
+						return insertedBaseProps;
+					}
+					return baseProps.get(index - inserted.length + end - start) || {};
+				},
+			});
+			const caretSourceOffset = start + inserted.length;
+			const caret = parsedMarkdownCaret(parsed, caretSourceOffset);
+			const blockId = block.id;
+			block.children = parsed.map(({ token }) => token);
+			this.recalculate();
+
+			const caretElement = caret
+				? this.findElement(this._idToKey[caret.id])
+				: undefined;
+			if (caret && caretElement?.type === "t") {
+				this.select(
+					caretElement,
+					Math.min(caret.offset, caretElement.text.length),
+				);
+			}
+			this._stack.push(() =>
+				setInlineMarkdownCaret(blockId, caretSourceOffset)
+			);
+			return;
+		}
+
+		if (
+			type === ACTION._KeyMarkdownBoundary &&
+			typeof data?.text === "string"
+		) {
+			const boundary = data.boundary as MarkdownBoundary;
+			const key = this._idToKey[boundary.tokenId];
+			const element = key ? this.findElement(key) : undefined;
+			if (element?.type !== "t") {
+				return;
+			}
+
+			const parent = this.parent(element.key);
+			if (!parent) {
+				return;
+			}
+
+			let blockOffset = 0;
+			for (const child of parent.children) {
+				if (child === element) {
+					if (boundary.side === "after") {
+						blockOffset += element.text.length;
+					}
+					break;
+				}
+				if (child.type === "t") {
+					blockOffset += child.text.length;
+				}
+			}
+
+			this.insert(
+				[createTextToken(boundary.format, data.text)],
+				element,
+				boundary.side === "before" ? 0 : 1,
+			);
+			const parentId = parent.id;
+			this.recalculate();
+			const currentParentKey = this._idToKey[parentId];
+			const currentParent = currentParentKey
+				? this.findElement(currentParentKey)
+				: undefined;
+			if (currentParent && isBlockToken(currentParent)) {
+				const point = this._textPointAtBlockOffset(
+					currentParent,
+					blockOffset + data.text.length,
+					true,
+				);
+				if (point) {
+					this.select(point.element, point.offset);
+				}
+			}
+			return;
+		}
+
+		if (
+			type === ACTION._RemoveMarkdownFormat &&
+			Array.isArray(data?.regions)
+		) {
+			const request = data as RemoveMarkdownFormatData;
+			for (const region of request.regions) {
+				const blockKey = this._idToKey[region.blockId];
+				const block = blockKey ? this.findElement(blockKey) : undefined;
+				if (!block || !isBlockToken(block)) {
+					continue;
+				}
+
+				const first = this._textPointAtBlockOffset(
+					block,
+					region.start,
+				);
+				const last = this._textPointAtBlockOffset(
+					block,
+					region.end,
+					true,
+				);
+				if (!first || !last) {
+					continue;
+				}
+
+				this.selection.setSelection(
+					first.element.key,
+					first.offset,
+					last.element.key,
+					last.offset,
+				);
+				this.history.lock(() =>
+					this.action(ACTION._FormatRemove, [region.key, region.value])
+				);
+			}
+
+			const caretBlockKey = this._idToKey[request.caret.blockId];
+			const caretBlock = caretBlockKey
+				? this.findElement(caretBlockKey)
+				: undefined;
+			if (caretBlock && isBlockToken(caretBlock)) {
+				const point = this._textPointAtBlockOffset(
+					caretBlock,
+					request.caret.offset,
+					true,
+				);
+				if (point) {
+					this.select(point.element, point.offset);
+				}
+			}
+			return;
+		}
+
+		if (type === ACTION._Todo && Array.isArray(data)) {
+			const [key, done] = data;
+			const todo = this.findElement(key);
+			if (todo?.type === "todo") {
+				todo.props.done = Boolean(done);
+				this.update();
+			}
+			return;
+		}
+
+		if (
+			type === ACTION._Key && typeof data === "string" && /\r|\n/.test(data)
+		) {
+			const lines = data.replace(/\r\n?/g, "\n").split("\n");
+			this.history.lock(() => {
+				this.action(ACTION._Key, lines[0]);
+				for (const line of lines.slice(1)) {
+					this.action(ACTION._Enter);
+					if (line) {
+						this.action(ACTION._Key, line);
+					}
+				}
+			});
+			return;
+		}
 
 		let {
 			first: [firstKey, firstOffset],
@@ -608,17 +1494,6 @@ export class Model extends Exome {
 				].indexOf(type) === -1
 		) {
 			f1.props.url = undefined;
-
-			// @TODO set proper caret position
-			// this will fix:
-			//  - "[a(url)]b" + backspace
-			// 			=> "[a]b"
-			// 			=> "[]b" (should be)
-			//
-			//  - "a[(url)b]" + backspace
-			// 			=> "a[b]"
-			// 			=> "b[]" (should be)
-			//
 			this.recalculate();
 
 			if ([ACTION._Key, ACTION._Enter, ACTION._Compose].indexOf(type) > -1) {
@@ -628,101 +1503,133 @@ export class Model extends Exome {
 			return;
 		}
 
-		if (
-			type === ACTION._Remove &&
-			(firstKey !== lastKey || firstOffset !== lastOffset)
-		) {
+		const selectionIsRange = firstKey !== lastKey ||
+			firstOffset !== lastOffset;
+		const backwardDeletion = [
+			ACTION._Remove,
+			ACTION._RemoveWord,
+			ACTION._RemoveLine,
+		].includes(type);
+		const forwardDeletion = [
+			ACTION._Delete,
+			ACTION._DeleteWord,
+			ACTION._DeleteLine,
+		].includes(type);
+		const deletionType = type;
+
+		if (backwardDeletion && selectionIsRange) {
 			type = ACTION._Key;
 			data = "";
-		} else if (type === ACTION._Remove && firstOffset > 1) {
-			type = ACTION._Key;
-			data = "";
-			firstOffset -= 1;
-		} else if (type === ACTION._Remove) {
-			let element = this.innerNode(firstKey);
+		} else if (backwardDeletion) {
+			const element = this.innerNode(firstKey);
 
-			const isFirstChild = element.key?.endsWith(".0") ?? true;
-
-			if (firstOffset === 1 && element.type === "t") {
-				element.text = stringSplice(
-					element.text,
-					firstOffset - 1,
-					firstOffset,
-					"",
-				);
-
-				if (!isFirstChild) {
-					const prev = this.previousText(element.key);
-
-					if (prev && prev.text) {
-						this.recalculate();
-						// const l = prev.text?.length;
-						this.select(this.findElement(prev.key)!, prev.text?.length);
-						// this._stack.push(() => {
-						// 	setCaret(prev.id, l);
-						// });
-						// return;
+			if (element.type !== "t") {
+				const previous = this.previousText(element.key);
+				this.remove(element.key);
+				this.recalculate();
+				if (previous) {
+					const previousAfterCalculation = this.findElement(previous.key);
+					if (previousAfterCalculation?.type === "t") {
+						this.select(
+							previousAfterCalculation,
+							previousAfterCalculation.text.length,
+						);
 					}
+				}
+				return;
+			} else if (firstOffset > 0) {
+				firstOffset = deletionType === ACTION._RemoveLine
+					? 0
+					: deletionType === ACTION._RemoveWord
+					? previousWordBoundary(element.text, firstOffset)
+					: previousGraphemeBoundary(element.text, firstOffset);
+				type = ACTION._Key;
+				data = "";
+			} else {
+				const parent = this.parent(element.key);
+				const childIndex = parent?.children.indexOf(element) ?? -1;
+				const previous = childIndex > 0
+					? parent!.children[childIndex - 1]
+					: undefined;
 
-					this.select(element, 0);
+				if (previous?.type === "t" && previous.text) {
+					firstKey = previous.key;
+					lastKey = previous.key;
+					lastOffset = previous.text.length;
+					firstOffset = deletionType === ACTION._RemoveLine
+						? 0
+						: deletionType === ACTION._RemoveWord
+						? previousWordBoundary(previous.text, lastOffset)
+						: previousGraphemeBoundary(previous.text, lastOffset);
+					type = ACTION._Key;
+					data = "";
+				} else if (previous) {
+					this.remove(previous.key);
+					this.recalculate();
+					const current = this.findElement(element.key);
+					if (current) {
+						this.select(current, 0);
+					}
 					return;
-				} else if (!element.text) {
-					const next = this.nextText(lastKey);
-
-					if (
-						next &&
-						next.id.replace(/\.[\d]+$/, "") ===
-							element.key.replace(/\.[\d]+$/, "")
-					) {
-						this.select(this.findElement(next.key)!, 0);
-						// this._stack.push(() => {
-						// 	setCaret(next.id, 0);
-						// 	resetSelection(next.id, 0);
-						// });
-					} else {
-						// Heres the issue
-						this.select(this.findElement(lastKey)!, 0);
-						// this._stack.push(() => {
-						// 	setCaret(this.findElement(lastKey).id, 0);
-						// 	resetSelection(lastKey, 0);
-						// 	// if (this.selection) {
-						// 	// 	this.selection.anchorOffset = this.selection.anchorOffset - 1;
-						// 	// 	this.selection.focusOffset = this.selection.focusOffset - 1;
-						// 	// }
-						// 	// this.setSelection(this.selection);
-						// });
-						// this._handleInitialRemove(element);
-						// return;
-					}
 				} else {
-					this.select(element, firstOffset - 1);
-					// this._stack.push(() => {
-					// 	setCaret(element.id, firstOffset - 1);
-					// 	resetSelection(firstKey, firstOffset - 1);
-					// 	// if (this.selection) {
-					// 	// 	this.selection.anchorOffset = this.selection.anchorOffset - 1;
-					// 	// 	this.selection.focusOffset = this.selection.focusOffset - 1;
-					// 	// }
-					// 	// this.setSelection(this.selection);
-					// });
+					this._handleInitialRemove(element);
+					this.recalculate();
+					return;
+				}
+			}
+		}
+
+		if (forwardDeletion && selectionIsRange) {
+			type = ACTION._Key;
+			data = "";
+		} else if (forwardDeletion) {
+			const element = this.innerNode(firstKey);
+
+			if (element.type !== "t") {
+				this.remove(element.key);
+				this.recalculate();
+				return;
+			} else if (firstOffset < element.text.length) {
+				lastOffset = deletionType === ACTION._DeleteLine
+					? element.text.length
+					: deletionType === ACTION._DeleteWord
+					? nextWordBoundary(element.text, firstOffset)
+					: nextGraphemeBoundary(element.text, firstOffset);
+				type = ACTION._Key;
+				data = "";
+			} else {
+				const orderedKeys = Object.values(this._idToKey);
+				const currentIndex = orderedKeys.indexOf(element.key);
+				const next = orderedKeys.slice(currentIndex + 1)
+					.map((key) => this.findElement(key))
+					.find(isInlineToken);
+
+				if (!next) {
+					return;
 				}
 
-				// if (!element.text) {
-				this.recalculate();
-				// }
+				if (next.type !== "t") {
+					this.remove(next.key);
+					this.recalculate();
+					const current = this.findElement(element.key);
+					if (current) {
+						this.select(current, firstOffset);
+					}
+					return;
+				}
 
-				return;
+				lastKey = next.key;
+				const sameParent = this.parent(next.key) === this.parent(element.key);
+				lastOffset = sameParent
+					? deletionType === ACTION._DeleteLine
+						? next.text.length
+						: deletionType === ACTION._DeleteWord
+						? nextWordBoundary(next.text, 0)
+						: nextGraphemeBoundary(next.text, 0)
+					: 0;
+				type = ACTION._Key;
+				data = "";
 			}
-
-			// if (!isFirstChild) {
-			// 	this.recalculate();
-			//   return;
-			// }
-
-			this._handleInitialRemove(element);
-			this.recalculate();
-
-			return;
 		}
 
 		// TAB key
@@ -731,6 +1638,16 @@ export class Model extends Exome {
 			let firstParent = this.parent(firstElement.key)!;
 			let lastElement = this.innerNode(lastKey);
 			let lastParent = this.parent(lastElement.key)!;
+
+			if (
+				firstParent.type === "code" &&
+				firstParent === lastParent &&
+				firstKey === lastKey &&
+				firstOffset === lastOffset
+			) {
+				this.action(ACTION._Key, type === ACTION._Tab ? "\t" : "");
+				return;
+			}
 
 			handleTab(firstParent, lastParent, this, type === ACTION._ShiftTab);
 
@@ -743,25 +1660,91 @@ export class Model extends Exome {
 			let lastElement = this.innerText(lastKey);
 
 			if (!firstElement || !lastElement) {
-				const key = !firstElement ? firstKey : lastKey;
-				const el = this.findElement(key);
-				const parent = this.parent(key);
-
-				if (parent?.type === "p") {
-					parent.children = [
-						{
-							...createTextToken(),
-							id: el.id,
-							key: el.key,
-						},
-					];
-					this.recalculate();
+				if (!firstElement) {
+					firstElement = this._replaceInlineWithText(firstKey);
 				}
-				return;
+				if (!lastElement) {
+					lastElement = firstKey === lastKey
+						? firstElement
+						: this._replaceInlineWithText(lastKey);
+				}
+				if (!firstElement || !lastElement) {
+					return;
+				}
 			}
 
-			let firstParent = this.parent(firstElement.key)!;
-			let lastParent = this.parent(lastElement.key)!;
+			const firstParent = this.parent(firstElement.key)!;
+			const lastParent = this.parent(lastElement.key)!;
+
+			if (
+				firstKey === lastKey &&
+				firstOffset === lastOffset &&
+				firstParent === lastParent &&
+				firstParent.children.length === 1 &&
+				firstElement === lastElement
+			) {
+				const fence = firstElement.text.match(
+					/^\s{0,3}(?:`{3,}|~{3,})\s*([\w+-]*)\s*$/,
+				);
+				if (firstParent.type === "p" && fence) {
+					firstElement.text = "";
+					setBlockType(firstParent, "code", {
+						language: fence[1] || undefined,
+					});
+					this.recalculate();
+					this.select(firstParent.children[0], 0);
+					return;
+				}
+
+				if (
+					firstParent.type === "code" &&
+					/^\s*(?:`{3,}|~{3,})\s*$/.test(firstElement.text)
+				) {
+					firstElement.text = "";
+					setBlockType(firstParent, "p", {});
+					this.recalculate();
+					this.select(firstParent.children[0], 0);
+					return;
+				}
+			}
+
+			if (
+				firstKey === lastKey &&
+				firstOffset === 0 &&
+				lastOffset === 0 &&
+				(
+					firstParent.type === "l" ||
+					firstParent.type === "todo" ||
+					firstParent.type === "quote" ||
+					firstParent.type === "code"
+				) &&
+				firstParent.children.every((child) =>
+					child.type !== "t" || child.text.length === 0
+				)
+			) {
+				if (
+					(firstParent.type === "l" || firstParent.type === "todo") &&
+					(firstParent.props.indent || 0) > 0
+				) {
+					firstParent.props.indent = (firstParent.props.indent || 0) - 1;
+					this.recalculate();
+					this.select(firstParent.children[0], 0);
+					return;
+				}
+				if (
+					firstParent.type === "quote" &&
+					(firstParent.props.level || 1) > 1
+				) {
+					firstParent.props.level = (firstParent.props.level || 1) - 1;
+					this.recalculate();
+					this.select(firstParent.children[0], 0);
+					return;
+				}
+				setBlockType(firstParent, "p", {});
+				this.recalculate();
+				this.select(firstParent.children[0], 0);
+				return;
+			}
 
 			const siblings = this.nextSiblings(lastElement.key, true)
 				.filter((e) => e.key >= lastElement!.key)
@@ -805,6 +1788,21 @@ export class Model extends Exome {
 			const [key, value] = data;
 			const newProps = {
 				[key]: type === ACTION._FormatAdd ? value : undefined,
+				...(key === "code" && type === ACTION._FormatRemove
+					? { codeMarker: undefined }
+					: {}),
+				...(key === "code" && type === ACTION._FormatAdd
+					? {
+						codeMarker: "`".repeat(
+							Math.max(
+								1,
+								...(this.selectedText().match(/`+/g) || []).map(
+									(run) => run.length + 1,
+								),
+							),
+						),
+					}
+					: {}),
 			};
 
 			this.selection.setFormat({
@@ -812,18 +1810,7 @@ export class Model extends Exome {
 				...newProps,
 			});
 
-			const elements = this.keysBetween(firstKey, lastKey).reduce<TextToken[]>(
-				(acc, key) => {
-					const el = this.findElement(key);
-
-					if (el.type !== "t") {
-						return acc;
-					}
-
-					return acc.concat(el);
-				},
-				[],
-			);
+			const ranges = this._selectedTextRanges();
 
 			// if (ACTION._FormatAdd) {
 			// 	console.log(
@@ -841,9 +1828,14 @@ export class Model extends Exome {
 			// 	);
 			// }
 
-			if (elements.length === 1) {
-				const el = elements[0];
-				const rest = this._cut(el, firstOffset, lastOffset, newProps);
+			if (ranges.length === 0) {
+				this.selection.setFormat(this.getSelectionFormat());
+				return;
+			}
+
+			if (ranges.length === 1) {
+				const { element, start, end } = ranges[0];
+				const rest = this._cut(element, start, end, newProps);
 
 				if (key === "url") {
 					rest[0].text = "";
@@ -853,10 +1845,10 @@ export class Model extends Exome {
 							...rest,
 							createTextToken(undefined, ""),
 						],
-						el,
+						element,
 					);
 				} else {
-					this.insert(rest, el);
+					this.insert(rest, element);
 				}
 
 				this.recalculate();
@@ -864,23 +1856,26 @@ export class Model extends Exome {
 				return;
 			}
 
-			const firstEl = elements.shift()!;
-			const lastEl = elements.pop()!;
+			const firstRange = ranges.shift()!;
+			const lastRange = ranges.pop()!;
 
 			this.insert(
-				this._cut(firstEl, firstOffset, undefined, newProps),
-				firstEl,
+				this._cut(firstRange.element, firstRange.start, undefined, newProps),
+				firstRange.element,
 			);
 
-			this.insert(this._cut(lastEl, 0, lastOffset, newProps), lastEl);
+			this.insert(
+				this._cut(lastRange.element, 0, lastRange.end, newProps),
+				lastRange.element,
+			);
 
-			if (!firstEl.text && !elements.length) {
-				this.remove(firstEl.key);
+			if (!firstRange.element.text && !ranges.length) {
+				this.remove(firstRange.element.key);
 			}
 
-			for (const el of elements) {
-				el.props = {
-					...el.props,
+			for (const { element } of ranges) {
+				element.props = {
+					...element.props,
 					...newProps,
 				};
 			}
@@ -889,18 +1884,10 @@ export class Model extends Exome {
 			return;
 		}
 
-		// Handle new text being added after Dead key
+		// Composition uses the same replacement semantics as ordinary text input,
+		// but keeps a single history trace for the completed composition.
 		if (type === ACTION._Compose && data != null) {
-			const el = this.innerText(firstKey);
-			if (!el) {
-				return;
-			}
-
-			el.props.url = undefined;
-			el.text = stringSplice(el.text, firstOffset, firstOffset, data);
-
-			this.recalculate();
-			this.select(el, firstOffset + data.length);
+			this.history.lock(() => this.action(ACTION._Key, data));
 			return;
 		}
 
@@ -910,23 +1897,13 @@ export class Model extends Exome {
 			let lastElement = this.innerText(lastKey)!;
 
 			if (!firstElement || !lastElement) {
-				const key = !firstElement ? firstKey : lastKey;
-				const el = this.findElement(key);
-				const parent = this.parent(key);
-
-				if (parent?.type === "p") {
-					parent.children = [
-						{
-							id: el.id,
-							key: el.key,
-							type: "t",
-							props: {},
-							text: "",
-						},
-					];
-					this.recalculate();
-					firstElement = this.innerText(firstKey) as any;
-					lastElement = this.innerText(lastKey) as any;
+				if (!firstElement) {
+					firstElement = this._replaceInlineWithText(firstKey)!;
+				}
+				if (!lastElement) {
+					lastElement = firstKey === lastKey
+						? firstElement
+						: this._replaceInlineWithText(lastKey)!;
 				}
 			}
 
@@ -976,21 +1953,14 @@ export class Model extends Exome {
 
 			this.recalculate();
 
-			if (
-				data &&
-				firstKey === lastKey &&
-				firstOffset === lastOffset &&
-				this._handleTextTransforms(firstElement, data)
-			) {
-				// const firstChild = parent.children[0] as any;
-				// this.select(firstChild, firstChild.text.length);
-				// return;
-				this.recalculate();
-				// this._stack.push(() => {
-
-				// 	this.select(parent.children[index], firstText.length);
-				// });
+			const transform = data
+				? this._handleTextTransforms(firstElement, data, firstOffset)
+				: undefined;
+			if (transform === "url" || transform === "inline") {
 				return;
+			}
+			if (transform) {
+				this.recalculate();
 			}
 
 			const correctedChild = parent.children[index] as any;
@@ -1001,7 +1971,9 @@ export class Model extends Exome {
 			} else {
 				this.select(
 					correctedChild,
-					Math.min(correctedChild.text.length, firstText.length),
+					transform
+						? Math.min(correctedChild.text.length, transform.caret)
+						: Math.min(correctedChild.text.length, firstText.length),
 				);
 			}
 
@@ -1051,9 +2023,26 @@ export class Model extends Exome {
 		last: AnyToken = first,
 		lastOffset: number = firstOffset,
 	) => {
-		if (this._isComposing) {
+		if (this._isComposing || !first || !last) {
 			return;
 		}
+
+		first = isBlockToken(first) ? first.children[0] : first;
+		last = isBlockToken(last) ? last.children[last.children.length - 1] : last;
+
+		if (!first || !last) {
+			return;
+		}
+
+		const firstMax = first.type === "t" ? first.text.length : 0;
+		const lastMax = last.type === "t" ? last.text.length : 0;
+		const selectionIsCollapsed = first === last && firstOffset === lastOffset;
+		firstOffset = first.type === "t"
+			? snapGraphemeBoundary(first.text, firstOffset)
+			: Math.max(0, Math.min(firstOffset, firstMax));
+		lastOffset = last.type === "t"
+			? snapGraphemeBoundary(last.text, lastOffset, !selectionIsCollapsed)
+			: Math.max(0, Math.min(lastOffset, lastMax));
 
 		// console.log(
 		// 	"%c SELECT ",
@@ -1073,6 +2062,7 @@ export class Model extends Exome {
 
 		this.update();
 		this.selection.setSelection(first.key, firstOffset, last.key, lastOffset);
+		this.selection.setFormat(this.getSelectionFormat());
 	};
 
 	// public select2 = (

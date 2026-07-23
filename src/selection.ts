@@ -2,12 +2,19 @@ import { Exome } from "exome";
 
 import type { Model } from "./model.ts";
 
+export interface MarkdownBoundary {
+	format: Record<string, any>;
+	side: "before" | "after";
+	tokenId: string;
+}
+
 export class ModelSelection extends Exome {
 	public focus = false;
 	public first: [string, number] = ["0.0", 0];
 	public last: [string, number] = this.first;
 
 	public format: Record<string, any> = {};
+	public markdownBoundary?: MarkdownBoundary;
 
 	constructor(public model: Model) {
 		super();
@@ -23,6 +30,7 @@ export class ModelSelection extends Exome {
 		focus: string,
 		focusOffset: number,
 	) {
+		this.markdownBoundary = undefined;
 		const [first, last] = (
 			[
 				[anchor, anchorOffset],
@@ -30,7 +38,7 @@ export class ModelSelection extends Exome {
 			] as [string, number][]
 		).sort((a, b) => {
 			if (a[0] === b[0]) {
-				return a[1] > b[1] ? 1 : -1;
+				return a[1] - b[1];
 			}
 
 			return a[0].localeCompare(b[0], undefined, { numeric: true });
@@ -42,6 +50,10 @@ export class ModelSelection extends Exome {
 
 	public setFormat(format: Record<string, any>) {
 		this.format = format;
+	}
+
+	public setMarkdownBoundary(boundary?: MarkdownBoundary) {
+		this.markdownBoundary = boundary;
 	}
 
 	public getOffset = () => ({

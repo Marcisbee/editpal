@@ -29,11 +29,23 @@ body {
 	margin: 0;
 }
 
+html,
+body,
+.App {
+	width: 100%;
+}
+
 #root {
+	box-sizing: border-box;
 	max-width: 1280px;
 	margin: 0 auto;
 	padding: 2rem;
 	text-align: left;
+	width: 100%;
+}
+
+.App > div {
+	box-sizing: border-box;
 }
 
 @media (prefers-color-scheme: light) {
@@ -56,4 +68,79 @@ body {
 [data-ep-main]:focus-within,
 [data-ep-main]:focus {
 	border-color: #98c9ff;
+}
+
+.demo-header {
+	align-items: center;
+	display: flex;
+	justify-content: space-between;
+	margin-bottom: 14px;
+}
+
+.demo-header > div:first-child {
+	display: flex;
+	flex-direction: column;
+}
+
+.demo-header span {
+	font-size: 0.82rem;
+	opacity: 0.65;
+}
+
+.demo-mode {
+	background: color-mix(in srgb, currentColor 7%, transparent);
+	border-radius: 8px;
+	display: flex;
+	gap: 3px;
+	padding: 3px;
+}
+
+.demo-mode button {
+	background: transparent;
+	border: 0;
+	border-radius: 6px;
+	color: inherit;
+	cursor: pointer;
+	font: inherit;
+	padding: 7px 12px;
+}
+
+.demo-mode button[aria-pressed="true"] {
+	background: orangered;
+	color: white;
+}
+
+.demo-document {
+	border: 2px solid orange;
+	border-radius: 8px;
+	box-sizing: border-box;
+	display: block;
+	min-height: 220px;
+	padding: 2px;
+	width: 100%;
+}
+
+.demo-document [data-ep-main],
+.demo-document [data-ep-preview] {
+	border: 0;
+}
+
+.demo-source,
+.demo-debug {
+	margin-top: 14px;
+}
+
+.demo-source summary,
+.demo-debug summary {
+	cursor: pointer;
+	font-weight: 600;
+	padding: 8px 0;
+}
+
+.demo-source pre {
+	background: color-mix(in srgb, currentColor 7%, transparent);
+	border-radius: 6px;
+	overflow-x: auto;
+	padding: 12px;
+	white-space: pre-wrap;
 }
