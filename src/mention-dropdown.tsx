@@ -107,7 +107,8 @@ export function MentionDropdown() {
 			return;
 		}
 		const element = model.findElement(first[0]);
-		return element?.type === "t"
+		return element?.type === "t" &&
+				model.parent(element.key)?.type !== "code"
 			? activeMention(configs, element, first[1])
 			: undefined;
 	}, [

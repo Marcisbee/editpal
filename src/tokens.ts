@@ -26,6 +26,8 @@ export interface TextTokenProps extends Record<string, any> {
 	markdownEscape?: boolean;
 	url?: string;
 	mention?: MentionData;
+	/** Internal empty token used to keep typing outside an inline atom. */
+	typingBoundary?: boolean;
 }
 
 export type JsonValue =

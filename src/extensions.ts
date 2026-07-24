@@ -89,7 +89,7 @@ export interface InlineIntegrationContext {
 
 export interface InlineIntegration {
 	id: string;
-	/** Match an atomic URL. Return data to render it, or false to ignore it. */
+	/** Match a Markdown link destination. Return data to render it, or false. */
 	match(source: string, token: InlineToken): false | InlineIntegrationMatch;
 	render(context: InlineIntegrationContext): ComponentChildren;
 	/** Text announced by assistive technology for a non-text component. */

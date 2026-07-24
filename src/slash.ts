@@ -66,6 +66,12 @@ export class Slash extends Exome {
 			}
 
 			const el = model.findElement(selection.first[0]) as TextToken;
+			if (el?.type !== "t" || model.parent(el.key)?.type === "code") {
+				lastQuery = undefined;
+				this.dismissedTrigger = undefined;
+				this.close();
+				return;
+			}
 			const query = getTextSlice(el, selection.last[1]);
 
 			if (lastQuery === query) {

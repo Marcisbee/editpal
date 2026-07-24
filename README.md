@@ -73,6 +73,11 @@ Replace a loaded document with
 `model.setMarkdown(markdown)` or `model.setTokens(tokens)`; both operations clear
 undo history. Call `model.destroy()` when a model is permanently discarded.
 
+The floating text toolbar appears only for an explicit text selection. Its link
+action turns that selection into a labeled link. Selecting an image, attachment,
+embed, or existing link opens the corresponding contextual controls for editing
+or unlinking it.
+
 ## Extensions
 
 All extensions are opt-in. An editor with no `extensions` keeps the default
@@ -149,14 +154,26 @@ const extensions = {
 
 An upload result has a `kind` of `"image"`, `"video"`, or `"file"`. Attachments
 are atomic, undoable editor items. They serialize to Markdown images or links.
+Images, videos, and files can be selected in the editor. The contextual toolbar
+lets users edit image alt text, replace an uploaded asset, or remove it. Markdown
+images use the same toolbar instead of an always-visible caption field.
 Set `pickerLabel: false` if the application supplies its own picker and call
 `model.insertAttachment(...)` after uploading. Upload functions can call
 `reportProgress(0.5)` and hosts can observe it through `onProgress`.
 
+Clipboard paste deliberately prefers plain text over rich clipboard formats.
+Pasting a URL over selected text turns that text into a labeled link; pasting a
+URL at a caret inserts an editable `[url](url)` Markdown link. Typing a URL does
+not promote it into a special editor item. Pasted images use the attachment
+upload pipeline and leave the caret on the following line so typing can continue.
+
 ### Inline integrations
 
-Inline integrations replace the visual rendering of matched labeled or automatic
-links without changing their Markdown source. Nothing is matched by default.
+Inline integrations replace the visual rendering of matched Markdown links
+without changing their source. Matching is entirely opt-in: each integration
+decides which link destinations it accepts, typically with a strict regular
+expression. Unmatched links remain ordinary editable Markdown links. Integration
+content is atomic and cannot be text-selected.
 
 ```tsx
 const githubPill: InlineIntegration = {
@@ -178,6 +195,8 @@ const githubPill: InlineIntegration = {
 
 Line embeds receive the complete canonical Markdown for each block. They are
 ideal for tweets, videos, issue cards, and other standalone link previews.
+Inline integrations and whole-line embeds are selectable, and their contextual
+link toolbar can edit or unlink the source URL.
 `replaceLine` hides the source line in `MarkdownPreview`; the editable surface
 always retains the source so the embed can still be edited.
 
@@ -208,8 +227,8 @@ preview links to HTTP(S), mail, root-relative, and fragment URLs.
 
 Applications may provide `extensions.linkEditor.edit(...)` to open their own
 link modal. The callback returns a URL to apply, `null` to remove a link, or
-`undefined` to cancel. The floating toolbar adds a link button only when this
-extension exists.
+`undefined` to cancel. Without this extension, the floating toolbar uses its
+built-in URL field.
 
 Add application actions to the existing slash menu with
 `extensions.slashCommands`. Each command supplies a label, optional search

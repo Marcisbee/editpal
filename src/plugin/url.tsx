@@ -8,7 +8,7 @@ import type { TextToken, UrlToken } from "../tokens.ts";
 export function RenderUrl(item: (TextToken | UrlToken) & { k: string }) {
 	const { id, k, meta } = item;
 	const url = item.type === "url" ? item.src : item.props.url;
-	const { extensions, model } = useContext(EditorContext);
+	const { activeId, extensions, model } = useContext(EditorContext);
 	const {
 		first: [first],
 		last: [last],
@@ -34,6 +34,8 @@ export function RenderUrl(item: (TextToken | UrlToken) & { k: string }) {
 				contentEditable={false}
 				data-ep={id}
 				data-ep-inline-integration={integration.definition.id}
+				data-ep-selectable="inline-embed"
+				data-ep-s={activeId === id || undefined}
 				aria-label={integration.definition.ariaLabel?.(context)}
 			>
 				{integration.definition.render(context)}

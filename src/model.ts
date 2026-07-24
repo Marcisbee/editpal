@@ -35,6 +35,7 @@ import {
 import { buildKeys } from "./utils/selection.ts";
 import {
 	inlineMarkdownChunks,
+	inlineTokensToMarkdown,
 	markdownBaseProps,
 	parseInlineMarkdown,
 	parseInlineMarkdownDetailed,
@@ -115,12 +116,31 @@ interface InsertAttachmentData {
 	size?: number;
 }
 
+export interface UpdateAssetData {
+	alt?: string;
+	kind?: "file" | "image" | "video";
+	meta?: Record<string, JsonValue>;
+	mimeType?: string;
+	name?: string;
+	size?: number;
+	src?: string;
+}
+
 interface InsertMentionData {
 	end: number;
 	key: string;
 	mention: MentionData;
 	start: number;
 	text: string;
+}
+
+function isWordCharacter(value: string, offset: number): boolean {
+	if (offset < 0 || offset >= value.length) {
+		return false;
+	}
+	const codePoint = value.codePointAt(offset);
+	return codePoint !== undefined &&
+		/[\p{L}\p{M}\p{N}_]/u.test(String.fromCodePoint(codePoint));
 }
 
 function parsedMarkdownCaret(
@@ -273,14 +293,6 @@ function handleTab(
 	model.update();
 }
 
-const URL_REGEX =
-	/(https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|www\.[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9]+\.[^\s]{2,}|www\.[a-zA-Z0-9]+\.[^\s]{2,})/;
-const COMPLETE_URL_REGEX = new RegExp(`^(?:${URL_REGEX.source})$`);
-
-function trimUrlPunctuation(value: string): string {
-	return value.replace(/[),.!?;:'"]+$/g, "");
-}
-
 /**
  * Mutable editor state for an Editpal document.
  *
@@ -366,9 +378,283 @@ export class Model extends Exome {
 		this.action(ACTION._InsertMention, { end, key, mention, start, text });
 	}
 
+	/** Whether any part of the current selection belongs to a fenced code block. */
+	public get selectionTouchesCodeBlock(): boolean {
+		return this.keysBetween(
+			this.selection.first[0],
+			this.selection.last[0],
+		).some((key) => {
+			const element = this.findElement(key);
+			const block = element && isBlockToken(element)
+				? element
+				: element
+				? this.parent(element.key)
+				: undefined;
+			return block?.type === "code";
+		});
+	}
+
 	/** Update an image caption as an undoable edit. */
 	public setImageAlt(id: string, alt: string) {
 		this.action(ACTION._UpdateImageAlt, { alt, id });
+	}
+
+	/** Update a Markdown image or uploaded attachment as one undoable edit. */
+	public updateAsset(id: string, changes: UpdateAssetData) {
+		const key = this._idToKey[id];
+		const asset = key ? this.findElement(key) : undefined;
+		if (asset?.type !== "img" && asset?.type !== "attachment") {
+			return;
+		}
+		this.transact(() => {
+			if (changes.src !== undefined) {
+				asset.src = changes.src;
+			}
+			if (changes.alt !== undefined) {
+				asset.props.alt = changes.alt;
+			}
+			if (asset.type === "attachment") {
+				for (
+					const property of [
+						"kind",
+						"meta",
+						"mimeType",
+						"name",
+						"size",
+					] as const
+				) {
+					if (changes[property] !== undefined) {
+						asset.props[property] = changes[property] as never;
+					}
+				}
+			}
+		});
+	}
+
+	/**
+	 * Edit the URL represented by a labeled or automatic link. Passing `null`
+	 * unlinks labeled text and turns an automatic URL back into plain text.
+	 */
+	public updateLink(id: string, url: string | null) {
+		const key = this._idToKey[id];
+		const token = key ? this.findElement(key) : undefined;
+		if (
+			!token || isBlockToken(token) ||
+			(token.type !== "t" && token.type !== "url")
+		) {
+			return;
+		}
+		this.transact(() => {
+			if (token.type === "url") {
+				if (url) {
+					token.src = url;
+				} else {
+					const source = token.src;
+					Object.assign(token, {
+						props: {},
+						text: source,
+						type: "t",
+					});
+					delete (token as Partial<typeof token>).src;
+				}
+				return;
+			}
+			const current = token.props.link;
+			if (current) {
+				const parent = this.parent(token.key);
+				const children = parent?.children || [];
+				const index = children.indexOf(token);
+				let start = index;
+				let end = index;
+				while (
+					children[start - 1]?.type === "t" &&
+					children[start - 1].props.link === current
+				) {
+					start -= 1;
+				}
+				while (
+					children[end + 1]?.type === "t" &&
+					children[end + 1].props.link === current
+				) {
+					end += 1;
+				}
+				for (const child of children.slice(start, end + 1)) {
+					if (child.type === "t") {
+						child.props.link = url || undefined;
+					}
+				}
+				return;
+			}
+			const automatic = token.props.url;
+			if (automatic) {
+				if (url) {
+					token.props.url = url;
+				} else {
+					token.text = automatic;
+					token.props.url = undefined;
+				}
+			}
+		});
+	}
+
+	/** Put an unformatted caret immediately after an inline item. */
+	public placeCaretAfter(id: string) {
+		const key = this._idToKey[id];
+		const token = key ? this.findElement(key) : undefined;
+		const parent = token && !isBlockToken(token)
+			? this.parent(token.key)
+			: undefined;
+		if (!token || isBlockToken(token) || !parent) {
+			return;
+		}
+		const index = parent.children.indexOf(token);
+		let next = parent.children[index + 1];
+		if (next?.type !== "t" || next.props.link || next.props.url) {
+			next = createTextToken({ typingBoundary: true });
+			parent.children.splice(index + 1, 0, next);
+			this.recalculate();
+		}
+		this.select(next, 0);
+	}
+
+	/**
+	 * Expand a collapsed caret to the most useful formatting scope: the whole
+	 * link label when inside a link, otherwise the word under the caret.
+	 */
+	public prepareSmartSelection(): boolean {
+		const [firstKey, firstOffset] = this.selection.first;
+		const [lastKey, lastOffset] = this.selection.last;
+		if (firstKey !== lastKey || firstOffset !== lastOffset) {
+			return true;
+		}
+		const token = this.findElement(firstKey);
+		if (token?.type !== "t") {
+			return false;
+		}
+		const parent = this.parent(token.key);
+		if (!parent || parent.type === "code") {
+			return false;
+		}
+
+		if (token.props.link) {
+			const index = parent.children.indexOf(token);
+			let start = index;
+			let end = index;
+			while (
+				parent.children[start - 1]?.type === "t" &&
+				parent.children[start - 1].props.link === token.props.link
+			) {
+				start -= 1;
+			}
+			while (
+				parent.children[end + 1]?.type === "t" &&
+				parent.children[end + 1].props.link === token.props.link
+			) {
+				end += 1;
+			}
+			const first = parent.children[start];
+			const last = parent.children[end];
+			if (first.type === "t" && last.type === "t") {
+				this.select(first, 0, last, last.text.length);
+				return true;
+			}
+		}
+
+		let point = Math.min(firstOffset, token.text.length);
+		if (!isWordCharacter(token.text, point) && point > 0) {
+			const previous = previousGraphemeBoundary(token.text, point);
+			if (isWordCharacter(token.text, previous)) {
+				point = previous;
+			}
+		}
+		while (
+			point < token.text.length &&
+			!isWordCharacter(token.text, point)
+		) {
+			point = nextGraphemeBoundary(token.text, point);
+		}
+		if (!isWordCharacter(token.text, point)) {
+			return false;
+		}
+		let start = point;
+		while (start > 0) {
+			const previous = previousGraphemeBoundary(token.text, start);
+			if (!isWordCharacter(token.text, previous)) {
+				break;
+			}
+			start = previous;
+		}
+		let end = point;
+		while (end < token.text.length && isWordCharacter(token.text, end)) {
+			end = nextGraphemeBoundary(token.text, end);
+		}
+		let firstToken = token;
+		let lastToken = token;
+		let firstWordOffset = start;
+		let lastWordOffset = end;
+		let siblingIndex = parent.children.indexOf(token);
+		while (firstWordOffset === 0 && siblingIndex > 0) {
+			const previous = parent.children[siblingIndex - 1];
+			if (
+				previous.type !== "t" ||
+				!isWordCharacter(
+					previous.text,
+					previousGraphemeBoundary(previous.text, previous.text.length),
+				)
+			) {
+				break;
+			}
+			let previousStart = previous.text.length;
+			while (previousStart > 0) {
+				const boundary = previousGraphemeBoundary(
+					previous.text,
+					previousStart,
+				);
+				if (!isWordCharacter(previous.text, boundary)) {
+					break;
+				}
+				previousStart = boundary;
+			}
+			firstToken = previous;
+			firstWordOffset = previousStart;
+			siblingIndex -= 1;
+		}
+		siblingIndex = parent.children.indexOf(token);
+		while (
+			lastWordOffset === lastToken.text.length &&
+			siblingIndex < parent.children.length - 1
+		) {
+			const next = parent.children[siblingIndex + 1];
+			if (next.type !== "t" || !isWordCharacter(next.text, 0)) {
+				break;
+			}
+			let nextEnd = 0;
+			while (
+				nextEnd < next.text.length &&
+				isWordCharacter(next.text, nextEnd)
+			) {
+				nextEnd = nextGraphemeBoundary(next.text, nextEnd);
+			}
+			lastToken = next;
+			lastWordOffset = nextEnd;
+			siblingIndex += 1;
+		}
+		this.select(
+			firstToken,
+			firstWordOffset,
+			lastToken,
+			lastWordOffset,
+		);
+		return end > start;
+	}
+
+	/** Apply a format using the smart caret scope when no range is selected. */
+	public smartFormat(type: number, data: [string, any]): boolean {
+		if (!this.prepareSmartSelection()) {
+			return false;
+		}
+		this.action(type, data);
+		return true;
 	}
 
 	/**
@@ -439,6 +725,17 @@ export class Model extends Exome {
 			}
 			if (block.children.length === 0) {
 				block.children.push(createTextToken());
+			}
+			if (
+				block.type === "code" &&
+				block.children.some((child) =>
+					child.type !== "t" ||
+					Object.values(child.props || {}).some((value) => value !== undefined)
+				)
+			) {
+				block.children = [
+					createTextToken({}, inlineTokensToMarkdown(block.children)),
+				];
 			}
 
 			for (const child of block.children) {
@@ -820,6 +1117,9 @@ export class Model extends Exome {
 		>((ranges, key) => {
 			const element = this.findElement(key);
 			if (element?.type !== "t") {
+				return ranges;
+			}
+			if (this.parent(element.key)?.type === "code") {
 				return ranges;
 			}
 
@@ -1282,7 +1582,12 @@ export class Model extends Exome {
 		element: TextToken,
 		textAdded: string,
 		insertionOffset: number,
-	): "block" | "inline" | "url" | { caret: number } | undefined => {
+	): "block" | "inline" | { caret: number } | undefined => {
+		const parent = this.parent(element.key)!;
+		if (parent.type === "code") {
+			return;
+		}
+
 		const insertionEnd = insertionOffset + textAdded.length;
 		if (
 			element.text.slice(Math.max(0, insertionEnd - 2), insertionEnd) === ":D"
@@ -1296,7 +1601,6 @@ export class Model extends Exome {
 			return { caret: insertionEnd };
 		}
 
-		const parent = this.parent(element.key)!;
 		const isFirstChild = parent.children[0] === element;
 		const completesPrefix = (length: number) =>
 			insertionOffset < length && insertionEnd >= length;
@@ -1340,49 +1644,6 @@ export class Model extends Exome {
 			this._transformInlineMarkdown(parent, element, insertionEnd)
 		) {
 			return "inline";
-		}
-
-		let urlMatch = URL_REGEX.exec(textAdded);
-		let url = urlMatch ? trimUrlPunctuation(urlMatch[0]) : undefined;
-		let index = urlMatch
-			? Math.max(0, insertionOffset + (urlMatch.index || 0))
-			: -1;
-
-		if (!url && /\s/.test(textAdded)) {
-			const beforeInsertion = element.text.slice(0, insertionOffset);
-			const wordStart = Math.max(
-				beforeInsertion.lastIndexOf(" "),
-				beforeInsertion.lastIndexOf("\t"),
-				beforeInsertion.lastIndexOf("\n"),
-			) + 1;
-			const candidate = trimUrlPunctuation(beforeInsertion.slice(wordStart));
-			if (COMPLETE_URL_REGEX.test(candidate)) {
-				url = candidate;
-				index = wordStart;
-			}
-		}
-
-		// Handle a pasted URL immediately, or a typed URL once a delimiter is added.
-		if (url) {
-			const caretAfterUrl = Math.max(
-				0,
-				insertionOffset + textAdded.length - (index + url.length),
-			);
-			this.history.lock(() => {
-				this.select(element, index, element, index + url.length);
-				this.action(ACTION._FormatAdd, ["url", url]);
-
-				const urlElement = Object.values(this._elements).find((token) =>
-					token.type === "t" && token.props.url === url
-				);
-				const nextElement = urlElement
-					? this.nextText(urlElement.key)
-					: undefined;
-				if (nextElement) {
-					this.select(nextElement, caretAfterUrl);
-				}
-			});
-			return "url";
 		}
 
 		if (
@@ -1602,6 +1863,33 @@ export class Model extends Exome {
 			.filter((a) => a.text);
 	};
 
+	private _removeMention(
+		mention: TextToken,
+		preferNext: boolean,
+	) {
+		const parent = this.parent(mention.key);
+		if (!parent) {
+			return;
+		}
+		const index = parent.children.indexOf(mention);
+		const previousId = parent.children[index - 1]?.id;
+		const nextId = parent.children[index + 1]?.id;
+		this.remove(mention.key);
+		this.recalculate();
+		const preferredId = preferNext ? nextId : previousId;
+		const fallbackId = preferNext ? previousId : nextId;
+		const targetId = preferredId || fallbackId;
+		const targetKey = targetId ? this._idToKey[targetId] : undefined;
+		const target = targetKey ? this.findElement(targetKey) : undefined;
+		if (target && !isBlockToken(target)) {
+			const useEnd = target.id === previousId;
+			this.select(
+				target,
+				useEnd && target.type === "t" ? target.text.length : 0,
+			);
+		}
+	}
+
 	public action = (type: number, data?: any) => {
 		// if (!this.history.locked) {
 		// 	console.log("ACTION", {
@@ -1630,6 +1918,26 @@ export class Model extends Exome {
 			!selectionIsCollapsed,
 		);
 		this.selection.setSelection(...safeFirst, ...safeLast);
+
+		if (
+			type === ACTION._InsertAttachment &&
+			this.selectionTouchesCodeBlock
+		) {
+			return;
+		}
+		if (type === ACTION._InsertMention && data) {
+			const request = data as InsertMentionData;
+			const element = this.innerText(request.key);
+			if (element && this.parent(element.key)?.type === "code") {
+				return;
+			}
+		}
+		if (
+			(type === ACTION._FormatAdd || type === ACTION._FormatRemove) &&
+			this._selectedTextRanges().length === 0
+		) {
+			return;
+		}
 
 		if (
 			(type === ACTION._Key || type === ACTION._Compose) &&
@@ -1681,7 +1989,14 @@ export class Model extends Exome {
 				{ ...markdownBaseProps(element.props), mention: request.mention },
 				request.text,
 			);
-			const after = createTextToken(element.props, element.text.slice(end));
+			const suffix = element.text.slice(end);
+			const after = createTextToken(
+				{
+					...element.props,
+					typingBoundary: suffix ? undefined : true,
+				},
+				suffix,
+			);
 			parent.children.splice(index, 1, before, mention, after);
 			this.recalculate();
 			this.select(after, 0);
@@ -2122,6 +2437,9 @@ export class Model extends Exome {
 					}
 				}
 				return;
+			} else if (element.props.mention) {
+				this._removeMention(element, true);
+				return;
 			} else if (firstOffset > 0) {
 				firstOffset = deletionType === ACTION._RemoveLine
 					? 0
@@ -2137,7 +2455,10 @@ export class Model extends Exome {
 					? parent!.children[childIndex - 1]
 					: undefined;
 
-				if (previous?.type === "t" && previous.text) {
+				if (previous?.type === "t" && previous.props.mention) {
+					this._removeMention(previous, true);
+					return;
+				} else if (previous?.type === "t" && previous.text) {
 					firstKey = previous.key;
 					lastKey = previous.key;
 					lastOffset = previous.text.length;
@@ -2174,6 +2495,9 @@ export class Model extends Exome {
 				this.remove(element.key);
 				this.recalculate();
 				return;
+			} else if (element.props.mention) {
+				this._removeMention(element, true);
+				return;
 			} else if (firstOffset < element.text.length) {
 				lastOffset = deletionType === ACTION._DeleteLine
 					? element.text.length
@@ -2190,6 +2514,11 @@ export class Model extends Exome {
 					.find(isInlineToken);
 
 				if (!next) {
+					return;
+				}
+
+				if (next.type === "t" && next.props.mention) {
+					this._removeMention(next, false);
 					return;
 				}
 
@@ -2539,9 +2868,36 @@ export class Model extends Exome {
 				return;
 			}
 
+			if (
+				firstElement === lastElement &&
+				firstOffset === 0 &&
+				lastOffset === 0
+			) {
+				const currentParent = this.parent(firstElement.key);
+				const currentIndex = currentParent?.children.indexOf(firstElement) ??
+					-1;
+				const previous = currentParent?.children[currentIndex - 1];
+				if (
+					currentParent &&
+					previous?.type === "t" &&
+					previous.props.mention
+				) {
+					const boundary = createTextToken({ typingBoundary: true });
+					currentParent.children.splice(currentIndex, 0, boundary);
+					this.recalculate();
+					firstElement = boundary;
+					lastElement = boundary;
+					firstKey = boundary.key;
+					lastKey = boundary.key;
+					firstOffset = 0;
+					lastOffset = 0;
+				}
+			}
+
 			const parent = this.parent(firstKey)!;
 			const index = parent.children.indexOf(firstElement);
 			const lastText = lastElement.text;
+			delete firstElement.props.typingBoundary;
 			firstElement.text = firstElement.text.slice(0, firstOffset) + data;
 
 			const firstText = firstElement.text;
@@ -2576,19 +2932,15 @@ export class Model extends Exome {
 			const prev = parent.children[index - 1];
 			const previousLength = (prev as any)?.text?.length || 0;
 
-			firstElement.props.url = undefined;
-			lastElement.props.url = undefined;
+			delete firstElement.props.url;
+			delete lastElement.props.url;
 
 			this.recalculate();
 
 			const transform = data
 				? this._handleTextTransforms(firstElement, data, firstOffset)
 				: undefined;
-			if (
-				transform === "block" ||
-				transform === "url" ||
-				transform === "inline"
-			) {
+			if (transform === "block" || transform === "inline") {
 				return;
 			}
 			if (transform) {
