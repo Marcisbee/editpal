@@ -4,9 +4,23 @@ Editpal is a Preact Markdown editor with a model-backed, non-editable renderer.
 Markdown delimiters stay visible while editing and are omitted by the preview
 component.
 
+## Installation
+
+```sh
+npm install editpal preact exome
+```
+
+Import the library stylesheet once in your application:
+
+```ts
+import "editpal/style.css";
+```
+
 ## Usage
 
 ```tsx
+import "editpal/style.css";
+
 import {
 	Editpal,
 	MarkdownPreview,
@@ -30,6 +44,9 @@ const model = new Model(parseMarkdown("# Hello **Markdown**"));
 const markdown = toMarkdown(model.tokens);
 ```
 
+Editpal is published as an ESM package and requires Node.js 18 or newer for
+build tooling. The rendered editor targets modern browsers.
+
 Supported syntax includes headings, paragraphs, blockquotes, ordered and
 unordered lists, task lists, horizontal rules, fenced and inline code, images,
 labeled and automatic links, escapes, bold, italic, strikethrough, and
@@ -43,7 +60,8 @@ not exposed by the editor toolbar.
 Requires [Deno](https://deno.com/) 2.9 or newer.
 
 ```sh
-deno ci
+npm install
+deno install
 deno task dev
 ```
 
@@ -56,3 +74,49 @@ Available tasks:
 - `deno task lint` — lint with Deno
 - `deno task fmt` — format with Deno
 - `deno task verify` — run formatting, linting, tests, and the production build
+- `deno task package` — verify the project and inspect the npm package contents
+- `deno task release:check v0.1.0` — verify a release tag against the package
+  version
+
+## Publishing
+
+GitHub Actions verifies every pull request and push to `main`. Tags matching
+`vX.Y.Z` run the release workflow, which:
+
+1. Requires the tag to match the version in `package.json`.
+2. Requires the tagged commit to belong to `main`.
+3. Runs the complete verification and clean package build.
+4. Publishes the tarball to npm through trusted publishing.
+5. Creates a GitHub Release with generated notes and the tarball attached.
+
+### One-time trusted publishing setup
+
+In the npm settings for the `editpal` package, add a GitHub Actions trusted
+publisher with:
+
+- Organization or user: `Marcisbee`
+- Repository: `editpal`
+- Workflow filename: `release.yml`
+- Environment: `npm`
+- Allowed action: `npm publish`
+
+In the GitHub repository, create an environment named `npm`. You can optionally
+add required reviewers to make every production release require approval. No
+`NPM_TOKEN` repository secret is needed.
+
+### Create a release
+
+Commit all release changes on `main`, then let npm update both package metadata
+files and create the matching tag:
+
+```sh
+npm version patch
+git push origin main --follow-tags
+```
+
+Use `npm version minor` or `npm version major` when appropriate. The workflow
+is safe to rerun: it skips npm publication when that exact version already
+exists and still creates or refreshes the corresponding GitHub Release.
+
+Update the version in `package.json` before creating a release tarball. The
+package is available under the [MIT License](./LICENSE).

@@ -20,12 +20,15 @@
 	"tasks": {
 		"dev": "deno run --allow-env --allow-net --allow-read --allow-run --allow-write scripts/build.ts dev",
 		"build": "deno run --allow-env --allow-read --allow-run --allow-write scripts/build.ts build",
+		"types": "npm exec -- tsc -p tsconfig.build.json",
 		"preview": "deno run --allow-env --allow-net --allow-read --allow-run --allow-write scripts/build.ts preview",
 		"test": "deno test",
 		"check": "deno check src/main.tsx scripts/build.ts && deno test --no-run",
 		"lint": "deno lint",
 		"fmt": "deno fmt",
-		"verify": "deno fmt --check && deno lint && deno task check && deno test && deno task build"
+		"verify": "deno fmt --check && deno lint && deno task check && deno test && deno task build",
+		"package": "deno task verify && npm pack --dry-run --ignore-scripts",
+		"release:check": "deno run --allow-read scripts/verify-release.ts"
 	},
 	"test": {
 		"include": ["src/"]
@@ -45,7 +48,15 @@
 		}
 	},
 	"fmt": {
-		"include": ["src/", "scripts/", "deno.json", "README.md"],
+		"include": [
+			"src/",
+			"scripts/",
+			"deno.json",
+			"package.json",
+			"tsconfig.build.json",
+			"README.md",
+			"LICENSE"
+		],
 		"useTabs": true,
 		"lineWidth": 80,
 		"semiColons": true,

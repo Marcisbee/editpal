@@ -1,0 +1,67 @@
+{
+	"name": "editpal",
+	"version": "0.1.0",
+	"description": "A Preact Markdown editor with visible source markers, a basic editing mode, and a read-only renderer.",
+	"type": "module",
+	"main": "./dist/editpal.js",
+	"module": "./dist/editpal.js",
+	"types": "./dist/editpal.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/editpal.d.ts",
+			"import": "./dist/editpal.js",
+			"default": "./dist/editpal.js"
+		},
+		"./style.css": "./dist/editpal.css",
+		"./package.json": "./package.json"
+	},
+	"files": [
+		"dist",
+		"README.md"
+	],
+	"sideEffects": [
+		"./dist/editpal.css"
+	],
+	"scripts": {
+		"build": "deno task build",
+		"check": "deno task check",
+		"dev": "deno task dev",
+		"pack:check": "deno task package",
+		"prepack": "deno task verify",
+		"preview": "deno task preview",
+		"test": "deno task test",
+		"verify": "deno task verify"
+	},
+	"peerDependencies": {
+		"exome": "^2.8.1",
+		"preact": "^10.29.7"
+	},
+	"devDependencies": {
+		"exome": "^2.8.1",
+		"preact": "^10.29.7",
+		"typescript": "6.0.3"
+	},
+	"engines": {
+		"node": ">=18"
+	},
+	"keywords": [
+		"editor",
+		"markdown",
+		"preact",
+		"rich-text",
+		"wysiwym"
+	],
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/Marcisbee/editpal.git"
+	},
+	"homepage": "https://github.com/Marcisbee/editpal#readme",
+	"bugs": {
+		"url": "https://github.com/Marcisbee/editpal/issues"
+	},
+	"author": "Marcis Bergmanis",
+	"license": "MIT",
+	"publishConfig": {
+		"access": "public"
+	}
+}

@@ -1,0 +1,91 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Publish npm and GitHub releases
+    if: github.repository == 'Marcisbee/editpal'
+    environment: npm
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out tagged commit
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js for trusted publishing
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.9.x
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Verify release tag and package version
+        run: deno run --allow-read scripts/verify-release.ts "$GITHUB_REF_NAME"
+
+      - name: Verify tagged commit belongs to main
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+
+      - name: Verify source and production build
+        run: deno task verify
+
+      - name: Build release tarball
+        id: pack
+        shell: bash
+        run: |
+          package_file="$(node -e 'const p = require("./package.json"); console.log(`${p.name.replace(/^@/, "").replaceAll("/", "-")}-${p.version}.tgz`)')"
+          package_version="$(node -p 'require("./package.json").version')"
+          npm pack --ignore-scripts
+          test -f "$package_file"
+          echo "file=$package_file" >> "$GITHUB_OUTPUT"
+          echo "version=$package_version" >> "$GITHUB_OUTPUT"
+
+      - name: Publish package to npm
+        shell: bash
+        run: |
+          package_name="$(node -p 'require("./package.json").name')"
+          package_version="${{ steps.pack.outputs.version }}"
+          if npm view "${package_name}@${package_version}" version --json >/dev/null 2>&1; then
+            echo "::notice::${package_name}@${package_version} is already published; skipping npm publish."
+          else
+            npm publish "./${{ steps.pack.outputs.file }}" --access public
+          fi
+
+      - name: Create or update GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          package_file="${{ steps.pack.outputs.file }}"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "$package_file" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "$package_file" \
+              --verify-tag \
+              --generate-notes \
+              --title "$GITHUB_REF_NAME"
+          fi

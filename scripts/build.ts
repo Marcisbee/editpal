@@ -42,6 +42,28 @@ const productionOptions = {
 	target: ["es2020", "chrome63"],
 } satisfies BuildOptions;
 
+async function normalizeDeclarations(directory: string): Promise<void> {
+	for await (const entry of Deno.readDir(directory)) {
+		const path = `${directory}/${entry.name}`;
+		if (entry.isDirectory) {
+			await normalizeDeclarations(path);
+			continue;
+		}
+		if (!entry.isFile || !entry.name.endsWith(".d.ts")) {
+			continue;
+		}
+
+		const source = await Deno.readTextFile(path);
+		const normalized = source
+			.replace(/^import\s+["']\.\/app\.css["'];\r?\n/m, "")
+			.replace(
+				/(["'])(\.\.?\/[^"']+)\.(?:cts|mts|tsx?|jsx?)(["'])/g,
+				"$1$2.js$3",
+			);
+		await Deno.writeTextFile(path, normalized);
+	}
+}
+
 async function serve(mode: Exclude<Mode, "build">): Promise<void> {
 	const preview = mode === "preview";
 	const buildContext = await context({
@@ -67,6 +89,14 @@ async function serve(mode: Exclude<Mode, "build">): Promise<void> {
 }
 
 async function buildLibrary(): Promise<void> {
+	try {
+		await Deno.remove("dist", { recursive: true });
+	} catch (error) {
+		if (!(error instanceof Deno.errors.NotFound)) {
+			throw error;
+		}
+	}
+
 	const result = await build({
 		...productionOptions,
 		entryPoints: ["src/editpal.tsx"],
@@ -76,6 +106,18 @@ async function buildLibrary(): Promise<void> {
 	});
 
 	console.log(await analyzeMetafile(result.metafile, { verbose: true }));
+
+	const declarationStatus = await new Deno.Command(Deno.execPath(), {
+		args: ["task", "types"],
+		stderr: "inherit",
+		stdout: "inherit",
+	}).spawn().status;
+	if (!declarationStatus.success) {
+		throw new Error(
+			`Declaration build failed with exit code ${declarationStatus.code}`,
+		);
+	}
+	await normalizeDeclarations("dist");
 }
 
 const mode = (Deno.args[0] ?? "build") as Mode;

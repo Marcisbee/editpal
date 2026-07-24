@@ -10,7 +10,8 @@
     "npm:esbuild@~0.25.5": "0.25.12",
     "npm:esbuild@~0.28.1": "0.28.1",
     "npm:exome@^2.8.1": "2.8.1",
-    "npm:preact@^10.29.7": "10.29.7"
+    "npm:preact@^10.29.7": "10.29.7",
+    "npm:typescript@6.0.3": "6.0.3"
   },
   "jsr": {
     "@deno/esbuild-plugin@1.2.1": {
@@ -372,6 +373,10 @@
     },
     "preact@10.29.7": {
       "integrity": "sha512-DCHYrK/B10yUD3ZjLfhZ3WIE/9Vf9VFUODcRE2dRomTYDpJk6z6L9wecSfhfE6M9ZTHUdyQkoC46arIDhEV84Q=="
+    },
+    "typescript@6.0.3": {
+      "integrity": "sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw==",
+      "bin": true
     }
   },
   "workspace": {
@@ -381,6 +386,13 @@
       "npm:esbuild@~0.28.1",
       "npm:exome@^2.8.1",
       "npm:preact@^10.29.7"
-    ]
+    ],
+    "packageJson": {
+      "dependencies": [
+        "npm:exome@^2.8.1",
+        "npm:preact@^10.29.7",
+        "npm:typescript@6.0.3"
+      ]
+    }
   }
 }
