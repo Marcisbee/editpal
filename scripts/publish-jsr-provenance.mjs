@@ -185,7 +185,11 @@ async function main() {
 	const sigstoreBundle = await attest(
 		Buffer.from(JSON.stringify(statement)),
 		PAYLOAD_TYPE,
-		{ legacyCompatibility: true },
+		{
+			legacyCompatibility: true,
+			retry: 0,
+			timeout: 30_000,
+		},
 	);
 
 	const audience = JSON.stringify({
