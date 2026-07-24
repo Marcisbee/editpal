@@ -219,15 +219,21 @@ function RenderItem(
 	}
 
 	if (item.type === "l") {
-		const { indent, type, ...style } = item.props || {};
+		const { indent, start, type, ...style } = item.props || {};
 
 		return (
 			<li
 				key={item.id}
-				style={style}
+				style={{
+					...style,
+					counterReset: type === "ol" && !indent && start
+						? `list-number ${Math.max(0, start - 1)}`
+						: undefined,
+				}}
 				data-ep={item.id}
 				data-ep-l={type || "ul"}
 				data-ep-i={indent}
+				data-ep-list-start={start}
 			>
 				<RenderMap items={item.children} />
 			</li>

@@ -102,6 +102,7 @@ export interface ListToken extends Token {
 	props: {
 		type: string;
 		indent?: number;
+		start?: number;
 	};
 	children: InlineToken[];
 }

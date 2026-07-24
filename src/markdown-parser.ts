@@ -252,7 +252,10 @@ function parseRange(
 			},
 			{ marker: "~~", props: { textDecoration: "line-through" } },
 			{ marker: "==", props: { highlight: true } },
-			{ marker: "_", props: { fontStyle: "italic" } },
+			{
+				marker: "_",
+				props: { fontStyle: "italic", italicMarker: "_" },
+			},
 			{
 				marker: "*",
 				props: { fontStyle: "italic", italicMarker: "*" },
@@ -490,13 +493,17 @@ export function parseMarkdown(markdown: string): TokenRoot {
 			continue;
 		}
 
-		const ordered = line.match(/^(\s*)\d+[.)]\s+(.*)$/);
+		const ordered = line.match(/^(\s*)(\d+)[.)]\s+(.*)$/);
 		if (ordered) {
 			blocks.push(
 				createBlockToken(
 					"l",
-					{ indent: Math.floor(ordered[1].length / 2), type: "ol" },
-					blockChildren(ordered[2]),
+					{
+						indent: Math.floor(ordered[1].length / 2),
+						start: Number(ordered[2]),
+						type: "ol",
+					},
+					blockChildren(ordered[3]),
 				),
 			);
 			continue;
@@ -519,7 +526,7 @@ function blockMarkdown(block: BlockToken): string {
 			return `${"> ".repeat(block.props.level || 1)}${inline}`;
 		case "l":
 			return `${"  ".repeat(block.props.indent || 0)}${
-				block.props.type === "ol" ? "1." : "-"
+				block.props.type === "ol" ? `${block.props.start || 1}.` : "-"
 			} ${inline}`;
 		case "todo":
 			return `${"  ".repeat(block.props.indent || 0)}- [${

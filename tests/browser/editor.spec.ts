@@ -30,6 +30,14 @@ test("async mention suggestions insert a structured mention", async ({ page }) =
 	await page.keyboard.type("@mar");
 	const option = page.getByRole("option", { name: /marcis/i });
 	await expect(option).toBeVisible();
+	const box = await page.getByRole("listbox", { name: "People" }).boundingBox();
+	const viewport = page.viewportSize();
+	expect(box).not.toBeNull();
+	expect(viewport).not.toBeNull();
+	expect(box!.x).toBeGreaterThanOrEqual(0);
+	expect(box!.y).toBeGreaterThanOrEqual(0);
+	expect(box!.x + box!.width).toBeLessThanOrEqual(viewport!.width);
+	expect(box!.y + box!.height).toBeLessThanOrEqual(viewport!.height);
 	await option.click();
 	await expect(editor.locator("[data-ep-mention='people']")).toContainText(
 		"@marcis",

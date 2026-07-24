@@ -464,7 +464,11 @@ Deno.test("unordered and ordered Markdown list markers transform at block start"
 		model.action(ACTION._Key, `${marker}Item`);
 
 		assertEquals(model.tokens[0].type, "l");
-		assertEquals(model.tokens[0].props, { indent: 0, type: "ol" });
+		assertEquals(model.tokens[0].props, {
+			indent: 0,
+			start: Number.parseInt(marker, 10),
+			type: "ol",
+		});
 		assertEquals(documentText(model), "Item");
 		assertEquals(model.selection.first, ["0.0", 4]);
 		assertModelInvariants(model);
@@ -583,7 +587,14 @@ Deno.test("nested inline Markdown preserves distinct bold and italic markers", (
 			child.type === "t" ? [child.text, child.props] : []
 		),
 		[
-			["both", { fontStyle: "italic", fontWeight: "bold" }],
+			[
+				"both",
+				{
+					fontStyle: "italic",
+					fontWeight: "bold",
+					italicMarker: "_",
+				},
+			],
 			["!", {}],
 		],
 	);

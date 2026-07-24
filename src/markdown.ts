@@ -44,9 +44,11 @@ const MARKDOWN_FORMATS: MarkdownFormat[] = [
 	{
 		key: "fontStyle",
 		active: (props) => props.fontStyle === "italic",
-		open: (props) => props.italicMarker || "_",
-		close: (props) => props.italicMarker || "_",
-		signature: (props) => props.italicMarker || "_",
+		// Asterisks remain valid when a toolbar-applied italic range sits
+		// inside a word. Underscores are preserved when they came from source.
+		open: (props) => props.italicMarker || "*",
+		close: (props) => props.italicMarker || "*",
+		signature: (props) => props.italicMarker || "*",
 	},
 	{
 		key: "code",
