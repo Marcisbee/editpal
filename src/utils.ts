@@ -317,14 +317,21 @@ export function setCaret(
 
 	if (typeof sel.setBaseAndExtent === "function") {
 		sel.setBaseAndExtent(...firstPoint, ...lastPoint);
-		return;
+	} else {
+		const range = document.createRange();
+		range.setStart(...firstPoint);
+		range.setEnd(...lastPoint);
+		sel.removeAllRanges();
+		sel.addRange(range);
 	}
 
-	const range = document.createRange();
-	range.setStart(...firstPoint);
-	range.setEnd(...lastPoint);
-	sel.removeAllRanges();
-	sel.addRange(range);
+	const focusElement = lastPoint[0].nodeType === Node.ELEMENT_NODE
+		? lastPoint[0] as Element
+		: lastPoint[0].parentElement;
+	focusElement?.scrollIntoView?.({
+		block: "nearest",
+		inline: "nearest",
+	});
 }
 
 export function setMarkdownBoundaryCaret(

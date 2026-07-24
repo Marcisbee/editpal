@@ -94,13 +94,16 @@ export function buildKeys(
 					break check;
 				}
 
-				if (!lastChild.text) {
+				if (!lastChild.text && !lastChild.props.typingBoundary) {
 					tokens.children.splice(i - 1, 1);
 					i -= 1;
 					break check;
 				}
 
 				if (!childTextLength) {
+					if (child.props.typingBoundary) {
+						break check;
+					}
 					tokens.children.splice(i, 1);
 					i -= 1;
 					continue;

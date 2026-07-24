@@ -208,6 +208,196 @@ Deno.test("mentions replace their query and survive undo and redo", () => {
 	assertModelInvariants(model);
 });
 
+Deno.test("typing continues after a trailing mention", () => {
+	const model = new Model([paragraph(text("Hello @mar"))]);
+	model.insertMention("0.0", 6, 10, "@marcis", {
+		configId: "people",
+		id: "marcis",
+		label: "marcis",
+		trigger: "@",
+	});
+
+	assertEquals(model.selection.first, ["0.2", 0]);
+	model.action(ACTION._Key, " is here");
+
+	assertEquals(documentText(model), "Hello @marcis is here");
+	const mention = model.tokens[0].children.find((child) =>
+		child.type === "t" && child.props.mention
+	);
+	assertEquals(mention?.type === "t" ? mention.text : undefined, "@marcis");
+	assertModelInvariants(model);
+});
+
+Deno.test("typing at either mention boundary never mutates the mention token", () => {
+	const createMentionModel = () => {
+		const model = new Model([paragraph(text("A @mar B"))]);
+		model.insertMention("0.0", 2, 6, "@marcis", {
+			configId: "people",
+			id: "marcis",
+			label: "marcis",
+			trigger: "@",
+		});
+		return model;
+	};
+
+	for (
+		const [offset, inserted, expected] of [
+			[0, "L", "A L@marcis B"],
+			[7, "R", "A @marcisR B"],
+		] as const
+	) {
+		const model = createMentionModel();
+		const mention = model.tokens[0].children.find((child) =>
+			child.type === "t" && child.props.mention
+		);
+		assertExists(mention);
+		if (mention.type !== "t") {
+			throw new Error("Expected a text mention");
+		}
+		model.selection.setSelection(
+			mention.key,
+			offset,
+			mention.key,
+			offset,
+		);
+
+		model.action(ACTION._Key, inserted);
+
+		assertEquals(documentText(model), expected);
+		assertEquals(mention.text, "@marcis");
+		assertEquals(mention.props.mention?.id, "marcis");
+		assertModelInvariants(model);
+	}
+});
+
+Deno.test("the boundary between adjacent mentions targets the expected mention", () => {
+	const first = text("@ada", {
+		mention: {
+			configId: "people",
+			id: "ada",
+			label: "ada",
+			trigger: "@",
+		},
+	});
+	const second = text("@grace", {
+		mention: {
+			configId: "people",
+			id: "grace",
+			label: "grace",
+			trigger: "@",
+		},
+	});
+	const model = new Model([paragraph(first, second)]);
+
+	model.placeCaretAfter(first.id);
+	model.action(ACTION._Remove);
+
+	assertEquals(documentText(model), "@grace");
+	assertEquals(
+		model.tokens[0].children.some((child) =>
+			child.type === "t" && child.props.mention?.id === "ada"
+		),
+		false,
+	);
+	assertEquals(
+		model.tokens[0].children.some((child) =>
+			child.type === "t" && child.props.mention?.id === "grace"
+		),
+		true,
+	);
+	model.action(ACTION._Undo);
+	assertEquals(documentText(model), "@ada@grace");
+	assertModelInvariants(model);
+});
+
+Deno.test("typing after a mention does not inherit a following link", () => {
+	const url = "https://example.com";
+	const model = new Model([
+		paragraph(text("@mar", { link: url }), text("Tweet", { link: url })),
+	]);
+	model.insertMention("0.0", 0, 4, "@marcis", {
+		configId: "people",
+		id: "marcis",
+		label: "marcis",
+		trigger: "@",
+	});
+
+	const link = model.tokens[0].children.find((child) =>
+		child.type === "t" && child.text === "Tweet"
+	);
+	assertExists(link);
+	model.selection.setSelection(link.key, 0, link.key, 0);
+	model.action(ACTION._Key, " works");
+
+	assertEquals(documentText(model), "@marcis worksTweet");
+	const inserted = model.tokens[0].children.find((child) =>
+		child.type === "t" && child.text === " works"
+	);
+	assertExists(inserted);
+	assertEquals(inserted.props.link, undefined);
+	assertModelInvariants(model);
+});
+
+Deno.test("mentions delete atomically from either edge", () => {
+	const createMentionModel = () => {
+		const model = new Model([paragraph(text("A @mar B"))]);
+		model.insertMention("0.0", 2, 6, "@marcis", {
+			configId: "people",
+			id: "marcis",
+			label: "marcis",
+			trigger: "@",
+		});
+		return model;
+	};
+
+	const backward = createMentionModel();
+	const backwardMention = backward.tokens[0].children.find((child) =>
+		child.type === "t" && child.props.mention
+	);
+	assertExists(backwardMention);
+	const after =
+		backward.tokens[0].children.findIndex((child) =>
+			child.id === backwardMention.id
+		) + 1;
+	backward.selection.setSelection(
+		`0.${after}`,
+		0,
+		`0.${after}`,
+		0,
+	);
+	backward.action(ACTION._Remove);
+	assertEquals(documentText(backward), "A  B");
+	assertEquals(
+		backward.tokens[0].children.some((child) =>
+			child.type === "t" && child.props.mention
+		),
+		false,
+	);
+	backward.action(ACTION._Undo);
+	assertEquals(documentText(backward), "A @marcis B");
+
+	const forward = createMentionModel();
+	const forwardMention = forward.tokens[0].children.find((child) =>
+		child.type === "t" && child.props.mention
+	);
+	assertExists(forwardMention);
+	const before =
+		forward.tokens[0].children.findIndex((child) =>
+			child.id === forwardMention.id
+		) - 1;
+	const beforeToken = forward.tokens[0].children[before];
+	assertEquals(beforeToken.type, "t");
+	forward.selection.setSelection(
+		`0.${before}`,
+		beforeToken.type === "t" ? beforeToken.text.length : 0,
+		`0.${before}`,
+		beforeToken.type === "t" ? beforeToken.text.length : 0,
+	);
+	forward.action(ACTION._Delete);
+	assertEquals(documentText(forward), "A  B");
+	assertModelInvariants(forward);
+});
+
 Deno.test("attachments are atomic, serializable, and undoable", () => {
 	const model = new Model([paragraph(text("Before after"))]);
 	model.selection.setSelection("0.0", 7, "0.0", 7);
@@ -252,6 +442,243 @@ Deno.test("image captions participate in history", () => {
 	assertEquals(toMarkdown(model.tokens).includes("![old caption]"), true);
 	model.action(ACTION._Redo);
 	assertEquals(toMarkdown(model.tokens).includes("![new caption]"), true);
+});
+
+Deno.test("contextual asset and link edits are undoable", () => {
+	const imageToken = image("old caption");
+	const linkToken = text("OpenAI", { link: "https://openai.com" });
+	const model = new Model([paragraph(imageToken, linkToken)]);
+	const modelImage = model.tokens[0].children[0];
+	const modelLink = model.tokens[0].children[1];
+	assertEquals(modelImage.type, "img");
+	assertEquals(modelLink.type, "t");
+
+	model.updateAsset(modelImage.id, {
+		alt: "new caption",
+		src: "https://example.com/new.png",
+	});
+	assertEquals(
+		toMarkdown(model.tokens),
+		"![new caption](https://example.com/new.png)[OpenAI](https://openai.com)",
+	);
+	model.action(ACTION._Undo);
+	assertEquals(
+		toMarkdown(model.tokens),
+		"![old caption](https://example.com/image.png)[OpenAI](https://openai.com)",
+	);
+	model.action(ACTION._Redo);
+
+	model.updateLink(modelLink.id, "https://example.com");
+	assertEquals(
+		toMarkdown(model.tokens),
+		"![new caption](https://example.com/new.png)[OpenAI](https://example.com)",
+	);
+	model.updateLink(modelLink.id, null);
+	assertEquals(
+		toMarkdown(model.tokens),
+		"![new caption](https://example.com/new.png)OpenAI",
+	);
+	assertModelInvariants(model);
+});
+
+Deno.test("placing the caret after a link creates a plain typing boundary", () => {
+	const linkToken = text("label", { link: "https://example.com" });
+	const model = new Model([paragraph(linkToken)]);
+	const modelLink = model.tokens[0].children[0];
+
+	model.placeCaretAfter(modelLink.id);
+	model.action(ACTION._Key, " continues");
+
+	assertEquals(
+		toMarkdown(model.tokens),
+		"[label](https://example.com) continues",
+	);
+	assertEquals(
+		model.tokens[0].children.at(-1)?.type === "t"
+			? model.tokens[0].children.at(-1)?.props.link
+			: undefined,
+		undefined,
+	);
+	assertModelInvariants(model);
+});
+
+Deno.test("deleting complete formatted or linked text leaves no empty markers", () => {
+	for (
+		const source of [
+			"[label](https://example.com)",
+			"**bold**",
+			"_italic_",
+			"~~struck~~",
+			"==highlighted==",
+			"`code`",
+		]
+	) {
+		const model = new Model(parseMarkdown(source));
+		const token = model.tokens[0].children[0];
+		assertEquals(token.type, "t");
+		if (token.type !== "t") {
+			continue;
+		}
+		model.selection.setSelection(
+			token.key,
+			0,
+			token.key,
+			token.text.length,
+		);
+
+		model.action(ACTION._Key, "");
+
+		assertEquals(toMarkdown(model.tokens), "");
+		model.action(ACTION._Undo);
+		assertEquals(toMarkdown(model.tokens), source);
+		assertModelInvariants(model);
+	}
+});
+
+Deno.test("selectable inline integrations and line embeds remove atomically", () => {
+	const inline = new Model(parseMarkdown(
+		"before [repository](https://github.com/example/repo) after",
+	));
+	const inlineLink = inline.tokens[0].children.find((child) =>
+		child.type === "t" && child.props.link
+	);
+	assertExists(inlineLink);
+
+	inline.removeSelectable(inlineLink.id);
+	assertEquals(toMarkdown(inline.tokens), "before  after");
+	inline.action(ACTION._Undo);
+	assertEquals(
+		toMarkdown(inline.tokens),
+		"before [repository](https://github.com/example/repo) after",
+	);
+	inline.action(ACTION._Redo);
+	assertEquals(toMarkdown(inline.tokens), "before  after");
+
+	const line = new Model(parseMarkdown(
+		"before\n[Tweet](https://x.com/example/status/1)\nafter",
+	));
+	const embedBlockId = line.tokens[1].id;
+	line.removeSelectable(embedBlockId);
+	assertEquals(toMarkdown(line.tokens), "before\nafter");
+	line.action(ACTION._Undo);
+	assertEquals(
+		toMarkdown(line.tokens),
+		"before\n[Tweet](https://x.com/example/status/1)\nafter",
+	);
+	line.action(ACTION._Redo);
+	assertEquals(toMarkdown(line.tokens), "before\nafter");
+	assertModelInvariants(inline);
+	assertModelInvariants(line);
+});
+
+Deno.test("typing replaces a selected integration or embed as one edit", () => {
+	const inline = new Model(parseMarkdown(
+		"before [repository](https://github.com/example/repo) after",
+	));
+	const inlineLink = inline.tokens[0].children.find((child) =>
+		child.type === "t" && child.props.link
+	);
+	assertExists(inlineLink);
+	inline.replaceSelectable(inlineLink.id, "replacement");
+	assertEquals(toMarkdown(inline.tokens), "before replacement after");
+	inline.action(ACTION._Undo);
+	assertEquals(
+		toMarkdown(inline.tokens),
+		"before [repository](https://github.com/example/repo) after",
+	);
+	inline.action(ACTION._Redo);
+	assertEquals(toMarkdown(inline.tokens), "before replacement after");
+
+	const line = new Model(parseMarkdown(
+		"before\n[Tweet](https://x.com/example/status/1)\nafter",
+	));
+	line.replaceSelectable(line.tokens[1].id, "replacement");
+	assertEquals(toMarkdown(line.tokens), "before\nreplacement\nafter");
+	line.action(ACTION._Undo);
+	assertEquals(
+		toMarkdown(line.tokens),
+		"before\n[Tweet](https://x.com/example/status/1)\nafter",
+	);
+	line.action(ACTION._Redo);
+	assertEquals(toMarkdown(line.tokens), "before\nreplacement\nafter");
+	assertModelInvariants(inline);
+	assertModelInvariants(line);
+});
+
+Deno.test("smart toolbar formatting targets the word under a collapsed caret", () => {
+	const model = new Model([paragraph(text("one two three"))]);
+	model.selection.setSelection("0.0", 5, "0.0", 5);
+
+	assertEquals(
+		model.smartFormat(ACTION._FormatAdd, ["fontWeight", "bold"]),
+		true,
+	);
+	assertEquals(toMarkdown(model.tokens), "one **two** three");
+	assertEquals(model.selectedText(), "two");
+
+	model.smartFormat(ACTION._FormatRemove, ["fontWeight", "bold"]);
+	assertEquals(toMarkdown(model.tokens), "one two three");
+	assertModelInvariants(model);
+});
+
+Deno.test("smart word scope crosses existing formatting runs", () => {
+	const model = new Model([
+		paragraph(
+			text("inter", { fontStyle: "italic" }),
+			text("operable text"),
+		),
+	]);
+	model.selection.setSelection("0.1", 2, "0.1", 2);
+
+	model.smartFormat(ACTION._FormatAdd, ["fontWeight", "bold"]);
+
+	assertEquals(model.selectedText(), "interoperable");
+	assertEquals(
+		textWithFormat(model, "fontWeight", "bold"),
+		"interoperable",
+	);
+	assertModelInvariants(model);
+});
+
+Deno.test("smart toolbar formatting targets a complete link label", () => {
+	const url = "https://example.com";
+	const model = new Model([
+		paragraph(
+			text("linked ", { link: url }),
+			text("words", { fontStyle: "italic", link: url }),
+			text(" after"),
+		),
+	]);
+	model.selection.setSelection("0.0", 2, "0.0", 2);
+
+	model.smartFormat(ACTION._FormatAdd, ["fontWeight", "bold"]);
+
+	assertEquals(model.selectedText(), "linked words");
+	assertEquals(textWithFormat(model, "fontWeight", "bold"), "linked words");
+	assertEquals(
+		model.tokens[0].children
+			.filter((child): child is TextToken =>
+				child.type === "t" && child.props.link === url
+			)
+			.map((child) => child.text)
+			.join(""),
+		"linked words",
+	);
+	assertModelInvariants(model);
+});
+
+Deno.test("smart link creation applies to the word under the caret", () => {
+	const model = new Model([paragraph(text("make this linked"))]);
+	model.selection.setSelection("0.0", 7, "0.0", 7);
+
+	model.smartFormat(ACTION._FormatAdd, ["link", "https://example.com"]);
+
+	assertEquals(
+		toMarkdown(model.tokens),
+		"make [this](https://example.com) linked",
+	);
+	assertEquals(model.selectedText(), "this");
+	assertModelInvariants(model);
 });
 
 Deno.test("setMarkdown replaces content and clears history", () => {
@@ -1087,6 +1514,76 @@ Deno.test("code fence markers can be edited without touching code content", () =
 	assertModelInvariants(model);
 });
 
+Deno.test("code blocks reject formatting, mentions, and attachments", () => {
+	const model = new Model([code("literal code", "ts")]);
+	model.selection.setSelection("0.0", 0, "0.0", 7);
+
+	model.action(ACTION._FormatAdd, ["fontWeight", "bold"]);
+	model.insertMention("0.0", 0, 7, "@marcis", {
+		configId: "people",
+		id: "marcis",
+		label: "marcis",
+		trigger: "@",
+	});
+	model.insertAttachment({
+		kind: "image",
+		mimeType: "image/png",
+		name: "image.png",
+		size: 42,
+		src: "https://example.com/image.png",
+	});
+
+	assertEquals(documentText(model), "literal code");
+	assertEquals(model.tokens[0].children.length, 1);
+	assertEquals(model.tokens[0].children[0].type, "t");
+	assertEquals(model.tokens[0].children[0].props, {});
+	assertEquals(model.canUndo, false);
+	assertModelInvariants(model);
+});
+
+Deno.test("URLs and Markdown markers stay literal inside code blocks", () => {
+	const model = new Model([code("")]);
+	model.action(
+		ACTION._Key,
+		"**bold** https://example.com ![image](https://example.com/image.png)",
+	);
+
+	assertEquals(model.tokens[0].children.length, 1);
+	const content = model.tokens[0].children[0];
+	assertEquals(content.type, "t");
+	if (content.type !== "t") {
+		throw new Error("Expected literal code text");
+	}
+	assertEquals(content.props, {});
+	assertEquals(
+		content.text,
+		"**bold** https://example.com ![image](https://example.com/image.png)",
+	);
+	assertModelInvariants(model);
+});
+
+Deno.test("malformed structured code content is normalized to literal text", () => {
+	const malformed = code("");
+	malformed.children = [
+		text("bold", { fontWeight: "bold" }),
+		image("diagram"),
+	];
+	const model = new Model([malformed]);
+
+	assertEquals(model.tokens[0].children.length, 1);
+	const content = model.tokens[0].children[0];
+	assertEquals(content.type, "t");
+	if (content.type !== "t") {
+		throw new Error("Expected normalized literal code text");
+	}
+	assertEquals(content.props, {});
+	assertEquals(
+		content.text,
+		"**bold**![diagram](https://example.com/image.png)",
+	);
+	assertModelInvariants(model);
+});
+
 Deno.test("a manually broken closing code fence remains literal source", () => {
 	const model = new Model([code("const value = 1;", "ts")]);
 	const blockId = model.tokens[0].id;
@@ -1603,36 +2100,21 @@ Deno.test("selection healing ignores a trailing inline atom", () => {
 	assertModelInvariants(model);
 });
 
-Deno.test("URLs become atomic after paste or a typed delimiter", () => {
-	const pasted = new Model();
-	pasted.action(ACTION._Key, "See https://example.com, now");
-
-	assertEquals(
-		pasted.tokens[0].children.map((child) =>
-			child.type === "t" ? [child.text, child.props.url] : []
-		),
-		[
-			["See ", undefined],
-			["", "https://example.com"],
-			[", now", undefined],
-		],
-	);
-	assertEquals(pasted.selection.first, ["0.2", 5]);
-
+Deno.test("typed URLs remain ordinary editable text", () => {
 	const typed = new Model();
 	for (const character of "https://example.com ") {
 		typed.action(ACTION._Key, character);
 	}
 
-	assertEquals(typed.tokens[0].children[1].type, "t");
+	assertEquals(documentText(typed), "https://example.com ");
 	assertEquals(
-		typed.tokens[0].children[1].type === "t"
-			? typed.tokens[0].children[1].props.url
-			: undefined,
-		"https://example.com",
+		typed.tokens[0].children.some((child) =>
+			child.type === "url" ||
+			(child.type === "t" && child.props.url !== undefined)
+		),
+		false,
 	);
-	assertEquals(documentText(typed), " ");
-	assertEquals(typed.selection.first, ["0.2", 1]);
+	assertEquals(typed.selection.first, ["0.0", 20]);
 	assertModelInvariants(typed);
 });
 
@@ -1744,4 +2226,82 @@ Deno.test("cross-run and cross-block edit ranges preserve model invariants", () 
 			assertModelInvariants(model);
 		}
 	}
+});
+
+Deno.test("multiline paste parses each Markdown line without leaking block style", () => {
+	const pasted = [
+		"> quoted",
+		"- [x] completed",
+		"- unordered",
+		"7. ordered",
+		"plain **bold**",
+		"```ts",
+		"const literal = '**not bold**';",
+		"```",
+		"after code",
+	].join("\n");
+	const model = new Model(parseMarkdown(""));
+
+	model.action(ACTION._Key, pasted);
+
+	assertEquals(toMarkdown(model.tokens), toMarkdown(parseMarkdown(pasted)));
+	assertEquals(
+		model.tokens.map((block) => block.type),
+		["quote", "todo", "l", "l", "p", "code", "p"],
+	);
+	const literal = model.tokens[5].children[0];
+	assertEquals(literal.type, "t");
+	if (literal.type === "t") {
+		assertEquals(literal.props, {});
+		assertEquals(literal.text, "const literal = '**not bold**';");
+	}
+	assertModelInvariants(model);
+
+	model.action(ACTION._Undo);
+	assertEquals(toMarkdown(model.tokens), "");
+	model.action(ACTION._Redo);
+	assertEquals(toMarkdown(model.tokens), toMarkdown(parseMarkdown(pasted)));
+	assertModelInvariants(model);
+});
+
+Deno.test("select all includes trailing atomic content and replaces as one edit", () => {
+	const model = new Model([
+		{
+			...paragraph(text("first")),
+			props: { size: 1 },
+			type: "h",
+		},
+		paragraph(text("last"), image("trailing")),
+	]);
+
+	model.selectAll();
+	assertEquals(model.selection.first, ["0.0", 0]);
+	assertEquals(model.selection.last, ["1.1", 0]);
+
+	model.action(ACTION._Key, "replacement");
+	assertEquals(toMarkdown(model.tokens), "replacement");
+	model.action(ACTION._Undo);
+	assertEquals(
+		toMarkdown(model.tokens),
+		"# first\nlast![trailing](https://example.com/image.png)",
+	);
+	model.action(ACTION._Redo);
+	assertEquals(toMarkdown(model.tokens), "replacement");
+	assertModelInvariants(model);
+});
+
+Deno.test("select all multiline replacement parses its leading block marker", () => {
+	const model = new Model(parseMarkdown("# Old heading\nold body"));
+	const replacement = "## New heading\n> quote\nplain";
+
+	model.selectAll();
+	model.action(ACTION._Key, replacement);
+
+	assertEquals(toMarkdown(model.tokens), replacement);
+	assertEquals(model.tokens.map((block) => block.type), ["h", "quote", "p"]);
+	model.action(ACTION._Undo);
+	assertEquals(toMarkdown(model.tokens), "# Old heading\nold body");
+	model.action(ACTION._Redo);
+	assertEquals(toMarkdown(model.tokens), replacement);
+	assertModelInvariants(model);
 });

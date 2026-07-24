@@ -16,6 +16,7 @@
 export { Editpal, stylesheetUrl } from "./editpal.tsx";
 export type { EditpalMode, EditpalProps } from "./editpal.tsx";
 export { Model } from "./model.ts";
+export type { UpdateAssetData } from "./model.ts";
 export { MarkdownPreview } from "./preview.tsx";
 export type { MarkdownPreviewProps } from "./preview.tsx";
 export {

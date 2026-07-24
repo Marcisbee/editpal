@@ -34,6 +34,7 @@ import type { EditpalExtensions } from "./extensions.ts";
 import { MentionDropdown } from "./mention-dropdown.tsx";
 
 export const Model = EditorModel;
+export type { UpdateAssetData } from "./model.ts";
 /**
  * URL of the stylesheet matching the installed package version.
  *
@@ -80,7 +81,7 @@ function RenderText(
 		sourceStart?: number;
 	},
 ) {
-	const { extensions, model } = useContext(EditorContext);
+	const { activeId, extensions, model } = useContext(EditorContext);
 	if (item.props?.url) {
 		return <RenderUrl {...item} key={item.id} />;
 	}
@@ -100,6 +101,8 @@ function RenderText(
 					contentEditable={false}
 					data-ep={item.id}
 					data-ep-inline-integration={integration.definition.id}
+					data-ep-selectable="inline-embed"
+					data-ep-s={activeId === item.id || undefined}
 					aria-label={integration.definition.ariaLabel?.(context)}
 				>
 					{integration.definition.render(context)}
@@ -126,6 +129,7 @@ function RenderText(
 		link,
 		mention,
 		markdownEscape: _markdownEscape,
+		typingBoundary: _typingBoundary,
 		url: _url,
 		...style
 	} = props;
@@ -367,7 +371,7 @@ function RenderMap({ items }: RenderMapProps) {
 		return null;
 	}
 
-	const { extensions, mode, model } = useContext(EditorContext);
+	const { activeId, extensions, mode, model } = useContext(EditorContext);
 	let sourceOffset = 0;
 
 	return items.map((item, index) => {
@@ -449,7 +453,11 @@ function RenderMap({ items }: RenderMapProps) {
 				sourceStart={sourceStart}
 			/>
 		);
-		if (!isBlockToken(item) || !extensions?.lineEmbeds?.length) {
+		if (
+			!isBlockToken(item) ||
+			item.type === "code" ||
+			!extensions?.lineEmbeds?.length
+		) {
 			return rendered;
 		}
 
@@ -466,7 +474,13 @@ function RenderMap({ items }: RenderMapProps) {
 					key={`embed-${item.id}-${embed.id}`}
 				>
 					{rendered}
-					<div contentEditable={false} data-ep-line-embed={embed.id}>
+					<div
+						contentEditable={false}
+						data-ep={item.id}
+						data-ep-line-embed={embed.id}
+						data-ep-selectable="line-embed"
+						data-ep-s={activeId === item.id || undefined}
+					>
 						{embed.render({ block: item, match, model })}
 					</div>
 				</div>
@@ -543,6 +557,9 @@ interface EditorContextValue {
 	mode: EditpalMode;
 	extensions?: EditpalExtensions;
 	editable: boolean;
+	activeId?: string;
+	setActiveId(id?: string): void;
+	replaceAsset(id: string, file: File): Promise<void>;
 }
 
 export const EditorContext: Context<EditorContextValue> = createContext<
@@ -1017,6 +1034,7 @@ export function Editpal(
 	const onChangeRef = useRef(onChange);
 	const [focus, setFocus] = useState(0);
 	const [reload, setReload] = useState(0);
+	const [activeId, setActiveId] = useState<string>();
 	const editable = !disabled && !readOnly;
 	const markdown = toMarkdown(tokens);
 
@@ -1041,6 +1059,10 @@ export function Editpal(
 		_stack.splice(0).pop()?.();
 	});
 
+	function activeSelectableId(): string | undefined {
+		return activeId;
+	}
+
 	function insertText(
 		text: string,
 		type: typeof ACTION._Compose | typeof ACTION._Key = ACTION._Key,
@@ -1053,7 +1075,113 @@ export function Editpal(
 				return false;
 			}
 		}
+		const selectedId = activeSelectableId();
+		if (selectedId) {
+			model.replaceSelectable(selectedId, text);
+			setActiveId(undefined);
+			return true;
+		}
+		if (activeId) {
+			setActiveId(undefined);
+		}
 		action(type, text);
+		return true;
+	}
+
+	function normalizedPastedUrl(text: string): string | undefined {
+		const value = text.trim();
+		if (!value || /\s/.test(value)) {
+			return;
+		}
+		try {
+			const url = new URL(value);
+			return url.protocol === "http:" || url.protocol === "https:"
+				? value
+				: undefined;
+		} catch {
+			return;
+		}
+	}
+
+	function placeCaretAfterPastedLink(link: TextToken) {
+		const parent = model.parent(link.key);
+		const isLineEmbed = parent &&
+			extensions?.lineEmbeds?.some((definition) =>
+				Boolean(definition.match(toMarkdown([parent]), parent))
+			);
+		if (!parent || !isLineEmbed) {
+			model.placeCaretAfter(link.id);
+			return;
+		}
+		const blockIndex = model.tokens.indexOf(parent);
+		const nextBlock = model.tokens[blockIndex + 1];
+		if (nextBlock?.children[0]) {
+			model.select(nextBlock.children[0], 0);
+			return;
+		}
+		model.placeCaretAfter(link.id);
+		action(ACTION._Enter);
+	}
+
+	function pasteLinkOverSelection(url: string): boolean {
+		if (model.selectionTouchesCodeBlock) {
+			return false;
+		}
+		const { first, last } = model.selection;
+		if (first[0] === last[0] && first[1] === last[1]) {
+			return false;
+		}
+		action(ACTION._FormatAdd, ["link", url]);
+		const lastLink = model.keysBetween(
+			model.selection.first[0],
+			model.selection.last[0],
+		).map((key) => model.findElement(key)).reverse().find(
+			(token): token is TextToken =>
+				token?.type === "t" && token.props.link === url,
+		);
+		if (lastLink) {
+			placeCaretAfterPastedLink(lastLink);
+		}
+		return true;
+	}
+
+	function pasteLinkAtCaret(url: string): boolean {
+		if (model.selectionTouchesCodeBlock) {
+			return false;
+		}
+		const { first, last } = model.selection;
+		if (first[0] !== last[0] || first[1] !== last[1]) {
+			return false;
+		}
+		const startElement = model.findElement(first[0]);
+		const startId = startElement?.id;
+		const startOffset = first[1];
+		if (!startId || !insertText(url)) {
+			return true;
+		}
+
+		const startKey = model._idToKey[startId];
+		const [endKey, endOffset] = model.selection.first;
+		if (!startKey) {
+			return true;
+		}
+		model.selection.setSelection(
+			startKey,
+			startOffset,
+			endKey,
+			endOffset,
+		);
+		action(ACTION._FormatAdd, ["link", url]);
+
+		const lastLink = model.keysBetween(
+			model.selection.first[0],
+			model.selection.last[0],
+		).map((key) => model.findElement(key)).reverse().find((token) =>
+			token?.type === "t" && token.props.link === url
+		);
+		if (lastLink?.type === "t") {
+			placeCaretAfterPastedLink(lastLink);
+		}
 		return true;
 	}
 
@@ -1143,6 +1271,55 @@ export function Editpal(
 		) {
 			return;
 		}
+		const mentionElement = event.target instanceof Element
+			? event.target.closest<HTMLElement>("[data-ep-mention]")
+			: undefined;
+		const mentionId = mentionElement?.dataset.ep;
+		const mentionToken = mentionId
+			? model.findElement(model._idToKey[mentionId])
+			: undefined;
+		if (
+			mentionElement &&
+			mentionToken?.type === "t" &&
+			mentionToken.props.mention
+		) {
+			preventDefaultAndStop(event);
+			ref.current?.focus({ preventScroll: true });
+			const rect = mentionElement.getBoundingClientRect();
+			if (event.clientX < rect.left + rect.width / 2) {
+				model.placeCaretBefore(mentionToken.id);
+			} else {
+				model.placeCaretAfter(mentionToken.id);
+			}
+			return;
+		}
+		const selectable = event.target instanceof Element
+			? event.target.closest<HTMLElement>("[data-ep-selectable]")
+			: undefined;
+		if (selectable) {
+			preventDefaultAndStop(event);
+			ref.current?.focus({ preventScroll: true });
+			const id = selectable.dataset.ep;
+			if (id) {
+				setActiveId(id);
+				const token = model.findElement(model._idToKey[id]);
+				const selectableToken = token && isBlockToken(token)
+					? token.children.find((child) =>
+						child.type === "url" ||
+						(child.type === "t" &&
+							Boolean(child.props.link || child.props.url))
+					)
+					: token;
+				if (selectableToken && !isBlockToken(selectableToken)) {
+					model.select(selectableToken, 0);
+					model.selection.setFormat(
+						selectableToken.type === "t" ? selectableToken.props : {},
+					);
+				}
+			}
+		} else {
+			setActiveId(undefined);
+		}
 		if (
 			event.target instanceof Element &&
 			event.target.closest("[data-ep-md-marker]")
@@ -1222,7 +1399,7 @@ export function Editpal(
 	function onBlur(event: FocusEvent) {
 		if (
 			event.relatedTarget instanceof Element &&
-			event.relatedTarget.closest(".e-fl-drop")
+			event.relatedTarget.closest(".e-fl-drop, .e-fl-toolbar")
 		) {
 			return;
 		}
@@ -1236,9 +1413,49 @@ export function Editpal(
 		setFocus(increment);
 	}
 
-	async function uploadFiles(files: Iterable<File>) {
+	async function uploadFile(file: File) {
 		const config = extensions?.attachments;
 		if (!config || !editable) {
+			return;
+		}
+		if (config.maxSize !== undefined && file.size > config.maxSize) {
+			config.onError?.(
+				new RangeError(
+					`${file.name} exceeds the ${config.maxSize} byte attachment limit`,
+				),
+				file,
+			);
+			return;
+		}
+		const controller = new AbortController();
+		uploadControllers.current.add(controller);
+		try {
+			const uploaded = await config.upload(file, {
+				model,
+				reportProgress(progress) {
+					config.onProgress?.(
+						file,
+						Math.max(0, Math.min(1, progress)),
+					);
+				},
+				signal: controller.signal,
+			});
+			if (controller.signal.aborted) {
+				return;
+			}
+			config.onUploaded?.(uploaded, file);
+			return uploaded;
+		} catch (error) {
+			if (!controller.signal.aborted) {
+				config.onError?.(error, file);
+			}
+		} finally {
+			uploadControllers.current.delete(controller);
+		}
+	}
+
+	async function uploadFiles(files: Iterable<File>) {
+		if (model.selectionTouchesCodeBlock) {
 			return;
 		}
 		for (const file of files) {
@@ -1250,55 +1467,38 @@ export function Editpal(
 				lastId: lastElement?.id,
 				lastOffset: model.selection.last[1],
 			};
-			if (config.maxSize !== undefined && file.size > config.maxSize) {
-				config.onError?.(
-					new RangeError(
-						`${file.name} exceeds the ${config.maxSize} byte attachment limit`,
-					),
-					file,
-				);
+			const uploaded = await uploadFile(file);
+			if (!uploaded) {
 				continue;
 			}
-			const controller = new AbortController();
-			uploadControllers.current.add(controller);
-			try {
-				const uploaded = await config.upload(file, {
-					model,
-					reportProgress(progress) {
-						config.onProgress?.(
-							file,
-							Math.max(0, Math.min(1, progress)),
-						);
-					},
-					signal: controller.signal,
-				});
-				if (controller.signal.aborted) {
-					continue;
-				}
-				const firstKey = bookmark.firstId
-					? model._idToKey[bookmark.firstId]
-					: undefined;
-				const lastKey = bookmark.lastId
-					? model._idToKey[bookmark.lastId]
-					: undefined;
-				if (firstKey && lastKey) {
-					model.selection.setSelection(
-						firstKey,
-						bookmark.firstOffset,
-						lastKey,
-						bookmark.lastOffset,
-					);
-				}
-				model.insertAttachment(uploaded);
-				config.onUploaded?.(uploaded, file);
-			} catch (error) {
-				if (!controller.signal.aborted) {
-					config.onError?.(error, file);
-				}
-			} finally {
-				uploadControllers.current.delete(controller);
+			const firstKey = bookmark.firstId
+				? model._idToKey[bookmark.firstId]
+				: undefined;
+			const lastKey = bookmark.lastId
+				? model._idToKey[bookmark.lastId]
+				: undefined;
+			if (firstKey && lastKey) {
+				model.selection.setSelection(
+					firstKey,
+					bookmark.firstOffset,
+					lastKey,
+					bookmark.lastOffset,
+				);
+			}
+			model.insertAttachment(uploaded);
+			if (uploaded.kind === "image" || uploaded.kind === "video") {
+				model.action(ACTION._Enter);
 			}
 		}
+	}
+
+	async function replaceAsset(id: string, file: File) {
+		const uploaded = await uploadFile(file);
+		if (!uploaded) {
+			return;
+		}
+		model.updateAsset(id, uploaded);
+		setActiveId(id);
 	}
 
 	function onDrop(event: DragEvent) {
@@ -1614,6 +1814,12 @@ export function Editpal(
 		if (event.isComposing || model._isComposing) {
 			return;
 		}
+		// A selected atomic element can have a browser caret immediately beside
+		// its contenteditable=false DOM. Preserve the explicit model selection;
+		// otherwise reconcile from the visible native caret.
+		if (!activeSelectableId()) {
+			onSelectionChange();
+		}
 
 		if (
 			(event.inputType === "deleteContentBackward" ||
@@ -1723,6 +1929,9 @@ export function Editpal(
 				mode,
 				editable,
 				extensions,
+				activeId,
+				setActiveId,
+				replaceAsset,
 			}}
 		>
 			<FloatingToolbar />
@@ -1735,7 +1944,11 @@ export function Editpal(
 					<button
 						type="button"
 						disabled={!editable}
-						onClick={() => fileInputRef.current?.click()}
+						onClick={() => {
+							if (!model.selectionTouchesCodeBlock) {
+								fileInputRef.current?.click();
+							}
+						}}
 					>
 						{extensions.attachments.pickerLabel || "Attach files"}
 					</button>
@@ -1833,20 +2046,32 @@ export function Editpal(
 					if (!editable) {
 						return;
 					}
+					// Firefox may defer `selectionchange` until after the paste event.
+					// Capture the native range synchronously so async uploads retain
+					// the user's actual insertion point in every browser.
+					onSelectionChange();
+					setActiveId(undefined);
 					const files = e.clipboardData?.files;
 					if (files?.length && extensions?.attachments) {
 						void uploadFiles(files);
 						return;
 					}
 
-					const text = e.clipboardData?.getData("text/markdown") ||
-						e.clipboardData?.getData("text/plain") ||
+					const text = e.clipboardData?.getData("text/plain") ||
 						e.clipboardData?.getData("text") ||
+						e.clipboardData?.getData("text/markdown") ||
 						"";
 
 					model.history.batch();
 
-					if (!editSelectedMarkdown(text)) {
+					const url = normalizedPastedUrl(text);
+					if (
+						url &&
+						(pasteLinkOverSelection(url) || pasteLinkAtCaret(url))
+					) {
+						// The selection becomes the link label and the caret is placed
+						// in a fresh text token after it.
+					} else if (!editSelectedMarkdown(text)) {
 						insertText(text);
 					}
 
@@ -1856,8 +2081,32 @@ export function Editpal(
 					if (!editable) {
 						return;
 					}
+					// Native selection events can be deferred (notably in Firefox).
+					// Reconcile the model with the caret the user can actually see
+					// before applying any keyboard command.
+					const selectedBeforeReconcile = activeSelectableId();
+					if (!selectedBeforeReconcile) {
+						onSelectionChange();
+					}
 					const primaryModifier = e.metaKey || e.ctrlKey;
 					const key = e.key.toLowerCase();
+					const selectedId = selectedBeforeReconcile ||
+						activeSelectableId();
+					if (activeId && !selectedId) {
+						setActiveId(undefined);
+					}
+
+					if (
+						selectedId &&
+						(key === "backspace" || key === "delete") &&
+						!primaryModifier &&
+						!e.altKey
+					) {
+						preventDefaultAndStop(e);
+						model.removeSelectable(selectedId);
+						setActiveId(undefined);
+						return;
+					}
 
 					if (
 						(key === "backspace" || key === "delete") &&
@@ -1890,6 +2139,11 @@ export function Editpal(
 					}
 
 					if (primaryModifier && !e.altKey) {
+						if (key === "a") {
+							preventDefaultAndStop(e);
+							model.selectAll();
+							return;
+						}
 						if (key === "z") {
 							preventDefaultAndStop(e);
 							action(e.shiftKey ? ACTION._Redo : ACTION._Undo);

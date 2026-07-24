@@ -38,6 +38,8 @@ export function RenderAttachment(
 				contentEditable={false}
 				data-ep={item.id}
 				data-ep-attachment={attachment.kind}
+				data-ep-selectable={attachment.kind}
+				data-ep-s={context.activeId === item.id || undefined}
 			>
 				{custom}
 			</span>
@@ -50,6 +52,8 @@ export function RenderAttachment(
 				contentEditable={false}
 				data-ep={item.id}
 				data-ep-attachment="image"
+				data-ep-selectable="image"
+				data-ep-s={context.activeId === item.id || undefined}
 			>
 				<img src={attachment.src} alt={attachment.alt || attachment.name} />
 			</span>
@@ -62,6 +66,8 @@ export function RenderAttachment(
 				contentEditable={false}
 				data-ep={item.id}
 				data-ep-attachment="video"
+				data-ep-selectable="video"
+				data-ep-s={context.activeId === item.id || undefined}
 			>
 				<video controls src={attachment.src}>
 					<a href={attachment.src}>{attachment.name}</a>
@@ -76,6 +82,8 @@ export function RenderAttachment(
 			contentEditable={false}
 			data-ep={item.id}
 			data-ep-attachment="file"
+			data-ep-selectable="file"
+			data-ep-s={context.activeId === item.id || undefined}
 			href={attachment.src}
 			download={attachment.name}
 		>
