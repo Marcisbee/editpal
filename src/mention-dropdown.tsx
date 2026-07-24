@@ -246,11 +246,16 @@ export function MentionDropdown() {
 			const maxTop = globalThis.innerHeight - margin - height - y;
 			const below = rect.bottom - y;
 			const above = rect.top - height - y;
+			const preferredTop = below <= maxTop ? below : above;
 			const next = {
-				left: Math.max(minLeft, Math.min(rect.left - x, maxLeft)),
-				top: below <= maxTop
-					? below
-					: Math.max(minTop, Math.min(above, maxTop)),
+				left: Math.max(
+					minLeft,
+					Math.min(rect.left - x, Math.max(minLeft, maxLeft)),
+				),
+				top: Math.max(
+					minTop,
+					Math.min(preferredTop, Math.max(minTop, maxTop)),
+				),
 			};
 			setPosition((current) =>
 				current.left === next.left && current.top === next.top ? current : next
