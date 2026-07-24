@@ -114,7 +114,12 @@ function toJsrBundle(bundle) {
 	const chain = bundle.verificationMaterial?.x509CertificateChain ??
 		bundle.verificationMaterial?.content?.x509CertificateChain;
 	const tlogEntry = bundle.verificationMaterial?.tlogEntries?.[0];
-	if (!envelope || !chain?.certificates?.[0]?.rawBytes || !tlogEntry) {
+	if (
+		!envelope ||
+		!Array.isArray(envelope.signatures) ||
+		!chain?.certificates?.[0]?.rawBytes ||
+		!tlogEntry
+	) {
 		throw new Error("Sigstore returned an unsupported bundle format");
 	}
 
@@ -127,7 +132,13 @@ function toJsrBundle(bundle) {
 		mediaType: PAYLOAD_TYPE,
 		content: {
 			$case: "dsseSignature",
-			dsseEnvelope: envelope,
+			dsseEnvelope: {
+				...envelope,
+				signatures: envelope.signatures.map((signature) => ({
+					keyid: signature.keyid ?? signature.keyId ?? "",
+					sig: signature.sig,
+				})),
+			},
 		},
 		verificationMaterial: {
 			content: {
