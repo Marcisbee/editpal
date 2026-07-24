@@ -30,7 +30,13 @@ test("async mention suggestions insert a structured mention", async ({ page }) =
 	await page.keyboard.type("@mar");
 	const option = page.getByRole("option", { name: /marcis/i });
 	await expect(option).toBeVisible();
-	const box = await page.getByRole("listbox", { name: "People" }).boundingBox();
+	const listbox = page.getByRole("listbox", { name: "People" });
+	expect(
+		await listbox.evaluate((element) =>
+			element.parentElement === document.body
+		),
+	).toBe(true);
+	const box = await listbox.boundingBox();
 	const viewport = page.viewportSize();
 	expect(box).not.toBeNull();
 	expect(viewport).not.toBeNull();

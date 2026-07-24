@@ -94,7 +94,8 @@ export function MentionDropdown() {
 	const dropdownRef = useRef<HTMLDivElement>(null);
 	const [position, setPosition] = useState({ left: 0, top: 0 });
 	const { x, y } = getOffset();
-	const portal = useMemo(getPortal, [getPortal]);
+	const configuredPortal = useMemo(getPortal, [getPortal]);
+	const portal = configuredPortal ?? globalThis.document?.body ?? null;
 
 	const active = useMemo(() => {
 		if (
