@@ -3,8 +3,9 @@ import { readFile } from "node:fs/promises";
 import { attest } from "sigstore";
 
 // Deno currently attests the JSR version-metadata hash, while JSR verifies the
-// uploaded source-tarball hash. Generate the tarball-bound statement explicitly
-// until Deno attaches that form of provenance itself.
+// uploaded source-tarball hash. Generate the tarball-bound statement immediately
+// after publishing, within JSR's provenance attachment window, until Deno
+// attaches that form of provenance itself.
 const JSR_API_URL = "https://api.jsr.io";
 const PAYLOAD_TYPE = "application/vnd.in-toto+json";
 
