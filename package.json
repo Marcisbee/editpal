@@ -5,10 +5,10 @@
 	"type": "module",
 	"main": "./dist/editpal.js",
 	"module": "./dist/editpal.js",
-	"types": "./dist/editpal.d.ts",
+	"types": "./dist/mod.d.ts",
 	"exports": {
 		".": {
-			"types": "./dist/editpal.d.ts",
+			"types": "./dist/mod.d.ts",
 			"import": "./dist/editpal.js",
 			"default": "./dist/editpal.js"
 		},

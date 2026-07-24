@@ -8,9 +8,13 @@ import type {
 	TokenRoot,
 } from "./tokens.ts";
 
+/** Properties accepted by the read-only {@link MarkdownPreview} renderer. */
 export interface MarkdownPreviewProps {
+	/** Accessible label applied to the rendered article. */
 	ariaLabel?: string;
+	/** Optional class name applied to the rendered article. */
 	className?: string;
+	/** Parsed Markdown document to render. */
 	tokens: TokenRoot;
 }
 
@@ -234,6 +238,11 @@ function PreviewBlock({
 	}
 }
 
+/**
+ * Render parsed Markdown without editor state, listeners, or visible markers.
+ *
+ * This renderer is suitable for read-only posts, feeds, and previews.
+ */
 export function MarkdownPreview({
 	ariaLabel = "Markdown preview",
 	className,

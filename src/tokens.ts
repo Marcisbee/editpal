@@ -27,6 +27,7 @@ export interface TextTokenProps extends Record<string, any> {
 	url?: string;
 }
 
+/** Editable text and its active inline Markdown formatting. */
 export interface TextToken extends Token<TextTokenProps> {
 	type: "t";
 	text: string;
@@ -104,6 +105,7 @@ export interface HorizontalRuleToken extends Token {
 	children: InlineToken[];
 }
 
+/** A block-level Markdown token such as a paragraph, heading, or code line. */
 export type BlockToken =
 	| ParagraphToken
 	| HeadingToken
@@ -112,8 +114,11 @@ export type BlockToken =
 	| QuoteToken
 	| CodeToken
 	| HorizontalRuleToken;
+/** Inline document content: editable text, an image, or an automatic URL. */
 export type InlineToken = TextToken | ImgToken | UrlToken;
+/** Any token that may appear in an Editpal document. */
 export type AnyToken = InlineToken | BlockToken;
+/** Root representation of a parsed Markdown document. */
 export type TokenRoot = BlockToken[];
 
 export type BlockType = BlockToken["type"];

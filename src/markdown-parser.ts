@@ -320,6 +320,11 @@ export function parseInlineMarkdownDetailed(
 	);
 }
 
+/**
+ * Parse inline Markdown into editable text, image, and URL tokens.
+ *
+ * @param source Markdown without block-level prefixes.
+ */
 export function parseInlineMarkdown(source: string): InlineToken[] {
 	const parsed = parseInlineMarkdownDetailed(source);
 	return parsed.length ? parsed.map(({ token }) => token) : [createTextToken()];
@@ -372,6 +377,7 @@ export function inlineMarkdownChunks(items: InlineToken[]): MarkdownChunk[] {
 	return chunks;
 }
 
+/** Serialize inline editor tokens to Markdown source. */
 export function inlineTokensToMarkdown(items: InlineToken[]): string {
 	return inlineMarkdownChunks(items).map(({ text }) => text).join("");
 }
@@ -380,6 +386,11 @@ function blockChildren(markdown: string): InlineToken[] {
 	return parseInlineMarkdown(markdown);
 }
 
+/**
+ * Parse a Markdown document into the token model consumed by Editpal.
+ *
+ * Empty input is normalized to one editable paragraph.
+ */
 export function parseMarkdown(markdown: string): TokenRoot {
 	const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
 	const blocks: BlockToken[] = [];
@@ -520,6 +531,7 @@ export function codeFenceMarker(code: string): string {
 	return "`".repeat(Math.max(3, longestBacktickRun + 1));
 }
 
+/** Serialize an Editpal token document to canonical Markdown source. */
 export function toMarkdown(tokens: TokenRoot): string {
 	const output: string[] = [];
 

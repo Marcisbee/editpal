@@ -241,6 +241,17 @@ function trimUrlPunctuation(value: string): string {
 	return value.replace(/[),.!?;:'"]+$/g, "");
 }
 
+/**
+ * Mutable editor state for an Editpal document.
+ *
+ * A model owns parsed tokens, selection state, undo history, and editing
+ * commands. Pass the same instance to {@link Editpal} for its lifetime.
+ *
+ * @example
+ * ```ts
+ * const model = new Model(parseMarkdown("# Hello"));
+ * ```
+ */
 export class Model extends Exome {
 	public tokens: TokenRoot;
 	// public selection: {

@@ -16,5 +16,5 @@
 		"strict": true,
 		"target": "ES2020"
 	},
-	"include": ["src/editpal.tsx", "src/styles.d.ts"]
+	"include": ["src/mod.ts", "src/styles.d.ts"]
 }

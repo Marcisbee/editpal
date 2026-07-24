@@ -2,7 +2,7 @@
 	"$schema": "https://deno.land/x/deno/cli/schemas/config-file.v1.json",
 	"name": "@marcisbee/editpal",
 	"version": "0.1.0",
-	"exports": "./src/editpal.tsx",
+	"exports": "./src/mod.ts",
 	"nodeModulesDir": "none",
 	"imports": {
 		"@deno/esbuild-plugin": "jsr:@deno/esbuild-plugin@^1.2.1",

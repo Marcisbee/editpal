@@ -99,7 +99,9 @@ async function buildLibrary(): Promise<void> {
 
 	const result = await build({
 		...productionOptions,
-		entryPoints: ["src/editpal.tsx"],
+		entryPoints: {
+			editpal: "src/mod.ts",
+		},
 		external: ["exome", "preact"],
 		metafile: true,
 		outdir: "dist",

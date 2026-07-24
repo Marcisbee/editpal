@@ -21,6 +21,12 @@ import {
 } from "./utils.ts";
 
 export const Model = EditorModel;
+/**
+ * URL of the stylesheet matching the installed package version.
+ *
+ * Use this when a runtime cannot import the `style.css` package subpath
+ * directly, such as a browser application loading Editpal from JSR.
+ */
 export const stylesheetUrl: URL = new URL("./style.css", import.meta.url);
 export { MarkdownPreview } from "./preview.tsx";
 export type { MarkdownPreviewProps } from "./preview.tsx";
@@ -387,11 +393,20 @@ export function preventDefaultAndStop(e: any) {
 	e.stopPropagation();
 }
 
+/** Properties accepted by the {@link Editpal} component. */
 export interface EditpalProps {
+	/** Editor state shared with the component. */
 	model: EditorModel;
+	/** Editing presentation. Defaults to `"markdown"`. */
 	mode?: EditpalMode;
 }
 
+/**
+ * Available editable presentations.
+ *
+ * `"markdown"` displays editable Markdown markers, while `"basic"` hides the
+ * markers without disabling editing.
+ */
 export type EditpalMode = "basic" | "markdown";
 
 function increment(i: number) {
@@ -835,6 +850,12 @@ function markdownSourcePoint(
 	};
 }
 
+/**
+ * Render an interactive Markdown editor backed by an Editpal {@link Model}.
+ *
+ * The model owns document content, selection, formatting, and history, so it
+ * may be retained outside the component and serialized with {@link toMarkdown}.
+ */
 export function Editpal(
 	{ mode = "markdown", model }: EditpalProps,
 ): VNode {
