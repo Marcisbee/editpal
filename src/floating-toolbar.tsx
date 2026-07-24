@@ -7,7 +7,7 @@ import { EditorContext, preventDefaultAndStop } from "./editpal.tsx";
 import { Toolbar } from "./toolbar.tsx";
 
 export function FloatingToolbar() {
-	const { model } = useContext(EditorContext);
+	const { editable, model } = useContext(EditorContext);
 	const { focus, first, last, getOffset, getPortal } = useStore(
 		model.selection,
 	);
@@ -31,7 +31,7 @@ export function FloatingToolbar() {
 		// console.log(rect.top, rect.left);
 	}, [first.join(":"), last.join(":")]);
 
-	if (first[0] === last[0] && first[1] === last[1]) {
+	if (!editable || (first[0] === last[0] && first[1] === last[1])) {
 		return null;
 	}
 

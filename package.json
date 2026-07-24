@@ -30,6 +30,7 @@
 		"pack:check": "deno task package",
 		"prepack": "deno task verify",
 		"preview": "deno task preview",
+		"test:e2e": "playwright test",
 		"test": "deno task test",
 		"verify": "deno task verify",
 		"version": "deno run --allow-read --allow-write scripts/sync-jsr-version.ts && git add deno.json"
@@ -39,6 +40,7 @@
 		"preact": "^10.29.7"
 	},
 	"devDependencies": {
+		"@playwright/test": "^1.61.1",
 		"exome": "^2.8.1",
 		"preact": "^10.29.7",
 		"sigstore": "4.1.1",

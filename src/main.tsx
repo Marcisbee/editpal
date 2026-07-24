@@ -4,6 +4,7 @@ import { useStore } from "exome/preact";
 
 import {
 	Editpal,
+	type EditpalExtensions,
 	MarkdownPreview,
 	parseMarkdown,
 	toMarkdown,
@@ -30,6 +31,12 @@ const root = parseMarkdown(
 		"",
 		"[OpenAI](https://openai.com) links and images are supported.",
 		"",
+		"Type @ to try the customizable mention API, or attach an image, video, or file.",
+		"",
+		"[Marcisbee/editpal](https://github.com/Marcisbee/editpal)",
+		"",
+		"[Tweet](https://twitter.com/openai/status/123456789)",
+		"",
 		"---",
 		"",
 		"```ts",
@@ -41,6 +48,99 @@ const root = parseMarkdown(
 );
 
 const model = new Model(root);
+
+const people = [
+	{ id: "ada", label: "ada", description: "Ada Lovelace", role: "engineer" },
+	{ id: "grace", label: "grace", description: "Grace Hopper", role: "admiral" },
+	{ id: "marcis", label: "marcis", description: "Marcis", role: "maintainer" },
+];
+
+const extensions: EditpalExtensions = {
+	mentions: [{
+		id: "people",
+		trigger: "@",
+		ariaLabel: "People",
+		async search(query, { signal }) {
+			await new Promise((resolve) => setTimeout(resolve, 80));
+			if (signal.aborted) {
+				return [];
+			}
+			return people.filter((person) =>
+				person.label.includes(query.toLowerCase()) ||
+				person.description.toLowerCase().includes(query.toLowerCase())
+			).map((person) => ({
+				...person,
+				value: { role: person.role },
+			}));
+		},
+		renderMention: ({ mention }) => (
+			<span className="demo-mention">@{mention.label}</span>
+		),
+	}],
+	attachments: {
+		accept: "image/*,video/*,.pdf,.txt,.zip",
+		pickerLabel: "Attach…",
+		upload(file, { signal }) {
+			if (signal.aborted) {
+				return Promise.reject(
+					new DOMException("Upload cancelled", "AbortError"),
+				);
+			}
+			return Promise.resolve({
+				kind: file.type.startsWith("image/")
+					? "image"
+					: file.type.startsWith("video/")
+					? "video"
+					: "file",
+				mimeType: file.type,
+				name: file.name,
+				size: file.size,
+				src: URL.createObjectURL(file),
+			});
+		},
+	},
+	inlineIntegrations: [{
+		id: "github-repository",
+		match(source) {
+			const match = source.match(
+				/^https:\/\/github\.com\/([^/]+)\/([^/?#]+)\/?$/,
+			);
+			return match
+				? { data: { owner: match[1], repo: match[2] }, source }
+				: false;
+		},
+		ariaLabel: ({ match }) => `GitHub repository ${match.source}`,
+		render: ({ match }) => {
+			const data = match.data as { owner: string; repo: string };
+			return (
+				<span className="demo-integration-pill">
+					<span aria-hidden="true">◉</span>
+					{data.owner}/{data.repo}
+				</span>
+			);
+		},
+	}],
+	lineEmbeds: [{
+		id: "tweet-demo",
+		replaceLine: true,
+		match(source) {
+			const match = source.match(
+				/^\[Tweet\]\((https:\/\/(?:twitter\.com|x\.com)\/[^)]+)\)$/,
+			);
+			return match ? { source: match[1] } : false;
+		},
+		render: ({ match }) => (
+			<article className="demo-tweet">
+				<strong>Twitter / X embed demo</strong>
+				<p>
+					This card is supplied by the host application; Editpal only matches
+					the standalone line and mounts it.
+				</p>
+				<a href={match.source}>{match.source}</a>
+			</article>
+		),
+	}],
+};
 
 function DemoSource({ model }: { model: Model }) {
 	const { tokens } = useStore(model);
@@ -92,8 +192,22 @@ function App() {
 				</header>
 				<section className="demo-document">
 					{mode !== "preview"
-						? <Editpal model={model} mode={mode} />
-						: <MarkdownPreview tokens={model.tokens} />}
+						? (
+							<Editpal
+								model={model}
+								mode={mode}
+								extensions={extensions}
+								name="content"
+								placeholder="Write some Markdown…"
+								ariaLabel="Demo Markdown document"
+							/>
+						)
+						: (
+							<MarkdownPreview
+								tokens={model.tokens}
+								extensions={extensions}
+							/>
+						)}
 				</section>
 				<details className="demo-source">
 					<summary>Markdown source</summary>

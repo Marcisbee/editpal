@@ -1,4 +1,5 @@
 import type {
+	AttachmentToken,
 	BlockProps,
 	BlockToken,
 	BlockTokenOfType,
@@ -30,6 +31,19 @@ export function createImgToken(
 ): ImgToken {
 	return {
 		type: "img",
+		id: "" + id++,
+		key: "",
+		props,
+		src,
+	};
+}
+
+export function createAttachmentToken(
+	props: AttachmentToken["props"],
+	src: string,
+): AttachmentToken {
+	return {
+		type: "attachment",
 		id: "" + id++,
 		key: "",
 		props,

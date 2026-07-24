@@ -7,6 +7,8 @@ import type {
 	AnyToken,
 	BlockToken,
 	InlineToken,
+	JsonValue,
+	MentionData,
 	TextToken,
 	TokenRoot,
 } from "./tokens.ts";
@@ -25,7 +27,11 @@ import {
 	snapGraphemeBoundary,
 	stringSplice,
 } from "./utils.ts";
-import { createBlockToken, createTextToken } from "./utils/create-token.ts";
+import {
+	createAttachmentToken,
+	createBlockToken,
+	createTextToken,
+} from "./utils/create-token.ts";
 import { buildKeys } from "./utils/selection.ts";
 import {
 	inlineMarkdownChunks,
@@ -58,6 +64,9 @@ export const ACTION = {
 	_EditMarkdown: 18,
 	_EditCodeFence: 19,
 	_EnterCodeFence: 20,
+	_InsertAttachment: 21,
+	_InsertMention: 22,
+	_UpdateImageAlt: 23,
 };
 
 interface MarkdownFormatRegion {
@@ -94,6 +103,24 @@ interface EditCodeFenceData {
 interface EnterCodeFenceData {
 	blockId: string;
 	side: "end" | "start";
+}
+
+interface InsertAttachmentData {
+	kind: "file" | "image" | "video";
+	name: string;
+	src: string;
+	alt?: string;
+	meta?: Record<string, JsonValue>;
+	mimeType?: string;
+	size?: number;
+}
+
+interface InsertMentionData {
+	end: number;
+	key: string;
+	mention: MentionData;
+	start: number;
+	text: string;
 }
 
 function parsedMarkdownCaret(
@@ -282,6 +309,93 @@ export class Model extends Exome {
 	}
 
 	public update() {}
+
+	/** Replace the current document and clear history. */
+	public setTokens(tokens: TokenRoot) {
+		this.tokens = cloneToken(Array.isArray(tokens) ? tokens : []);
+		this.history.clear();
+		this.selection.setSelection("0.0", 0, "0.0", 0);
+		this.recalculate(true);
+	}
+
+	/** Replace the current document from Markdown and clear history. */
+	public setMarkdown(markdown: string) {
+		this.setTokens(parseMarkdown(markdown));
+	}
+
+	/** Release subscriptions owned by this model when it will no longer be used. */
+	public destroy() {
+		this.slash.destroy();
+		this._stack = [];
+	}
+
+	public get canUndo(): boolean {
+		return this.history._undo.length > 0 || this.history._batch.length > 0;
+	}
+
+	public get canRedo(): boolean {
+		return this.history._redo.length > 0;
+	}
+
+	/** Insert an uploaded attachment at the current selection. */
+	public insertAttachment(attachment: InsertAttachmentData) {
+		this.action(ACTION._InsertAttachment, attachment);
+	}
+
+	/** Replace a text range with a mention token. */
+	public insertMention(
+		key: string,
+		start: number,
+		end: number,
+		text: string,
+		mention: MentionData,
+	) {
+		this.action(ACTION._InsertMention, { end, key, mention, start, text });
+	}
+
+	/** Update an image caption as an undoable edit. */
+	public setImageAlt(id: string, alt: string) {
+		this.action(ACTION._UpdateImageAlt, { alt, id });
+	}
+
+	/**
+	 * Apply a synchronous custom mutation as one undoable history entry.
+	 * Extension data must remain JSON-serializable.
+	 */
+	public transact(mutate: () => void) {
+		const beforeTokens = JSON.stringify(this.tokens);
+		const beforeSelection = {
+			first: [...this.selection.first] as [string, number],
+			last: [...this.selection.last] as [string, number],
+		};
+		this.history.lock(mutate);
+		this.recalculate();
+		const afterTokens = JSON.stringify(this.tokens);
+		const afterSelection = {
+			first: [...this.selection.first] as [string, number],
+			last: [...this.selection.last] as [string, number],
+		};
+		if (beforeTokens === afterTokens) {
+			return;
+		}
+
+		const restore = (
+			tokens: string,
+			selection: {
+				first: [string, number];
+				last: [string, number];
+			},
+		) => {
+			this.tokens = JSON.parse(tokens);
+			this.selection.first = selection.first;
+			this.selection.last = selection.last;
+			this.recalculate();
+		};
+		this.history.push({
+			undo: () => restore(beforeTokens, beforeSelection),
+			redo: () => restore(afterTokens, afterSelection),
+		});
+	}
 
 	private _ensureEditableDocument() {
 		if (!Array.isArray(this.tokens)) {
@@ -616,6 +730,10 @@ export class Model extends Exome {
 				}
 				if (child.type === "url") {
 					line += child.src;
+					continue;
+				}
+				if (child.type === "attachment") {
+					line += child.props.name;
 					continue;
 				}
 				if (child.props.url && !child.props.link) {
@@ -1519,6 +1637,76 @@ export class Model extends Exome {
 		}
 
 		this._pushToHistory(type, data);
+
+		if (type === ACTION._UpdateImageAlt && data) {
+			const key = this._idToKey[data.id];
+			const image = key ? this.findElement(key) : undefined;
+			if (image?.type !== "img") {
+				return;
+			}
+			image.props.alt = String(data.alt || "");
+			this.recalculate();
+			return;
+		}
+
+		if (type === ACTION._InsertMention && data) {
+			const request = data as InsertMentionData;
+			const element = this.innerText(request.key);
+			const parent = element ? this.parent(element.key) : undefined;
+			if (!element || !parent) {
+				return;
+			}
+			const start = Math.max(0, Math.min(request.start, element.text.length));
+			const end = Math.max(start, Math.min(request.end, element.text.length));
+			const index = parent.children.indexOf(element);
+			const before = createTextToken(
+				element.props,
+				element.text.slice(0, start),
+			);
+			const mention = createTextToken(
+				{ ...markdownBaseProps(element.props), mention: request.mention },
+				request.text,
+			);
+			const after = createTextToken(element.props, element.text.slice(end));
+			parent.children.splice(index, 1, before, mention, after);
+			this.recalculate();
+			this.select(after, 0);
+			return;
+		}
+
+		if (type === ACTION._InsertAttachment && data) {
+			// Remove the active range inside the same history transaction.
+			this.history.lock(() => this.action(ACTION._Key, ""));
+			const [key, offset] = this.selection.first;
+			const element = this.innerText(key);
+			const parent = element ? this.parent(element.key) : undefined;
+			if (!element || !parent) {
+				return;
+			}
+
+			const request = data as InsertAttachmentData;
+			const index = parent.children.indexOf(element);
+			const before = createTextToken(
+				element.props,
+				element.text.slice(0, offset),
+			);
+			const attachment = createAttachmentToken(
+				{
+					alt: request.alt,
+					kind: request.kind,
+					meta: request.meta,
+					mimeType: request.mimeType,
+					name: request.name,
+					size: request.size,
+				},
+				request.src,
+			);
+			const after = createTextToken(element.props, element.text.slice(offset));
+			parent.children.splice(index, 1, before, attachment, after);
+			this.recalculate();
+			this.select(after, 0);
+			return;
+		}
 
 		if (type === ACTION._EnterCodeFence && data) {
 			const request = data as EnterCodeFenceData;

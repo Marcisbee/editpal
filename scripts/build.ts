@@ -24,6 +24,7 @@ const cssPlugin: Plugin = {
 
 const sharedOptions = {
 	bundle: true,
+	format: "esm",
 	jsx: "transform",
 	jsxFactory: "h",
 	jsxFragment: "Fragment",
@@ -82,7 +83,7 @@ async function serve(mode: Exclude<Mode, "build">): Promise<void> {
 	});
 
 	await buildContext.watch();
-	const server = await buildContext.serve({ servedir: "www" });
+	const server = await buildContext.serve({ port: 4173, servedir: "www" });
 	console.log(`Serving at http://${server.hosts[0]}:${server.port}`);
 
 	await new Promise<void>(() => {});

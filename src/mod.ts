@@ -26,8 +26,33 @@ export {
 } from "./markdown-parser.ts";
 export type {
 	AnyToken,
+	AttachmentToken,
 	BlockToken,
 	InlineToken,
+	JsonValue,
+	MentionData,
 	TextToken,
 	TokenRoot,
 } from "./tokens.ts";
+export type {
+	AttachmentConfig,
+	AttachmentKind,
+	AttachmentRenderContext,
+	AttachmentUploadContext,
+	EditpalExtensions,
+	InlineIntegration,
+	InlineIntegrationContext,
+	InlineIntegrationMatch,
+	LineEmbed,
+	LineEmbedContext,
+	LineEmbedMatch,
+	LinkEditor,
+	LinkEditorContext,
+	MentionConfig,
+	MentionRenderContext,
+	MentionSearchContext,
+	MentionSuggestion,
+	SlashCommand,
+	SlashCommandContext,
+	UploadedAttachment,
+} from "./extensions.ts";

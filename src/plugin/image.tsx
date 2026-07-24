@@ -54,8 +54,7 @@ export function RenderImage(item: ImgToken & { k: string }) {
 					placeholder="Type caption here..."
 					value={item.props.alt || ""}
 					onInput={(e) => {
-						item.props.alt = e.currentTarget.value;
-						model.update();
+						model.setImageAlt(item.id, e.currentTarget.value);
 					}}
 				/>
 			</span>

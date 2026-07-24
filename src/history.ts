@@ -24,6 +24,15 @@ export class HistoryStore extends Exome {
 	public _undo: TraceBatch[] = [];
 	public _redo: TraceBatch[] = [];
 
+	public get max(): number {
+		return this._max;
+	}
+
+	public set max(value: number) {
+		this._max = Math.max(0, Math.floor(value));
+		this._undo.splice(0, Math.max(0, this._undo.length - this._max));
+	}
+
 	public lock = <Value>(fn: () => Value): Value => {
 		const wasLocked = this.locked;
 		this.locked = true;
