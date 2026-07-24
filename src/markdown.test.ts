@@ -21,8 +21,8 @@ Deno.test("Markdown affixes wrap a complete formatted run", () => {
 			undefined,
 		),
 		{
-			before: [{ key: "fontStyle", marker: "_" }],
-			after: [{ key: "fontStyle", marker: "_" }],
+			before: [{ key: "fontStyle", marker: "*" }],
+			after: [{ key: "fontStyle", marker: "*" }],
 		},
 	);
 	assertEquals(
@@ -111,8 +111,8 @@ Deno.test("Markdown affixes preserve valid nesting across format changes", () =>
 	assertEquals(
 		inlineMarkdownAffixes(bold, boldItalic, bold),
 		{
-			before: [{ key: "fontStyle", marker: "_" }],
-			after: [{ key: "fontStyle", marker: "_" }],
+			before: [{ key: "fontStyle", marker: "*" }],
+			after: [{ key: "fontStyle", marker: "*" }],
 		},
 	);
 	assertEquals(

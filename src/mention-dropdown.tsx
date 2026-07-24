@@ -5,6 +5,7 @@ import {
 	useContext,
 	useEffect,
 	useId,
+	useLayoutEffect,
 	useMemo,
 	useRef,
 	useState,
@@ -90,6 +91,8 @@ export function MentionDropdown() {
 	const [loading, setLoading] = useState(false);
 	const listId = useId();
 	const abortRef = useRef<AbortController>();
+	const dropdownRef = useRef<HTMLDivElement>(null);
+	const [position, setPosition] = useState({ left: 0, top: 0 });
 	const { x, y } = getOffset();
 	const portal = useMemo(getPortal, [getPortal]);
 
@@ -220,15 +223,59 @@ export function MentionDropdown() {
 		signature,
 	]);
 
+	const tokenId = active ? model.findElement(active.key)?.id : undefined;
+	const anchor = active && tokenId
+		? editor.current?.querySelector<HTMLElement>(`[data-ep="${tokenId}"]`)
+		: undefined;
+
+	useLayoutEffect(() => {
+		const dropdown = dropdownRef.current;
+		if (!active || !anchor || !dropdown) {
+			return;
+		}
+
+		const updatePosition = () => {
+			const rect = caretRect(anchor, active.end);
+			const margin = 8;
+			const width = dropdown.offsetWidth;
+			const height = dropdown.offsetHeight;
+			const minLeft = margin - x;
+			const maxLeft = globalThis.innerWidth - margin - width - x;
+			const minTop = margin - y;
+			const maxTop = globalThis.innerHeight - margin - height - y;
+			const below = rect.bottom - y;
+			const above = rect.top - height - y;
+			const next = {
+				left: Math.max(minLeft, Math.min(rect.left - x, maxLeft)),
+				top: below <= maxTop
+					? below
+					: Math.max(minTop, Math.min(above, maxTop)),
+			};
+			setPosition((current) =>
+				current.left === next.left && current.top === next.top ? current : next
+			);
+		};
+
+		updatePosition();
+		globalThis.addEventListener("resize", updatePosition);
+		globalThis.addEventListener("scroll", updatePosition, true);
+		return () => {
+			globalThis.removeEventListener("resize", updatePosition);
+			globalThis.removeEventListener("scroll", updatePosition, true);
+		};
+	}, [
+		active?.end,
+		active?.key,
+		anchor,
+		loading,
+		results.length,
+		x,
+		y,
+	]);
+
 	if (!active || !focus || dismissed === signature) {
 		return null;
 	}
-
-	const tokenId = model.findElement(active.key)?.id;
-	const anchor = tokenId
-		? editor.current?.querySelector<HTMLElement>(`[data-ep="${tokenId}"]`)
-		: undefined;
-	const rect = anchor ? caretRect(anchor, active.end) : undefined;
 
 	const select = (suggestion: MentionSuggestion) => {
 		const text = active.config.getText?.(
@@ -255,13 +302,14 @@ export function MentionDropdown() {
 
 	const output = (
 		<div
+			ref={dropdownRef}
 			className="e-mention-drop"
 			role="listbox"
 			id={listId}
 			aria-label={active.config.ariaLabel || "Mention suggestions"}
 			style={{
-				left: (rect?.left || 0) - x,
-				top: (rect?.bottom || 0) - y,
+				left: position.left,
+				top: position.top,
 			}}
 			onMouseDown={(event) => event.preventDefault()}
 			onKeyDown={(event) => {

@@ -228,7 +228,7 @@ function PreviewBlock({
 			);
 		}
 		case "l": {
-			const { indent, type, ...style } = block.props;
+			const { indent, start: _start, type, ...style } = block.props;
 			return (
 				<li
 					key={block.id}
@@ -343,7 +343,12 @@ export function MarkdownPreview({
 				index += 1;
 			}
 			index -= 1;
-			content.push(h(type, { key: `list-${block.id}` }, items));
+			content.push(
+				h(type, {
+					key: `list-${block.id}`,
+					start: type === "ol" ? block.props.start : undefined,
+				}, items),
+			);
 			continue;
 		}
 

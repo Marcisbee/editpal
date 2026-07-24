@@ -156,8 +156,21 @@ function handleEnter(
 	fromParent: BlockToken,
 	toParent: BlockToken,
 	model: Model,
+	splitOffset: number,
+	hasContentAfter: boolean,
 ) {
 	if (toParent.type === fromParent.type) {
+		return;
+	}
+
+	if (fromParent.type === "h") {
+		const size = fromParent.props.size;
+		if (splitOffset === 0) {
+			setBlockType(fromParent, "p", {});
+			setBlockType(toParent, "h", { size });
+		} else if (hasContentAfter) {
+			setBlockType(toParent, "h", { size });
+		}
 		return;
 	}
 
@@ -1452,13 +1465,14 @@ export class Model extends Exome {
 
 		// "1.|[space]" => "1. |"
 		const ordered = isFirstChild && parent.type === "p"
-			? element.text.match(/^(\s*)\d+[.)]\s+/)
+			? element.text.match(/^(\s*)(\d+)[.)]\s+/)
 			: null;
 		if (ordered && completesPrefix(ordered[0].length)) {
 			element.text = element.text.slice(ordered[0].length);
 			setBlockType(parent, "l", {
 				indent: Math.floor(ordered[1].length / 2),
 				...parent.props,
+				start: Number(ordered[2]),
 				type: "ol",
 			});
 			return {
@@ -2289,9 +2303,14 @@ export class Model extends Exome {
 					firstParent.type === "quote"
 				) &&
 				firstParent.children.every((child) =>
-					child.type !== "t" || child.text.length === 0
+					child.type !== "t" || child.text.trim().length === 0
 				)
 			) {
+				for (const child of firstParent.children) {
+					if (child.type === "t") {
+						child.text = "";
+					}
+				}
 				if (
 					(firstParent.type === "l" || firstParent.type === "todo") &&
 					(firstParent.props.indent || 0) > 0
@@ -2322,6 +2341,9 @@ export class Model extends Exome {
 			if (siblings[0]?.type === "t" && siblings[0].text) {
 				siblings[0].text = siblings[0].text.slice(lastOffset);
 			}
+			const hasContentAfter = siblings.some((sibling) =>
+				sibling.type !== "t" || sibling.text.length > 0
+			);
 
 			firstElement.text = firstElement.text.slice(0, firstOffset);
 
@@ -2341,7 +2363,13 @@ export class Model extends Exome {
 			// this._stack.push(() => setCaret(this.nextText(clonedTokens[0].key)!.id, 0));
 
 			if (firstParent === lastParent) {
-				handleEnter(firstParent, clonedTokens[0], this);
+				handleEnter(
+					firstParent,
+					clonedTokens[0],
+					this,
+					firstOffset,
+					hasContentAfter,
+				);
 			}
 
 			return;
@@ -2381,6 +2409,36 @@ export class Model extends Exome {
 			});
 
 			const ranges = this._selectedTextRanges();
+			if (
+				type === ACTION._FormatAdd &&
+				ranges.some(({ element, start, end }) =>
+					/\S/.test(element.text.slice(start, end))
+				)
+			) {
+				const firstRange = ranges[0];
+				const lastRange = ranges[ranges.length - 1];
+				if (firstRange) {
+					const leading = firstRange.element.text
+						.slice(firstRange.start, firstRange.end)
+						.match(/^\s+/)?.[0].length || 0;
+					firstRange.start += leading;
+				}
+				if (lastRange) {
+					const trailing = lastRange.element.text
+						.slice(lastRange.start, lastRange.end)
+						.match(/\s+$/)?.[0].length || 0;
+					lastRange.end -= trailing;
+				}
+				while (ranges[0]?.end <= ranges[0]?.start) {
+					ranges.shift();
+				}
+				while (
+					ranges[ranges.length - 1]?.end <=
+						ranges[ranges.length - 1]?.start
+				) {
+					ranges.pop();
+				}
+			}
 
 			// if (ACTION._FormatAdd) {
 			// 	console.log(

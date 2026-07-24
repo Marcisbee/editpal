@@ -25,7 +25,11 @@ Deno.test("inline Markdown parses every supported text format", () => {
 	const markdown = "**_both_** ~~gone~~ ==mark== `code`";
 	assertEquals(inlineSummary(markdown), [
 		{
-			props: { fontStyle: "italic", fontWeight: "bold" },
+			props: {
+				fontStyle: "italic",
+				fontWeight: "bold",
+				italicMarker: "_",
+			},
 			text: "both",
 			type: "t",
 		},
