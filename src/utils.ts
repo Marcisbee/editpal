@@ -430,6 +430,41 @@ export function setInlineMarkdownCaret(
 	selection.addRange(range);
 }
 
+export function setCodeFenceCaret(
+	blockId: string,
+	side: "end" | "start",
+	offset: number,
+) {
+	const block = getTokenElement(blockId);
+	const selection = globalThis.getSelection?.();
+	const marker = block?.querySelector<HTMLElement>(
+		`[data-ep-code-fence-side="${side}"]`,
+	);
+	const textNode = marker?.firstChild;
+	if (
+		!selection ||
+		!textNode ||
+		textNode.nodeType !== Node.TEXT_NODE
+	) {
+		return;
+	}
+
+	const point: [Node, number] = [
+		textNode,
+		Math.max(0, Math.min(offset, textNode.textContent?.length || 0)),
+	];
+	if (typeof selection.setBaseAndExtent === "function") {
+		selection.setBaseAndExtent(...point, ...point);
+		return;
+	}
+
+	const range = document.createRange();
+	range.setStart(...point);
+	range.collapse(true);
+	selection.removeAllRanges();
+	selection.addRange(range);
+}
+
 export function cloneToken<T = AnyToken>(token: T): T {
 	return JSON.parse(JSON.stringify(token), (key, value) => {
 		if (value.type && value?.id) {

@@ -2,6 +2,11 @@
 
 import { assertEquals, assertExists } from "@std/assert";
 
+import {
+	inlineTokensToMarkdown,
+	parseMarkdown,
+	toMarkdown,
+} from "./markdown-parser.ts";
 import { ACTION, Model } from "./model.ts";
 import type { BlockToken, InlineToken, TextToken } from "./tokens.ts";
 
@@ -25,6 +30,16 @@ function paragraph(...children: InlineToken[]): BlockToken {
 		key: "",
 		props: {},
 		type: "p",
+	};
+}
+
+function code(value: string, language?: string): BlockToken {
+	return {
+		children: [text(value)],
+		id: `block-${crypto.randomUUID()}`,
+		key: "",
+		props: language ? { language } : {},
+		type: "code",
 	};
 }
 
@@ -901,6 +916,568 @@ Deno.test("manual Markdown replacement reparses alternate delimiters", () => {
 	assertEquals(textWithFormat(model, "fontWeight", "bold"), "bold");
 	assertEquals(model.tokens[0].children[0].props.boldMarker, "__");
 	assertModelInvariants(model);
+});
+
+Deno.test("backspace at a link source boundary removes only the closing parenthesis", () => {
+	const model = new Model([
+		paragraph(
+			text("OpenAI", { link: "https://openai.com" }),
+			text(" links and images are supported."),
+		),
+	]);
+	const block = model.tokens[0];
+	const source = inlineTokensToMarkdown(block.children);
+	const linkEnd = source.indexOf(")") + 1;
+
+	model.action(ACTION._EditMarkdown, {
+		blockId: block.id,
+		end: linkEnd,
+		start: linkEnd - 1,
+		text: "",
+	});
+
+	assertEquals(
+		inlineTokensToMarkdown(model.tokens[0].children),
+		"[OpenAI](https://openai.com links and images are supported.",
+	);
+	assertEquals(
+		documentText(model),
+		"[OpenAI](https://openai.com links and images are supported.",
+	);
+
+	model.action(ACTION._Undo);
+	assertEquals(
+		inlineTokensToMarkdown(model.tokens[0].children),
+		"[OpenAI](https://openai.com) links and images are supported.",
+	);
+	assertModelInvariants(model);
+});
+
+Deno.test("code fence markers can be edited without touching code content", () => {
+	const model = new Model([code("const value = 1;", "ts")]);
+	const blockId = model.tokens[0].id;
+
+	model.action(ACTION._EditCodeFence, {
+		blockId,
+		end: 5,
+		side: "start",
+		start: 4,
+		text: "",
+	});
+
+	const edited = model.tokens[0];
+	assertEquals(edited.type, "code");
+	if (edited.type !== "code") {
+		throw new Error("Expected an edited code block");
+	}
+	assertEquals(edited.props.language, "t");
+	assertEquals(documentText(model), "const value = 1;");
+	assertEquals(toMarkdown(model.tokens), "```t\nconst value = 1;\n```");
+	assertModelInvariants(model);
+});
+
+Deno.test("a manually broken closing code fence remains literal source", () => {
+	const model = new Model([code("const value = 1;", "ts")]);
+	const blockId = model.tokens[0].id;
+
+	model.action(ACTION._EditCodeFence, {
+		blockId,
+		end: 3,
+		side: "end",
+		start: 2,
+		text: "",
+	});
+
+	assertEquals(model.tokens.map((block) => block.type), ["p", "p", "p"]);
+	assertEquals(
+		toMarkdown(model.tokens),
+		"```ts\nconst value = 1;\n``",
+	);
+
+	model.action(ACTION._Key, "`");
+	assertEquals(model.tokens.map((block) => block.type), ["code"]);
+	assertEquals(documentText(model), "const value = 1;");
+	assertEquals(
+		toMarkdown(model.tokens),
+		"```ts\nconst value = 1;\n```",
+	);
+
+	model.action(ACTION._Undo);
+	assertEquals(model.tokens.map((block) => block.type), ["p", "p", "p"]);
+	assertEquals(
+		toMarkdown(model.tokens),
+		"```ts\nconst value = 1;\n``",
+	);
+
+	model.action(ACTION._Undo);
+	assertEquals(model.tokens[0].type, "code");
+	assertEquals(
+		toMarkdown(model.tokens),
+		"```ts\nconst value = 1;\n```",
+	);
+	assertModelInvariants(model);
+});
+
+Deno.test("a manually repaired opening code fence restores its code block", () => {
+	const model = new Model([code("const value = 1;", "ts")]);
+	const blockId = model.tokens[0].id;
+
+	model.action(ACTION._EditCodeFence, {
+		blockId,
+		end: 3,
+		side: "start",
+		start: 2,
+		text: "",
+	});
+
+	assertEquals(model.tokens.map((block) => block.type), ["p", "p", "p"]);
+	assertEquals(
+		toMarkdown(model.tokens),
+		"``ts\nconst value = 1;\n```",
+	);
+
+	model.action(ACTION._Key, "`");
+	assertEquals(model.tokens.map((block) => block.type), ["code"]);
+	assertEquals(model.tokens[0].props, { language: "ts" });
+	assertEquals(documentText(model), "const value = 1;");
+	assertEquals(
+		toMarkdown(model.tokens),
+		"```ts\nconst value = 1;\n```",
+	);
+
+	model.action(ACTION._Undo);
+	assertEquals(model.tokens.map((block) => block.type), ["p", "p", "p"]);
+	assertEquals(
+		toMarkdown(model.tokens),
+		"``ts\nconst value = 1;\n```",
+	);
+
+	model.action(ACTION._Redo);
+	assertEquals(model.tokens.map((block) => block.type), ["code"]);
+	assertEquals(
+		toMarkdown(model.tokens),
+		"```ts\nconst value = 1;\n```",
+	);
+	assertModelInvariants(model);
+});
+
+Deno.test("Enter after repairing either fence preserves the full document", () => {
+	for (const side of ["start", "end"] as const) {
+		const model = new Model([
+			paragraph(text("before")),
+			code("first", "ts"),
+			code("second"),
+			paragraph(text("after")),
+		]);
+		const blockId = side === "start" ? model.tokens[1].id : model.tokens[2].id;
+
+		model.action(ACTION._EditCodeFence, {
+			blockId,
+			end: 3,
+			side,
+			start: 2,
+			text: "",
+		});
+		model.action(ACTION._Key, "`");
+
+		assertEquals(model.selection.first, model.selection.last);
+		const selected = model.findElement(model.selection.first[0]);
+		assertEquals(selected?.type, "t");
+		assertEquals(
+			selected?.type === "t" ? model.parent(selected.key)?.type : undefined,
+			"code",
+		);
+
+		model.action(ACTION._Enter);
+
+		assertEquals(model.tokens[0].type, "p");
+		assertEquals(model.tokens[0].children[0].type, "t");
+		assertEquals(
+			model.tokens[0].children[0].type === "t"
+				? model.tokens[0].children[0].text
+				: "",
+			"before",
+		);
+		const last = model.tokens[model.tokens.length - 1];
+		assertEquals(last.type, "p");
+		assertEquals(last.children[0].type, "t");
+		assertEquals(
+			last.children[0].type === "t" ? last.children[0].text : "",
+			"after",
+		);
+		assertEquals(
+			toMarkdown(model.tokens),
+			side === "start"
+				? "before\n```ts\n\nfirst\nsecond\n```\nafter"
+				: "before\n```ts\nfirst\nsecond\n\n```\nafter",
+		);
+		assertModelInvariants(model);
+	}
+});
+
+Deno.test("Enter on code fences respects their opening and closing boundaries", () => {
+	const opening = new Model([
+		paragraph(text("before")),
+		code("value", "ts"),
+		paragraph(text("after")),
+	]);
+	const openingBlockId = opening.tokens[1].id;
+
+	opening.action(ACTION._EnterCodeFence, {
+		blockId: openingBlockId,
+		side: "start",
+	});
+
+	assertEquals(
+		toMarkdown(opening.tokens),
+		"before\n```ts\n\nvalue\n```\nafter",
+	);
+	assertEquals(opening.selection.first, opening.selection.last);
+	const selectedOpening = opening.findElement(opening.selection.first[0]);
+	assertEquals(
+		selectedOpening?.type === "t"
+			? opening.parent(selectedOpening.key)?.type
+			: undefined,
+		"code",
+	);
+
+	opening.action(ACTION._Undo);
+	assertEquals(
+		toMarkdown(opening.tokens),
+		"before\n```ts\nvalue\n```\nafter",
+	);
+	opening.action(ACTION._Redo);
+	assertEquals(
+		toMarkdown(opening.tokens),
+		"before\n```ts\n\nvalue\n```\nafter",
+	);
+	assertModelInvariants(opening);
+
+	const closing = new Model([
+		paragraph(text("before")),
+		code("first", "ts"),
+		code("second"),
+		paragraph(text("after")),
+	]);
+	const closingBlockId = closing.tokens[2].id;
+
+	closing.action(ACTION._EnterCodeFence, {
+		blockId: closingBlockId,
+		side: "end",
+	});
+
+	assertEquals(
+		toMarkdown(closing.tokens),
+		"before\n```ts\nfirst\nsecond\n```\n\nafter",
+	);
+	assertEquals(closing.tokens.map((block) => block.type), [
+		"p",
+		"code",
+		"code",
+		"p",
+		"p",
+	]);
+	assertEquals(closing.selection.first, closing.selection.last);
+	const selectedClosing = closing.findElement(closing.selection.first[0]);
+	assertEquals(
+		selectedClosing?.type === "t"
+			? closing.parent(selectedClosing.key)?.type
+			: undefined,
+		"p",
+	);
+
+	closing.action(ACTION._Undo);
+	assertEquals(
+		toMarkdown(closing.tokens),
+		"before\n```ts\nfirst\nsecond\n```\nafter",
+	);
+	closing.action(ACTION._Redo);
+	assertEquals(
+		toMarkdown(closing.tokens),
+		"before\n```ts\nfirst\nsecond\n```\n\nafter",
+	);
+	assertModelInvariants(closing);
+
+	for (const line of ["", "value"]) {
+		const atDocumentEnd = new Model([code(line, "ts")]);
+		atDocumentEnd.action(ACTION._EnterCodeFence, {
+			blockId: atDocumentEnd.tokens[0].id,
+			side: "end",
+		});
+
+		assertEquals(atDocumentEnd.tokens.map((block) => block.type), [
+			"code",
+			"p",
+		]);
+		assertEquals(
+			toMarkdown(atDocumentEnd.tokens),
+			"```ts\n" + line + "\n```\n",
+		);
+		const selectedAtEnd = atDocumentEnd.findElement(
+			atDocumentEnd.selection.first[0],
+		);
+		assertEquals(
+			selectedAtEnd?.type === "t"
+				? atDocumentEnd.parent(selectedAtEnd.key)?.type
+				: undefined,
+			"p",
+		);
+		assertModelInvariants(atDocumentEnd);
+	}
+
+	const empty = new Model([code("", "ts")]);
+	empty.action(ACTION._EnterCodeFence, {
+		blockId: empty.tokens[0].id,
+		side: "start",
+	});
+	assertEquals(toMarkdown(empty.tokens), "```ts\n\n\n```");
+	assertEquals(empty.tokens.map((block) => block.type), ["code", "code"]);
+	assertModelInvariants(empty);
+});
+
+Deno.test("editing code newlines never splits a fenced code group", () => {
+	const source = "before\n```ts\na\n\n\nb\n```\nafter";
+	const assertContinuousFence = (model: Model) => {
+		const firstCode = model.tokens.findIndex((block) => block.type === "code");
+		const lastCode = model.tokens.findLastIndex((block) =>
+			block.type === "code"
+		);
+		assertEquals(firstCode > 0, true);
+		assertEquals(lastCode < model.tokens.length - 1, true);
+		assertEquals(
+			model.tokens.slice(firstCode, lastCode + 1).every((block) =>
+				block.type === "code"
+			),
+			true,
+		);
+		assertEquals(model.tokens[0].type, "p");
+		assertEquals(model.tokens[model.tokens.length - 1].type, "p");
+	};
+
+	for (const blockIndex of [2, 3, 4]) {
+		const model = new Model(parseMarkdown(source));
+		const line = model.tokens[blockIndex];
+		assertEquals(line.type, "code");
+		model.selection.setSelection(
+			line.children[0].key,
+			0,
+			line.children[0].key,
+			0,
+		);
+
+		model.action(ACTION._Remove);
+
+		assertEquals(
+			toMarkdown(model.tokens),
+			"before\n```ts\na\n\nb\n```\nafter",
+		);
+		assertContinuousFence(model);
+		assertEquals(model.selection.first, model.selection.last);
+
+		model.action(ACTION._Undo);
+		assertEquals(toMarkdown(model.tokens), source);
+		model.action(ACTION._Redo);
+		assertEquals(
+			toMarkdown(model.tokens),
+			"before\n```ts\na\n\nb\n```\nafter",
+		);
+		assertContinuousFence(model);
+		assertModelInvariants(model);
+	}
+
+	const firstLine = new Model(parseMarkdown(source));
+	firstLine.selection.setSelection("1.0", 0, "1.0", 0);
+	firstLine.action(ACTION._Remove);
+	assertEquals(toMarkdown(firstLine.tokens), source);
+	assertContinuousFence(firstLine);
+
+	const onlyLine = new Model(parseMarkdown("before\n```ts\n\n```\nafter"));
+	onlyLine.selection.setSelection("1.0", 0, "1.0", 0);
+	onlyLine.action(ACTION._Remove);
+	assertEquals(
+		toMarkdown(onlyLine.tokens),
+		"before\n```ts\n\n```\nafter",
+	);
+	assertContinuousFence(onlyLine);
+
+	const forwardDelete = new Model(parseMarkdown(source));
+	forwardDelete.selection.setSelection("1.0", 1, "1.0", 1);
+	forwardDelete.action(ACTION._Delete);
+	assertEquals(
+		toMarkdown(forwardDelete.tokens),
+		"before\n```ts\na\n\nb\n```\nafter",
+	);
+	assertContinuousFence(forwardDelete);
+
+	const enter = new Model(parseMarkdown(source));
+	enter.selection.setSelection("2.0", 0, "2.0", 0);
+	enter.action(ACTION._Enter);
+	assertEquals(
+		toMarkdown(enter.tokens),
+		"before\n```ts\na\n\n\n\nb\n```\nafter",
+	);
+	assertContinuousFence(enter);
+
+	assertModelInvariants(firstLine);
+	assertModelInvariants(onlyLine);
+	assertModelInvariants(forwardDelete);
+	assertModelInvariants(enter);
+});
+
+Deno.test("literal code fences restore only with a compatible closing marker", () => {
+	const tilde = new Model([
+		paragraph(text("~~~~js")),
+		paragraph(text("**literal**")),
+		paragraph(text("~~~")),
+	]);
+	tilde.selection.setSelection("2.0", 3, "2.0", 3);
+	tilde.action(ACTION._Key, "~");
+
+	assertEquals(tilde.tokens.map((block) => block.type), ["code"]);
+	assertEquals(tilde.tokens[0].props, { language: "js" });
+	assertEquals(documentText(tilde), "**literal**");
+	assertEquals(toMarkdown(tilde.tokens), "```js\n**literal**\n```");
+
+	const tildeOpening = new Model([
+		paragraph(text("~~js")),
+		paragraph(text("const value = 1;")),
+		paragraph(text("~~~")),
+	]);
+	tildeOpening.selection.setSelection("0.0", 2, "0.0", 2);
+	tildeOpening.action(ACTION._Key, "~");
+	assertEquals(tildeOpening.tokens.map((block) => block.type), ["code"]);
+	assertEquals(tildeOpening.tokens[0].props, { language: "js" });
+	assertEquals(documentText(tildeOpening), "const value = 1;");
+
+	const whitespace = new Model([
+		paragraph(text("  `` ts  ")),
+		paragraph(text("const value = 1;")),
+		paragraph(text("  ```  ")),
+	]);
+	whitespace.selection.setSelection("0.0", 4, "0.0", 4);
+	whitespace.action(ACTION._Key, "`");
+	assertEquals(whitespace.tokens.map((block) => block.type), ["code"]);
+	assertEquals(whitespace.tokens[0].props, { language: "ts" });
+	assertEquals(documentText(whitespace), "const value = 1;");
+
+	const mismatch = new Model([
+		paragraph(text("```js")),
+		paragraph(text("const value = 1;")),
+		paragraph(text("~~")),
+	]);
+	mismatch.selection.setSelection("2.0", 2, "2.0", 2);
+	mismatch.action(ACTION._Key, "~");
+	assertEquals(mismatch.tokens.map((block) => block.type), ["p", "p", "p"]);
+
+	const tooShort = new Model([
+		paragraph(text("````js")),
+		paragraph(text("const value = 1;")),
+		paragraph(text("``")),
+	]);
+	tooShort.selection.setSelection("2.0", 2, "2.0", 2);
+	tooShort.action(ACTION._Key, "`");
+	assertEquals(tooShort.tokens.map((block) => block.type), ["p", "p", "p"]);
+
+	const forwardMismatch = new Model([
+		paragraph(text("``js")),
+		paragraph(text("const value = 1;")),
+		paragraph(text("~~~")),
+	]);
+	forwardMismatch.selection.setSelection("0.0", 2, "0.0", 2);
+	forwardMismatch.action(ACTION._Key, "`");
+	assertEquals(
+		forwardMismatch.tokens.map((block) => block.type),
+		["p", "p", "p"],
+	);
+
+	const forwardTooShort = new Model([
+		paragraph(text("```js")),
+		paragraph(text("const value = 1;")),
+		paragraph(text("```")),
+	]);
+	forwardTooShort.selection.setSelection("0.0", 3, "0.0", 3);
+	forwardTooShort.action(ACTION._Key, "`");
+	assertEquals(
+		forwardTooShort.tokens.map((block) => block.type),
+		["p", "p", "p"],
+	);
+
+	assertModelInvariants(tilde);
+	assertModelInvariants(tildeOpening);
+	assertModelInvariants(whitespace);
+	assertModelInvariants(mismatch);
+	assertModelInvariants(tooShort);
+	assertModelInvariants(forwardMismatch);
+	assertModelInvariants(forwardTooShort);
+});
+
+Deno.test("code fence repair matrix round-trips varied content and markers", () => {
+	const cases = [
+		{ language: undefined, lines: [""] },
+		{ language: "ts", lines: ["const value = 1;", "return value;"] },
+		{ language: "c++", lines: ["```", "emoji 😀", "**literal**"] },
+	];
+
+	for (const { language, lines } of cases) {
+		for (const side of ["start", "end"] as const) {
+			const codeBlocks = lines.map((line, index) =>
+				code(line, index === 0 ? language : undefined)
+			);
+			const model = new Model([
+				paragraph(text("before")),
+				...codeBlocks,
+				paragraph(text("after")),
+			]);
+			const original = toMarkdown(model.tokens);
+			const groupSource = toMarkdown(
+				model.tokens.slice(1, model.tokens.length - 1),
+			);
+			const sourceLines = groupSource.split("\n");
+			const markerLine = side === "start"
+				? sourceLines[0]
+				: sourceLines[sourceLines.length - 1];
+			const marker = markerLine.match(/^`+/)?.[0] || "";
+			const removed = marker.slice(0, Math.max(1, marker.length - 2));
+			const block = side === "start"
+				? model.tokens[1]
+				: model.tokens[model.tokens.length - 2];
+
+			model.action(ACTION._EditCodeFence, {
+				blockId: block.id,
+				end: removed.length,
+				side,
+				start: 0,
+				text: "",
+			});
+			assertEquals(
+				model.tokens.slice(1, model.tokens.length - 1).every((item) =>
+					item.type === "p"
+				),
+				true,
+			);
+
+			model.action(ACTION._Key, removed);
+			assertEquals(toMarkdown(model.tokens), original);
+			assertEquals(model.selection.first, model.selection.last);
+
+			const firstCode = model.tokens.find((item) => item.type === "code");
+			const lastCode = model.tokens.findLast((item) => item.type === "code");
+			assertEquals(
+				firstCode ? model.previousText(firstCode.children[0].key)?.text : "",
+				"before",
+			);
+			assertEquals(
+				lastCode ? model.nextText(lastCode.children[0].key)?.text : "",
+				"after",
+			);
+
+			model.action(ACTION._Undo);
+			assertEquals(toMarkdown(model.tokens) === original, false);
+			model.action(ACTION._Redo);
+			assertEquals(toMarkdown(model.tokens), original);
+			assertModelInvariants(model);
+		}
+	}
 });
 
 Deno.test("selection healing ignores a trailing inline atom", () => {

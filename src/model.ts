@@ -19,6 +19,7 @@ import {
 	previousWordBoundary,
 	ranID,
 	setCaret,
+	setCodeFenceCaret,
 	setInlineMarkdownCaret,
 	setMarkdownBoundaryCaret,
 	snapGraphemeBoundary,
@@ -29,7 +30,10 @@ import { buildKeys } from "./utils/selection.ts";
 import {
 	inlineMarkdownChunks,
 	markdownBaseProps,
+	parseInlineMarkdown,
 	parseInlineMarkdownDetailed,
+	parseMarkdown,
+	toMarkdown,
 } from "./markdown-parser.ts";
 
 export const ACTION = {
@@ -52,6 +56,8 @@ export const ACTION = {
 	_KeyMarkdownBoundary: 16,
 	_RemoveMarkdownFormat: 17,
 	_EditMarkdown: 18,
+	_EditCodeFence: 19,
+	_EnterCodeFence: 20,
 };
 
 interface MarkdownFormatRegion {
@@ -75,6 +81,19 @@ interface EditMarkdownData {
 	end: number;
 	start: number;
 	text: string;
+}
+
+interface EditCodeFenceData {
+	blockId: string;
+	end: number;
+	side: "end" | "start";
+	start: number;
+	text: string;
+}
+
+interface EnterCodeFenceData {
+	blockId: string;
+	side: "end" | "start";
 }
 
 function parsedMarkdownCaret(
@@ -400,8 +419,14 @@ export class Model extends Exome {
 		// console.log("🏴‍☠️ REMOVE CHILD", parent.key, key);
 	};
 
+	private _orderedKeys = (): string[] =>
+		this.tokens.flatMap((block) => [
+			block.key,
+			...block.children.map((child) => child.key),
+		]);
+
 	public keysBetween = (firstKey: string, lastKey: string) => {
-		const keys = Object.values(this._idToKey);
+		const keys = this._orderedKeys();
 		const firstIndex = keys.indexOf(firstKey);
 		const lastIndex = keys.indexOf(lastKey);
 
@@ -507,7 +532,7 @@ export class Model extends Exome {
 	};
 
 	public previousText = (key: string): TextToken | null => {
-		const keys = Object.values(this._idToKey);
+		const keys = this._orderedKeys();
 		const index = keys.indexOf(key);
 
 		if (index < 0) {
@@ -525,7 +550,7 @@ export class Model extends Exome {
 	};
 
 	public nextText = (currentKey: string): TextToken | null => {
-		const keys = Object.values(this._idToKey);
+		const keys = this._orderedKeys();
 		const index = keys.indexOf(currentKey);
 
 		if (index < 0) {
@@ -726,6 +751,40 @@ export class Model extends Exome {
 			return;
 		}
 
+		if (parent.type === "code") {
+			const parentIndex = this.tokens.indexOf(parent);
+			const previousBlock = this.tokens[parentIndex - 1];
+			if (previousBlock?.type !== "code") {
+				return;
+			}
+
+			const previousLength = previousBlock.children.reduce(
+				(length, child) =>
+					length + (child.type === "t" ? child.text.length : 0),
+				0,
+			);
+			const previousId = previousBlock.id;
+			previousBlock.children.push(...parent.children.map(cloneToken));
+			this.remove(parent.key);
+			this.recalculate();
+
+			const currentPreviousKey = this._idToKey[previousId];
+			const currentPrevious = currentPreviousKey
+				? this.findElement(currentPreviousKey)
+				: undefined;
+			if (currentPrevious && isBlockToken(currentPrevious)) {
+				const point = this._textPointAtBlockOffset(
+					currentPrevious,
+					previousLength,
+					true,
+				);
+				if (point) {
+					this.select(point.element, point.offset);
+				}
+			}
+			return;
+		}
+
 		if (parent.type === "p") {
 			if (parent.children.length === 1 && parent.key === "0") {
 				return;
@@ -910,11 +969,178 @@ export class Model extends Exome {
 		return true;
 	}
 
+	private _replaceLiteralCodeFence(
+		openingIndex: number,
+		closingIndex: number,
+		caretSide: "end" | "start",
+		caretMarkerOffset: number,
+	): boolean {
+		const source = toMarkdown(
+			this.tokens.slice(openingIndex, closingIndex + 1),
+		);
+		const parsed = parseMarkdown(source);
+		if (!parsed.length || parsed.some((block) => block.type !== "code")) {
+			return false;
+		}
+
+		this.tokens.splice(
+			openingIndex,
+			closingIndex - openingIndex + 1,
+			...parsed,
+		);
+		this.recalculate();
+
+		const codeBlocks = this.tokens.slice(
+			openingIndex,
+			openingIndex + parsed.length,
+		).filter((block) => block.type === "code");
+		const caretBlock = caretSide === "start"
+			? codeBlocks[0]
+			: codeBlocks[codeBlocks.length - 1];
+		const caretText = caretBlock?.children.find(
+			(child): child is TextToken => child.type === "t",
+		);
+		if (caretBlock && caretText) {
+			const renderedSource = toMarkdown(codeBlocks);
+			const renderedMarker = caretSide === "start"
+				? renderedSource.split("\n")[0]
+				: renderedSource.split("\n").at(-1) || "";
+			this._selectCodeFenceMarker(
+				caretBlock,
+				caretText,
+				caretSide,
+				Math.min(caretMarkerOffset, renderedMarker.length),
+			);
+		}
+
+		return true;
+	}
+
+	private _selectCodeFenceMarker(
+		caretBlock: BlockToken,
+		caretText: TextToken,
+		side: "end" | "start",
+		markerOffset: number,
+	) {
+		const textOffset = side === "start" ? 0 : caretText.text.length;
+		const blockId = caretBlock.id;
+		const textId = caretText.id;
+		this.select(caretText, textOffset);
+		this._stack.push(() => {
+			const currentTextKey = this._idToKey[textId];
+			const currentText = currentTextKey
+				? this.findElement(currentTextKey)
+				: undefined;
+			if (currentText?.type === "t") {
+				const currentOffset = side === "start" ? 0 : currentText.text.length;
+				this.selection.setSelection(
+					currentText.key,
+					currentOffset,
+					currentText.key,
+					currentOffset,
+				);
+				this.selection.setFormat(this.getSelectionFormat());
+			}
+			setCodeFenceCaret(blockId, side, markerOffset);
+		});
+	}
+
+	private _restoreCompletedCodeFence(
+		parent: BlockToken,
+		caretSourceOffset: number,
+	): boolean {
+		if (parent.type !== "p") {
+			return false;
+		}
+
+		const currentSource = toMarkdown([parent]);
+		const currentIndex = this.tokens.indexOf(parent);
+		const closing = currentSource.match(
+			/^\s{0,3}(`{3,}|~{3,})\s*$/,
+		);
+		if (closing) {
+			let firstParagraphIndex = currentIndex;
+			while (this.tokens[firstParagraphIndex - 1]?.type === "p") {
+				firstParagraphIndex -= 1;
+			}
+			for (
+				let openingIndex = firstParagraphIndex;
+				openingIndex < currentIndex;
+				openingIndex++
+			) {
+				const candidate = this.tokens[openingIndex];
+				const opening = toMarkdown([candidate]).match(
+					/^\s{0,3}(`{3,}|~{3,})\s*([\w+-]*)\s*$/,
+				);
+				if (
+					!opening ||
+					opening[1][0] !== closing[1][0] ||
+					opening[1].length > closing[1].length
+				) {
+					continue;
+				}
+
+				if (
+					this._replaceLiteralCodeFence(
+						openingIndex,
+						currentIndex,
+						"end",
+						caretSourceOffset,
+					)
+				) {
+					return true;
+				}
+			}
+		}
+
+		const opening = currentSource.match(
+			/^\s{0,3}(`{3,}|~{3,})\s*([\w+-]*)\s*$/,
+		);
+		if (!opening) {
+			return false;
+		}
+
+		for (
+			let closingIndex = currentIndex + 1;
+			closingIndex < this.tokens.length;
+			closingIndex++
+		) {
+			const candidate = this.tokens[closingIndex];
+			if (candidate.type !== "p") {
+				break;
+			}
+
+			const candidateClosing = toMarkdown([candidate]).match(
+				/^\s{0,3}(`{3,}|~{3,})\s*$/,
+			);
+			if (
+				!candidateClosing ||
+				candidateClosing[1][0] !== opening[1][0] ||
+				candidateClosing[1].length < opening[1].length
+			) {
+				continue;
+			}
+
+			if (
+				this._replaceLiteralCodeFence(
+					currentIndex,
+					closingIndex,
+					"start",
+					caretSourceOffset,
+				)
+			) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
 	private _handleTextTransforms = (
 		element: TextToken,
 		textAdded: string,
 		insertionOffset: number,
-	): "inline" | "url" | { caret: number } | undefined => {
+	): "block" | "inline" | "url" | { caret: number } | undefined => {
 		const insertionEnd = insertionOffset + textAdded.length;
 		if (
 			element.text.slice(Math.max(0, insertionEnd - 2), insertionEnd) === ":D"
@@ -958,6 +1184,13 @@ export class Model extends Exome {
 					caret: Math.max(0, insertionEnd - quote[1].length),
 				};
 			}
+		}
+
+		if (
+			/[`~]/.test(textAdded) &&
+			this._restoreCompletedCodeFence(parent, insertionEnd)
+		) {
+			return "block";
 		}
 
 		if (
@@ -1275,6 +1508,145 @@ export class Model extends Exome {
 		}
 
 		this._pushToHistory(type, data);
+
+		if (type === ACTION._EnterCodeFence && data) {
+			const request = data as EnterCodeFenceData;
+			const blockKey = this._idToKey[request.blockId];
+			const block = blockKey ? this.findElement(blockKey) : undefined;
+			if (!block || block.type !== "code") {
+				return;
+			}
+
+			let firstIndex = this.tokens.indexOf(block);
+			let lastIndex = firstIndex;
+			while (this.tokens[firstIndex - 1]?.type === "code") {
+				firstIndex -= 1;
+			}
+			while (this.tokens[lastIndex + 1]?.type === "code") {
+				lastIndex += 1;
+			}
+
+			if (request.side === "end") {
+				const inserted = createBlockToken("p", {}, [createTextToken()]);
+				this.tokens.splice(lastIndex + 1, 0, inserted);
+				this.recalculate();
+				this.select(inserted.children[0], 0);
+				return;
+			}
+
+			const firstCode = this.tokens[firstIndex];
+			const language = firstCode.type === "code"
+				? firstCode.props.language
+				: undefined;
+			if (firstCode.type === "code") {
+				firstCode.props.language = undefined;
+			}
+			const inserted = createBlockToken(
+				"code",
+				language ? { language } : {},
+				[createTextToken()],
+			);
+			this.tokens.splice(firstIndex, 0, inserted);
+			this.recalculate();
+			this.select(inserted.children[0], 0);
+			return;
+		}
+
+		if (type === ACTION._EditCodeFence && data) {
+			const request = data as EditCodeFenceData;
+			const blockKey = this._idToKey[request.blockId];
+			const block = blockKey ? this.findElement(blockKey) : undefined;
+			if (!block || block.type !== "code") {
+				return;
+			}
+
+			let firstIndex = this.tokens.indexOf(block);
+			let lastIndex = firstIndex;
+			while (this.tokens[firstIndex - 1]?.type === "code") {
+				firstIndex -= 1;
+			}
+			while (this.tokens[lastIndex + 1]?.type === "code") {
+				lastIndex += 1;
+			}
+
+			const source = toMarkdown(this.tokens.slice(firstIndex, lastIndex + 1));
+			const firstLineEnd = source.indexOf("\n");
+			const lastLineStart = source.lastIndexOf("\n") + 1;
+			const markerStart = request.side === "start" ? 0 : lastLineStart;
+			const markerEnd = request.side === "start"
+				? firstLineEnd < 0 ? source.length : firstLineEnd
+				: source.length;
+			const markerLength = markerEnd - markerStart;
+			const start = Math.max(0, Math.min(request.start, markerLength));
+			const end = Math.max(start, Math.min(request.end, markerLength));
+			const inserted = request.text || "";
+			const absoluteStart = markerStart + start;
+			const absoluteEnd = markerStart + end;
+			const nextSource = stringSplice(
+				source,
+				absoluteStart,
+				absoluteEnd,
+				inserted,
+			);
+			const lines = nextSource.split("\n");
+			const opening = lines[0]?.match(/^(`{3,}|~{3,})([\w+-]*)$/);
+			const closing = lines[lines.length - 1] || "";
+			const validFence = Boolean(
+				opening &&
+					new RegExp(
+						`^${opening[1][0] === "`" ? "`" : "~"}{${opening[1].length},}$`,
+					).test(closing),
+			);
+			const nextBlocks = validFence
+				? parseMarkdown(nextSource)
+				: lines.map((line) =>
+					createBlockToken("p", {}, parseInlineMarkdown(line))
+				);
+			const caretMarkerOffset = start + inserted.length;
+
+			this.tokens.splice(
+				firstIndex,
+				lastIndex - firstIndex + 1,
+				...nextBlocks,
+			);
+			this.recalculate();
+
+			if (validFence) {
+				const codeBlocks = this.tokens.slice(
+					firstIndex,
+					firstIndex + nextBlocks.length,
+				).filter((candidate) => candidate.type === "code");
+				const caretBlock = request.side === "start"
+					? codeBlocks[0]
+					: codeBlocks[codeBlocks.length - 1];
+				const caretText = caretBlock?.children.find(
+					(child): child is TextToken => child.type === "t",
+				);
+				if (caretBlock && caretText) {
+					this._selectCodeFenceMarker(
+						caretBlock,
+						caretText,
+						request.side,
+						caretMarkerOffset,
+					);
+				}
+				return;
+			}
+
+			const lineIndex = request.side === "start" ? 0 : lines.length - 1;
+			const caretBlock = this.tokens[firstIndex + lineIndex];
+			if (caretBlock && isBlockToken(caretBlock)) {
+				const point = this._textPointAtBlockOffset(
+					caretBlock,
+					caretMarkerOffset,
+					true,
+				);
+				if (point) {
+					this.select(point.element, point.offset);
+				}
+			}
+			return;
+		}
 
 		if (type === ACTION._EditMarkdown && data) {
 			const request = data as EditMarkdownData;
@@ -1598,7 +1970,7 @@ export class Model extends Exome {
 				type = ACTION._Key;
 				data = "";
 			} else {
-				const orderedKeys = Object.values(this._idToKey);
+				const orderedKeys = this._orderedKeys();
 				const currentIndex = orderedKeys.indexOf(element.key);
 				const next = orderedKeys.slice(currentIndex + 1)
 					.map((key) => this.findElement(key))
@@ -1715,8 +2087,7 @@ export class Model extends Exome {
 				(
 					firstParent.type === "l" ||
 					firstParent.type === "todo" ||
-					firstParent.type === "quote" ||
-					firstParent.type === "code"
+					firstParent.type === "quote"
 				) &&
 				firstParent.children.every((child) =>
 					child.type !== "t" || child.text.length === 0
@@ -1956,7 +2327,11 @@ export class Model extends Exome {
 			const transform = data
 				? this._handleTextTransforms(firstElement, data, firstOffset)
 				: undefined;
-			if (transform === "url" || transform === "inline") {
+			if (
+				transform === "block" ||
+				transform === "url" ||
+				transform === "inline"
+			) {
 				return;
 			}
 			if (transform) {

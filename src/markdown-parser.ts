@@ -512,6 +512,14 @@ function blockMarkdown(block: BlockToken): string {
 	}
 }
 
+export function codeFenceMarker(code: string): string {
+	const longestBacktickRun = Math.max(
+		0,
+		...(code.match(/`+/g) || []).map((run) => run.length),
+	);
+	return "`".repeat(Math.max(3, longestBacktickRun + 1));
+}
+
 export function toMarkdown(tokens: TokenRoot): string {
 	const output: string[] = [];
 
@@ -538,11 +546,7 @@ export function toMarkdown(tokens: TokenRoot): string {
 		}
 		index -= 1;
 		const code = codeLines.join("\n");
-		const longestBacktickRun = Math.max(
-			0,
-			...(code.match(/`+/g) || []).map((run) => run.length),
-		);
-		const fence = "`".repeat(Math.max(3, longestBacktickRun + 1));
+		const fence = codeFenceMarker(code);
 		output.push(`${fence}${language}\n${code}\n${fence}`);
 	}
 

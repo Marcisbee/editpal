@@ -12,10 +12,11 @@ import { RenderUrl } from "./plugin/url.tsx";
 import { FloatingToolbar } from "./floating-toolbar.tsx";
 import { SlashDropdown } from "./slash-dropdown.tsx";
 import { inlineMarkdownAffixes, type MarkdownMarker } from "./markdown.ts";
-import { inlineTokensToMarkdown } from "./markdown-parser.ts";
+import { codeFenceMarker, inlineTokensToMarkdown } from "./markdown-parser.ts";
 import {
 	nextGraphemeBoundary,
 	previousGraphemeBoundary,
+	setCodeFenceCaret,
 	setInlineMarkdownCaret,
 } from "./utils.ts";
 
@@ -121,6 +122,7 @@ interface PositionedMarkdownMarker extends MarkdownMarker {
 function RenderItem(
 	item: AnyToken & {
 		codeEnd?: boolean;
+		codeFence?: string;
 		codeStart?: boolean;
 		k: string;
 		markdownAfter?: PositionedMarkdownMarker[];
@@ -129,7 +131,7 @@ function RenderItem(
 		sourceStart?: number;
 	},
 ) {
-	const { model } = useContext(EditorContext);
+	const { mode, model } = useContext(EditorContext);
 
 	if (item.type === "h") {
 		const { size, ...style } = item.props || {};
@@ -210,6 +212,8 @@ function RenderItem(
 
 	if (item.type === "code") {
 		const { language, ...style } = item.props || {};
+		const fence = item.codeFence || "```";
+		const opening = `${fence}${language || ""}`;
 		return (
 			<pre
 				key={item.id}
@@ -220,9 +224,35 @@ function RenderItem(
 				data-ep-code-start={item.codeStart || undefined}
 				data-ep-language={language || undefined}
 			>
+				{mode === "markdown" && item.codeStart && (
+					<span
+						data-ep-code-fence
+						data-ep-code-fence-side="start"
+						data-ep-md-key="codeFence"
+						data-ep-md-marker
+						data-ep-md-side="before"
+						data-ep-source-end={opening.length}
+						data-ep-source-start={0}
+					>
+						{opening}
+					</span>
+				)}
 				<code>
 					<RenderMap items={item.children} />
 				</code>
+				{mode === "markdown" && item.codeEnd && (
+					<span
+						data-ep-code-fence
+						data-ep-code-fence-side="end"
+						data-ep-md-key="codeFence"
+						data-ep-md-marker
+						data-ep-md-side="after"
+						data-ep-source-end={fence.length}
+						data-ep-source-start={0}
+					>
+						{fence}
+					</span>
+				)}
 			</pre>
 		);
 	}
@@ -306,11 +336,35 @@ function RenderMap({ items }: RenderMapProps) {
 				sourceStart: markerStart,
 			};
 		});
+		let codeFence: string | undefined;
+		if (item.type === "code") {
+			let codeStart = index;
+			let codeEnd = index;
+			while (items[codeStart - 1]?.type === "code") {
+				codeStart -= 1;
+			}
+			while (items[codeEnd + 1]?.type === "code") {
+				codeEnd += 1;
+			}
+			const code = items.slice(codeStart, codeEnd + 1).map((entry) =>
+				entry.type === "code"
+					? entry.children.map((child) =>
+						child.type === "t"
+							? child.text
+							: child.type === "img"
+							? child.props.alt || ""
+							: child.src
+					).join("")
+					: ""
+			).join("\n");
+			codeFence = codeFenceMarker(code);
+		}
 
 		return (
 			<RenderItem
 				{...item}
 				codeEnd={item.type === "code" && next?.type !== "code"}
+				codeFence={codeFence}
 				codeStart={item.type === "code" && previous?.type !== "code"}
 				k={item.key}
 				key={item.id}
@@ -408,8 +462,27 @@ function resolveEditorPoint(
 		? model.findElement(model._idToKey[tokenId])
 		: undefined;
 
+	const nodeElement = node instanceof Element ? node : node.parentElement;
+	const codeFence = nodeElement?.closest<HTMLElement>(
+		"[data-ep-code-fence]",
+	);
+	if (token?.type === "code" && codeFence) {
+		const side = codeFence.dataset.epCodeFenceSide;
+		const textChildren = token.children.filter(
+			(child): child is TextToken => child.type === "t",
+		);
+		const boundaryText = side === "start"
+			? textChildren[0]
+			: textChildren[textChildren.length - 1];
+		if (boundaryText) {
+			return pointAtInline(
+				boundaryText,
+				side === "end" ? boundaryText.text.length : 0,
+			);
+		}
+	}
+
 	if (token && !isBlockToken(token)) {
-		const nodeElement = node instanceof Element ? node : node.parentElement;
 		const marker = nodeElement?.closest<HTMLElement>("[data-ep-md-marker]");
 		if (marker && token.type === "t") {
 			return pointAtInline(
@@ -549,6 +622,28 @@ function markerElement(node: Node | undefined): HTMLElement | undefined {
 	return element?.closest<HTMLElement>("[data-ep-md-marker]") || undefined;
 }
 
+function markdownMarkerAtEdge(
+	node: Node | undefined,
+	backward: boolean,
+): HTMLElement | undefined {
+	if (!node) {
+		return;
+	}
+	const direct = markerElement(node);
+	if (direct) {
+		return direct;
+	}
+	if (node.nodeType === Node.TEXT_NODE) {
+		return;
+	}
+
+	const children = Array.from(node.childNodes);
+	return markdownMarkerAtEdge(
+		backward ? children[children.length - 1] : children[0],
+		backward,
+	);
+}
+
 function adjacentMarkdownMarker(
 	node: Node,
 	offset: number,
@@ -559,22 +654,43 @@ function adjacentMarkdownMarker(
 		return directMarker;
 	}
 
+	let current: Node = node;
 	if (node.nodeType === Node.TEXT_NODE) {
 		const textLength = node.textContent?.length || 0;
 		if ((backward && offset !== 0) || (!backward && offset !== textLength)) {
 			return;
 		}
-		return markerElement(
-			backward
-				? node.previousSibling || undefined
-				: node.nextSibling || undefined,
-		);
+	} else {
+		const children = Array.from(node.childNodes);
+		const adjacent = backward ? children[offset - 1] : children[offset];
+		if (adjacent) {
+			return markdownMarkerAtEdge(adjacent, backward);
+		}
+		if (
+			(backward && offset !== 0) ||
+			(!backward && offset !== children.length)
+		) {
+			return;
+		}
 	}
 
-	const children = Array.from(node.childNodes);
-	return markerElement(
-		(backward ? children[offset - 1] : children[offset]) || undefined,
-	);
+	while (current.parentNode) {
+		const parent = current.parentNode;
+		if (
+			parent instanceof HTMLElement &&
+			parent.matches("[data-ep-main]")
+		) {
+			return;
+		}
+
+		const siblings = Array.from(parent.childNodes);
+		const index = siblings.findIndex((sibling) => sibling === current);
+		const adjacent = backward ? siblings[index - 1] : siblings[index + 1];
+		if (adjacent) {
+			return markdownMarkerAtEdge(adjacent, backward);
+		}
+		current = parent;
+	}
 }
 
 interface MarkdownSourcePoint {
@@ -770,16 +886,32 @@ export function Editpal({ mode = "markdown", model }: EditpalProps) {
 			selection.setFormat(
 				markdownBoundary?.format || model.getSelectionFormat(),
 			);
-			if (domCollapsed && markerElement(first)) {
+			const selectedMarker = domCollapsed ? markerElement(first) : undefined;
+			if (selectedMarker) {
 				const sourcePoint = markdownSourcePoint(
 					model,
 					first,
 					anchorOffset,
 				);
 				if (sourcePoint) {
-					_stack.push(() =>
-						setInlineMarkdownCaret(sourcePoint.block.id, sourcePoint.offset)
-					);
+					const codeFenceSide = selectedMarker.dataset.epCodeFenceSide;
+					_stack.push(() => {
+						if (
+							codeFenceSide === "start" ||
+							codeFenceSide === "end"
+						) {
+							setCodeFenceCaret(
+								sourcePoint.block.id,
+								codeFenceSide,
+								sourcePoint.offset,
+							);
+							return;
+						}
+						setInlineMarkdownCaret(
+							sourcePoint.block.id,
+							sourcePoint.offset,
+						);
+					});
 				}
 			}
 		} catch {
@@ -1088,6 +1220,8 @@ export function Editpal({ mode = "markdown", model }: EditpalProps) {
 
 		let start = Math.min(anchor.offset, focus.offset);
 		let end = Math.max(anchor.offset, focus.offset);
+		let activeMarker = markerElement(domSelection.anchorNode) ||
+			markerElement(domSelection.focusNode);
 		if (domSelection.isCollapsed) {
 			const backward = direction === "backward";
 			const marker = direction
@@ -1100,8 +1234,11 @@ export function Editpal({ mode = "markdown", model }: EditpalProps) {
 			if (!marker) {
 				return false;
 			}
+			activeMarker = marker;
 
-			const source = inlineTokensToMarkdown(anchor.block.children);
+			const source = marker.matches("[data-ep-code-fence]")
+				? marker.textContent || ""
+				: inlineTokensToMarkdown(anchor.block.children);
 			if (direction === "backward") {
 				start = previousGraphemeBoundary(source, start);
 			} else if (direction === "forward") {
@@ -1111,11 +1248,64 @@ export function Editpal({ mode = "markdown", model }: EditpalProps) {
 			return false;
 		}
 
+		const codeFence = activeMarker?.closest<HTMLElement>(
+			"[data-ep-code-fence]",
+		);
+		const codeFenceSide = codeFence?.dataset.epCodeFenceSide;
+		if (
+			codeFence &&
+			(codeFenceSide === "start" || codeFenceSide === "end")
+		) {
+			action(ACTION._EditCodeFence, {
+				blockId: anchor.block.id,
+				end,
+				side: codeFenceSide,
+				start,
+				text,
+			});
+			return true;
+		}
+
 		action(ACTION._EditMarkdown, {
 			blockId: anchor.block.id,
 			end,
 			start,
 			text,
+		});
+		return true;
+	}
+
+	function enterSelectedCodeFence(): boolean {
+		const domSelection = document.getSelection();
+		if (
+			mode !== "markdown" ||
+			!domSelection?.isCollapsed ||
+			!domSelection.anchorNode
+		) {
+			return false;
+		}
+
+		const marker = markerElement(domSelection.anchorNode);
+		const codeFence = marker?.closest<HTMLElement>(
+			"[data-ep-code-fence]",
+		);
+		const side = codeFence?.dataset.epCodeFenceSide;
+		const sourcePoint = markdownSourcePoint(
+			model,
+			domSelection.anchorNode,
+			domSelection.anchorOffset,
+		);
+		if (
+			!sourcePoint ||
+			sourcePoint.block.type !== "code" ||
+			(side !== "start" && side !== "end")
+		) {
+			return false;
+		}
+
+		action(ACTION._EnterCodeFence, {
+			blockId: sourcePoint.block.id,
+			side,
 		});
 		return true;
 	}
@@ -1150,7 +1340,9 @@ export function Editpal({ mode = "markdown", model }: EditpalProps) {
 			case "insertParagraph":
 			case "insertLineBreak":
 				preventDefaultAndStop(event);
-				action(ACTION._Enter);
+				if (!enterSelectedCodeFence()) {
+					action(ACTION._Enter);
+				}
 				return;
 			case "deleteContentBackward":
 				preventDefaultAndStop(event);
@@ -1400,7 +1592,9 @@ export function Editpal({ mode = "markdown", model }: EditpalProps) {
 
 					if (e.key === "Enter") {
 						preventDefault(e);
-						action(ACTION._Enter);
+						if (!enterSelectedCodeFence()) {
+							action(ACTION._Enter);
+						}
 						return;
 					}
 
