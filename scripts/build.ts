@@ -82,6 +82,10 @@ async function serve(mode: Exclude<Mode, "build">): Promise<void> {
 		sourcemap: "inline",
 	});
 
+	// A clean CI checkout has no generated main.js or main.css. Complete the
+	// initial build before the readiness URL can respond, otherwise the first
+	// browser may keep a page that loaded while those assets still returned 404.
+	await buildContext.rebuild();
 	await buildContext.watch();
 	const server = await buildContext.serve({ port: 4173, servedir: "www" });
 	console.log(`Serving at http://${server.hosts[0]}:${server.port}`);
