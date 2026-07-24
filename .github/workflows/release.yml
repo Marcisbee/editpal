@@ -78,6 +78,9 @@ jobs:
       - name: Publish package to JSR
         run: deno publish
 
+      - name: Attach and verify JSR provenance
+        run: npm run jsr:provenance
+
       - name: Create or update GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
