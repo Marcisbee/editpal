@@ -19,7 +19,13 @@ function getIndent(token: BlockToken): number {
 	return "indent" in token.props ? token.props.indent ?? 0 : 0;
 }
 
-const slashOptions = [
+interface SlashOption {
+	action(parent: BlockToken): void;
+	keywords?: string[];
+	label: string;
+}
+
+const slashOptions: SlashOption[] = [
 	{
 		label: "title",
 		action(parent: BlockToken) {
@@ -91,7 +97,7 @@ const slashOptions = [
 ];
 
 export function SlashDropdown() {
-	const { model, editor } = useContext(EditorContext);
+	const { editable, extensions, model, editor } = useContext(EditorContext);
 	const { slash, selection } = model;
 	const { getOffset, getPortal, focus } = useStore(selection);
 	const { isOpen, query } = useStore(slash);
@@ -101,18 +107,31 @@ export function SlashDropdown() {
 	const listId = useId();
 
 	const portalElement = useMemo(getPortal, [getPortal]);
+	const options = useMemo<SlashOption[]>(() => [
+		...slashOptions,
+		...(extensions?.slashCommands || []).map((command) => ({
+			label: command.label,
+			keywords: command.keywords,
+			action(parent: BlockToken) {
+				command.run({ block: parent, model });
+			},
+		})),
+	], [extensions?.slashCommands, model]);
 
 	const [activeIndex, setActiveIndex] = useState(0);
 	const filteredOptions = useMemo(() => {
 		const normalizedQuery = query?.toLowerCase() || "";
-		return slashOptions
-			.filter(({ label }) => {
-				return label.includes(normalizedQuery);
+		return options
+			.filter(({ keywords = [], label }) => {
+				return label.includes(normalizedQuery) ||
+					keywords.some((keyword) =>
+						keyword.toLowerCase().includes(normalizedQuery)
+					);
 			})
 			.sort((a, b) =>
 				a.label.indexOf(normalizedQuery) - b.label.indexOf(normalizedQuery)
 			);
-	}, [query]);
+	}, [options, query]);
 
 	useLayoutEffect(() => {
 		if (filteredOptions.length === 0) {
@@ -157,22 +176,23 @@ export function SlashDropdown() {
 			return;
 		}
 
-		const result = removeSlashTrigger(
-			textEl.text,
-			slash.triggerStart,
-			slash.triggerEnd,
-		);
-		textEl.text = result.text;
-		action(parentEl);
-
+		let result = { offset: slash.triggerStart, text: textEl.text };
+		model.transact(() => {
+			result = removeSlashTrigger(
+				textEl.text,
+				slash.triggerStart!,
+				slash.triggerEnd!,
+			);
+			textEl.text = result.text;
+			action(parentEl);
+			selection.setSelection(
+				textEl.key,
+				result.offset,
+				textEl.key,
+				result.offset,
+			);
+		});
 		slash.close();
-		selection.setSelection(
-			textEl.key,
-			result.offset,
-			textEl.key,
-			result.offset,
-		);
-		model.recalculate();
 		restoreEditorFocus();
 	}
 
@@ -205,7 +225,7 @@ export function SlashDropdown() {
 		el.scrollIntoView?.({ block: "nearest" });
 	}, [filteredOptions[activeIndex]]);
 
-	if (!isOpen) {
+	if (!editable || !isOpen) {
 		return null;
 	}
 

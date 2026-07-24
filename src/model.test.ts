@@ -181,6 +181,106 @@ Deno.test("composition replaces the active selection", () => {
 	assertModelInvariants(model);
 });
 
+Deno.test("mentions replace their query and survive undo and redo", () => {
+	const model = new Model([paragraph(text("Hello @mar!"))]);
+	model.insertMention("0.0", 6, 10, "@marcis", {
+		configId: "people",
+		id: "marcis",
+		label: "marcis",
+		trigger: "@",
+		value: { role: "maintainer" },
+	});
+
+	assertEquals(documentText(model), "Hello @marcis!");
+	const mention = model.tokens[0].children.find((child) =>
+		child.type === "t" && child.props.mention
+	);
+	assertEquals(
+		mention?.type === "t" ? mention.props.mention?.id : undefined,
+		"marcis",
+	);
+	assertEquals(toMarkdown(model.tokens), "Hello @marcis!");
+
+	model.action(ACTION._Undo);
+	assertEquals(documentText(model), "Hello @mar!");
+	model.action(ACTION._Redo);
+	assertEquals(documentText(model), "Hello @marcis!");
+	assertModelInvariants(model);
+});
+
+Deno.test("attachments are atomic, serializable, and undoable", () => {
+	const model = new Model([paragraph(text("Before after"))]);
+	model.selection.setSelection("0.0", 7, "0.0", 7);
+	model.insertAttachment({
+		kind: "file",
+		mimeType: "application/pdf",
+		name: "report.pdf",
+		size: 42,
+		src: "https://example.com/report.pdf",
+	});
+
+	assertEquals(
+		toMarkdown(model.tokens),
+		"Before [report.pdf](https://example.com/report.pdf)after",
+	);
+	assertEquals(
+		model.tokens[0].children.some((child) => child.type === "attachment"),
+		true,
+	);
+
+	model.action(ACTION._Undo);
+	assertEquals(documentText(model), "Before after");
+	model.action(ACTION._Redo);
+	assertEquals(
+		model.tokens[0].children.some((child) => child.type === "attachment"),
+		true,
+	);
+	assertModelInvariants(model);
+});
+
+Deno.test("image captions participate in history", () => {
+	const token = image("old caption");
+	const model = new Model([paragraph(token)]);
+	const imageToken = model.tokens[0].children.find((child) =>
+		child.type === "img"
+	);
+	assertExists(imageToken);
+
+	model.setImageAlt(imageToken.id, "new caption");
+	assertEquals(toMarkdown(model.tokens).includes("![new caption]"), true);
+	model.action(ACTION._Undo);
+	assertEquals(toMarkdown(model.tokens).includes("![old caption]"), true);
+	model.action(ACTION._Redo);
+	assertEquals(toMarkdown(model.tokens).includes("![new caption]"), true);
+});
+
+Deno.test("setMarkdown replaces content and clears history", () => {
+	const model = new Model([paragraph(text("Old"))]);
+	model.action(ACTION._Key, "!");
+	assertEquals(model.canUndo, true);
+
+	model.setMarkdown("# New");
+
+	assertEquals(toMarkdown(model.tokens), "# New");
+	assertEquals(model.canUndo, false);
+	assertEquals(model.canRedo, false);
+	assertModelInvariants(model);
+});
+
+Deno.test("custom transactions are one undoable extension edit", () => {
+	const model = new Model([paragraph(text("before"))]);
+	model.transact(() => {
+		model.innerText("0.0")!.text = "after";
+	});
+	assertEquals(toMarkdown(model.tokens), "after");
+
+	model.action(ACTION._Undo);
+	assertEquals(toMarkdown(model.tokens), "before");
+	model.action(ACTION._Redo);
+	assertEquals(toMarkdown(model.tokens), "after");
+	assertModelInvariants(model);
+});
+
 Deno.test("backspace at a formatting boundary edits the previous run", () => {
 	const model = new Model([
 		paragraph(

@@ -341,6 +341,15 @@ export function inlineMarkdownChunks(items: InlineToken[]): MarkdownChunk[] {
 	const chunks: MarkdownChunk[] = [];
 
 	for (const [index, item] of items.entries()) {
+		if (item.type === "attachment") {
+			chunks.push({
+				text: item.props.kind === "image"
+					? `![${item.props.alt || item.props.name}](${item.src})`
+					: `[${item.props.name}](${item.src})`,
+				token: item,
+			});
+			continue;
+		}
 		if (item.type === "img") {
 			chunks.push({
 				text: `![${item.props.alt || ""}](${item.src})`,
@@ -549,8 +558,8 @@ export function toMarkdown(tokens: TokenRoot): string {
 				tokens[index].children.map((child) =>
 					child.type === "t"
 						? child.text
-						: child.type === "img"
-						? child.props.alt || ""
+						: child.type === "img" || child.type === "attachment"
+						? child.props.alt || child.props.name || ""
 						: child.src
 				).join(""),
 			);

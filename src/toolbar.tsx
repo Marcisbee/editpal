@@ -6,7 +6,7 @@ import { EditorContext, preventDefaultAndStop } from "./editpal.tsx";
 import { ACTION } from "./model.ts";
 
 export function Toolbar() {
-	const { model } = useContext(EditorContext);
+	const { extensions, model } = useContext(EditorContext);
 	const { action, selection } = useStore(model);
 	const { format } = useStore(selection);
 
@@ -94,6 +94,54 @@ export function Toolbar() {
 			>
 				<mark>H</mark>
 			</button>
+			{extensions?.linkEditor && (
+				<button
+					type="button"
+					aria-label="Link"
+					title="Add or edit link"
+					data-e-tb-active={format.link ? true : undefined}
+					onMouseDown={preventDefaultAndStop}
+					onClick={async (event) => {
+						preventDefaultAndStop(event);
+						const first = selection.first;
+						const last = selection.last;
+						const firstElement = model.findElement(first[0]);
+						const lastElement = model.findElement(last[0]);
+						const result = await extensions.linkEditor?.edit({
+							current: typeof format.link === "string"
+								? format.link
+								: undefined,
+							model,
+							selectedText: model.selectedText(),
+						});
+						if (result === undefined) {
+							return;
+						}
+						const firstKey = firstElement
+							? model._idToKey[firstElement.id]
+							: undefined;
+						const lastKey = lastElement
+							? model._idToKey[lastElement.id]
+							: undefined;
+						if (!firstKey || !lastKey) {
+							return;
+						}
+						const link = result === "" ? null : result;
+						selection.setSelection(
+							firstKey,
+							first[1],
+							lastKey,
+							last[1],
+						);
+						action(
+							link === null ? ACTION._FormatRemove : ACTION._FormatAdd,
+							["link", link],
+						);
+					}}
+				>
+					↗
+				</button>
+			)}
 		</div>
 	);
 }

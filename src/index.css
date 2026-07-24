@@ -144,3 +144,34 @@ body,
 	padding: 12px;
 	white-space: pre-wrap;
 }
+
+.demo-mention {
+	font-weight: 600;
+}
+
+.demo-integration-pill {
+	align-items: center;
+	background: color-mix(in srgb, currentColor 9%, transparent);
+	border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+	border-radius: 999px;
+	display: inline-flex;
+	font-size: 0.88em;
+	gap: 6px;
+	padding: 2px 9px;
+}
+
+.demo-tweet {
+	background: color-mix(in srgb, #1d9bf0 8%, transparent);
+	border: 1px solid color-mix(in srgb, #1d9bf0 35%, transparent);
+	border-radius: 12px;
+	padding: 14px 16px;
+}
+
+.demo-tweet p {
+	margin: 5px 0;
+}
+
+.demo-tweet a {
+	font-size: 0.82em;
+	overflow-wrap: anywhere;
+}

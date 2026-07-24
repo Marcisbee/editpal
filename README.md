@@ -64,6 +64,158 @@ const model = new Model(parseMarkdown("# Hello **Markdown**"));
 const markdown = toMarkdown(model.tokens);
 ```
 
+`Editpal` also accepts `ariaLabel`, `className`, `disabled`, `editorProps`, `id`,
+`onChange`, `placeholder`, `readOnly`, and `style`. Pass `name` (and optionally
+`form` and `required`) to submit the Markdown through a native HTML form.
+`maxLength` limits serialized Markdown length and `onLimitExceeded` can display
+application validation feedback.
+Replace a loaded document with
+`model.setMarkdown(markdown)` or `model.setTokens(tokens)`; both operations clear
+undo history. Call `model.destroy()` when a model is permanently discarded.
+
+## Extensions
+
+All extensions are opt-in. An editor with no `extensions` keeps the default
+Markdown behavior and does not render integrations or embeds.
+
+### Mentions
+
+Mention providers may be synchronous or asynchronous, use any trigger, carry
+consumer-owned values, and customize both suggestion rows and inserted mentions.
+Multiple providers can be active together.
+
+```tsx
+const extensions = {
+	mentions: [{
+		id: "people",
+		trigger: "@",
+		minQueryLength: 0,
+		limit: 8,
+		async search(query, { signal }) {
+			const response = await fetch(
+				`/api/people?q=${encodeURIComponent(query)}`,
+				{
+					signal,
+				},
+			);
+			return await response.json();
+		},
+		renderSuggestion: (person) => (
+			<span>{person.label} — {person.description}</span>
+		),
+		renderMention: ({ mention }) => <strong>@{mention.label}</strong>,
+		onSelect: (person, model) => {
+			console.log("Selected", person.id, model);
+		},
+	}],
+} satisfies EditpalExtensions;
+
+<Editpal model={model} extensions={extensions} />;
+```
+
+Search requests receive an `AbortSignal`, so changing or closing a query cancels
+stale work. Inserted mentions are regular Markdown text when serialized, while
+their structured metadata remains available in the live token model. Provider
+values must be JSON-serializable so undo, redo, and document cloning remain
+deterministic. Advanced providers can override `getQuery`, `getText`, and
+`getMention` for multi-word queries and custom stored identifiers.
+
+### Image, video, and file uploads
+
+The attachment API handles the picker, clipboard files, and drag-and-drop. The
+host application owns storage and returns the durable URL that Editpal stores.
+
+```tsx
+const extensions = {
+	attachments: {
+		accept: "image/*,video/*,.pdf,.zip",
+		maxSize: 25 * 1024 * 1024,
+		async upload(file, { signal }) {
+			const body = new FormData();
+			body.append("file", file);
+			const response = await fetch("/api/uploads", {
+				method: "POST",
+				body,
+				signal,
+			});
+			return await response.json(); // { kind, name, src, mimeType, size }
+		},
+		onError(error, file) {
+			console.error(`Could not upload ${file.name}`, error);
+		},
+	},
+} satisfies EditpalExtensions;
+```
+
+An upload result has a `kind` of `"image"`, `"video"`, or `"file"`. Attachments
+are atomic, undoable editor items. They serialize to Markdown images or links.
+Set `pickerLabel: false` if the application supplies its own picker and call
+`model.insertAttachment(...)` after uploading. Upload functions can call
+`reportProgress(0.5)` and hosts can observe it through `onProgress`.
+
+### Inline integrations
+
+Inline integrations replace the visual rendering of matched labeled or automatic
+links without changing their Markdown source. Nothing is matched by default.
+
+```tsx
+const githubPill: InlineIntegration = {
+	id: "github-repository",
+	match(source) {
+		const match = source.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)$/);
+		return match
+			? { source, data: { owner: match[1], repo: match[2] } }
+			: false;
+	},
+	render({ match }) {
+		const repo = match.data as { owner: string; repo: string };
+		return <span>GitHub · {repo.owner}/{repo.repo}</span>;
+	},
+};
+```
+
+### Whole-line embeds
+
+Line embeds receive the complete canonical Markdown for each block. They are
+ideal for tweets, videos, issue cards, and other standalone link previews.
+`replaceLine` hides the source line in `MarkdownPreview`; the editable surface
+always retains the source so the embed can still be edited.
+
+```tsx
+const tweet: LineEmbed = {
+	id: "tweet",
+	replaceLine: true,
+	match(source) {
+		const match = source.match(
+			/^\[Tweet\]\((https:\/\/(?:twitter\.com|x\.com)\/[^)]+)\)$/,
+		);
+		return match ? { source: match[1] } : false;
+	},
+	render: ({ match }) => <TweetEmbed url={match.source} />,
+};
+
+<MarkdownPreview
+	tokens={model.tokens}
+	extensions={{ lineEmbeds: [tweet] }}
+/>;
+```
+
+Render functions should treat remote metadata as untrusted and must not inject
+unsanitized HTML. Editpal itself renders text through Preact and restricts
+preview links to HTTP(S), mail, root-relative, and fragment URLs.
+
+### Link editing and slash commands
+
+Applications may provide `extensions.linkEditor.edit(...)` to open their own
+link modal. The callback returns a URL to apply, `null` to remove a link, or
+`undefined` to cancel. The floating toolbar adds a link button only when this
+extension exists.
+
+Add application actions to the existing slash menu with
+`extensions.slashCommands`. Each command supplies a label, optional search
+keywords, and a `run({ block, model })` callback. No custom commands are
+registered by default.
+
 Editpal is published to [npm](https://www.npmjs.com/package/editpal) and
 [JSR](https://jsr.io/@marcisbee/editpal). The npm package requires Node.js 18
 or newer for build tooling. The rendered editor targets modern browsers.
@@ -91,6 +243,7 @@ Available tasks:
 - `deno task build` — build the library into `dist/`
 - `deno task preview` — build and serve the optimized demo
 - `deno task test` — run the Deno test suite
+- `npm run test:e2e` — run Chromium, Firefox, WebKit, and mobile Safari tests
 - `deno task check` — type-check the complete application and test graph
 - `deno task lint` — lint with Deno
 - `deno task fmt` — format with Deno

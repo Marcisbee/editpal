@@ -1,24 +1,37 @@
 import { useStore } from "exome/preact";
 import { createContext, h } from "preact";
-import type { Context, RefObject, VNode } from "preact";
-import { useContext, useLayoutEffect, useRef, useState } from "preact/hooks";
+import type { Context, HTMLAttributes, RefObject, VNode } from "preact";
+import {
+	useContext,
+	useEffect,
+	useLayoutEffect,
+	useRef,
+	useState,
+} from "preact/hooks";
 
 import type { AnyToken, BlockToken, InlineToken, TextToken } from "./tokens.ts";
 import { isBlockToken } from "./tokens.ts";
 import { ACTION, Model as EditorModel } from "./model.ts";
 import type { MarkdownBoundary } from "./selection.ts";
 import { RenderImage } from "./plugin/image.tsx";
+import { RenderAttachment } from "./plugin/attachment.tsx";
 import { RenderUrl } from "./plugin/url.tsx";
 import { FloatingToolbar } from "./floating-toolbar.tsx";
 import { SlashDropdown } from "./slash-dropdown.tsx";
 import { inlineMarkdownAffixes, type MarkdownMarker } from "./markdown.ts";
-import { codeFenceMarker, inlineTokensToMarkdown } from "./markdown-parser.ts";
+import {
+	codeFenceMarker,
+	inlineTokensToMarkdown,
+	toMarkdown,
+} from "./markdown-parser.ts";
 import {
 	nextGraphemeBoundary,
 	previousGraphemeBoundary,
 	setCodeFenceCaret,
 	setInlineMarkdownCaret,
 } from "./utils.ts";
+import type { EditpalExtensions } from "./extensions.ts";
+import { MentionDropdown } from "./mention-dropdown.tsx";
 
 export const Model = EditorModel;
 /**
@@ -38,11 +51,25 @@ export {
 } from "./markdown-parser.ts";
 export type {
 	AnyToken,
+	AttachmentToken,
 	BlockToken,
 	InlineToken,
+	JsonValue,
+	MentionData,
 	TextToken,
 	TokenRoot,
 } from "./tokens.ts";
+export type {
+	AttachmentConfig,
+	EditpalExtensions,
+	InlineIntegration,
+	LineEmbed,
+	LinkEditor,
+	MentionConfig,
+	MentionSuggestion,
+	SlashCommand,
+	UploadedAttachment,
+} from "./extensions.ts";
 
 function RenderText(
 	item: TextToken & {
@@ -53,8 +80,32 @@ function RenderText(
 		sourceStart?: number;
 	},
 ) {
+	const { extensions, model } = useContext(EditorContext);
 	if (item.props?.url) {
 		return <RenderUrl {...item} key={item.id} />;
+	}
+	if (item.props?.link) {
+		const integration = extensions?.inlineIntegrations?.map((definition) => ({
+			definition,
+			match: definition.match(item.props.link || "", item),
+		})).find(({ match }) => Boolean(match));
+		if (integration?.match) {
+			const context = {
+				match: integration.match,
+				model,
+				token: item,
+			};
+			return (
+				<span
+					contentEditable={false}
+					data-ep={item.id}
+					data-ep-inline-integration={integration.definition.id}
+					aria-label={integration.definition.ariaLabel?.(context)}
+				>
+					{integration.definition.render(context)}
+				</span>
+			);
+		}
 	}
 
 	const {
@@ -73,6 +124,7 @@ function RenderText(
 		highlight,
 		italicMarker: _italicMarker,
 		link,
+		mention,
 		markdownEscape: _markdownEscape,
 		url: _url,
 		...style
@@ -86,6 +138,7 @@ function RenderText(
 			data-ep-code-inline={code || undefined}
 			data-ep-highlight={highlight || undefined}
 			data-ep-link={link || undefined}
+			data-ep-mention={mention?.configId}
 			data-ep-source-end={sourceEnd}
 			data-ep-source-start={sourceStart}
 			data-t={text ? true : "empty"}
@@ -102,7 +155,14 @@ function RenderText(
 					{marker}
 				</span>
 			))}
-			{text || "\u200B"}
+			{mention
+				? (
+					<span contentEditable={false} data-ep-mention-content>
+						{extensions?.mentions?.find(({ id }) => id === mention.configId)
+							?.renderMention?.({ mention, text }) ?? text}
+					</span>
+				)
+				: text || "\u200B"}
 			{markdownAfter?.map(({ key, marker, sourceEnd, sourceStart }) => (
 				<span
 					data-ep-md-marker
@@ -277,6 +337,10 @@ function RenderItem(
 		return <RenderImage {...item} key={item.id} />;
 	}
 
+	if (item.type === "attachment") {
+		return <RenderAttachment item={item} key={item.id} />;
+	}
+
 	if (item.type === "url") {
 		return <RenderUrl {...item} key={item.id} />;
 	}
@@ -297,7 +361,7 @@ function RenderMap({ items }: RenderMapProps) {
 		return null;
 	}
 
-	const { mode } = useContext(EditorContext);
+	const { extensions, mode, model } = useContext(EditorContext);
 	let sourceOffset = 0;
 
 	return items.map((item, index) => {
@@ -365,7 +429,7 @@ function RenderMap({ items }: RenderMapProps) {
 			codeFence = codeFenceMarker(code);
 		}
 
-		return (
+		const rendered = (
 			<RenderItem
 				{...item}
 				codeEnd={item.type === "code" && next?.type !== "code"}
@@ -379,6 +443,30 @@ function RenderMap({ items }: RenderMapProps) {
 				sourceStart={sourceStart}
 			/>
 		);
+		if (!isBlockToken(item) || !extensions?.lineEmbeds?.length) {
+			return rendered;
+		}
+
+		const source = toMarkdown([item]);
+		for (const embed of extensions.lineEmbeds) {
+			const match = embed.match(source, item);
+			if (!match) {
+				continue;
+			}
+			return (
+				<div
+					data-ep-line-with-embed
+					data-ep-line-replaced={embed.replaceLine || undefined}
+					key={`embed-${item.id}-${embed.id}`}
+				>
+					{rendered}
+					<div contentEditable={false} data-ep-line-embed={embed.id}>
+						{embed.render({ block: item, match, model })}
+					</div>
+				</div>
+			);
+		}
+		return rendered;
 	});
 }
 
@@ -399,6 +487,36 @@ export interface EditpalProps {
 	model: EditorModel;
 	/** Editing presentation. Defaults to `"markdown"`. */
 	mode?: EditpalMode;
+	/** Opt-in mentions, integrations, line embeds, and uploads. */
+	extensions?: EditpalExtensions;
+	/** Called after the model document changes. */
+	onChange?: (markdown: string, model: EditorModel) => void;
+	/** Prevent document mutation while retaining selection and copying. */
+	readOnly?: boolean;
+	/** Disable editing and remove the editor from the tab order. */
+	disabled?: boolean;
+	/** Hint shown when the document is empty. */
+	placeholder?: string;
+	/** Accessible name for the editable surface. */
+	ariaLabel?: string;
+	/** Class applied to the editable surface. */
+	className?: string;
+	/** DOM id applied to the editable surface. */
+	id?: string;
+	/** Inline style applied to the editable surface. */
+	style?: HTMLAttributes<HTMLDivElement>["style"];
+	/** Additional native attributes applied before Editpal's managed handlers. */
+	editorProps?: HTMLAttributes<HTMLDivElement>;
+	/** Submit the Markdown value with a native HTML form. */
+	name?: string;
+	/** Associate the hidden form value with a form element by id. */
+	form?: string;
+	/** Mark the editor and its native form value as required. */
+	required?: boolean;
+	/** Maximum serialized Markdown length. */
+	maxLength?: number;
+	/** Called when an insertion would exceed `maxLength`. */
+	onLimitExceeded?: (maxLength: number, model: EditorModel) => void;
 }
 
 /**
@@ -417,6 +535,8 @@ interface EditorContextValue {
 	model: EditorModel;
 	editor: RefObject<HTMLDivElement>;
 	mode: EditpalMode;
+	extensions?: EditpalExtensions;
+	editable: boolean;
 }
 
 export const EditorContext: Context<EditorContextValue> = createContext<
@@ -501,6 +621,13 @@ function resolveEditorPoint(
 	}
 
 	if (token && !isBlockToken(token)) {
+		if (
+			token.type === "t" &&
+			(tokenElement?.matches("[data-ep-inline-integration]") ||
+				nodeElement?.closest("[data-ep-mention-content]"))
+		) {
+			return pointAtInline(token, offset > 0 ? token.text.length : 0);
+		}
 		const marker = nodeElement?.closest<HTMLElement>("[data-ep-md-marker]");
 		if (marker && token.type === "t") {
 			return pointAtInline(
@@ -857,16 +984,72 @@ function markdownSourcePoint(
  * may be retained outside the component and serialized with {@link toMarkdown}.
  */
 export function Editpal(
-	{ mode = "markdown", model }: EditpalProps,
+	{
+		ariaLabel,
+		className,
+		disabled = false,
+		editorProps,
+		extensions,
+		form,
+		id,
+		maxLength,
+		mode = "markdown",
+		model,
+		name,
+		onChange,
+		onLimitExceeded,
+		placeholder,
+		readOnly = false,
+		required = false,
+		style,
+	}: EditpalProps,
 ): VNode {
 	const { tokens, _stack, action, selection } = useStore(model);
 	const ref = useRef<HTMLDivElement>(null);
+	const fileInputRef = useRef<HTMLInputElement>(null);
+	const uploadControllers = useRef(new Set<AbortController>());
+	const onChangeRef = useRef(onChange);
 	const [focus, setFocus] = useState(0);
 	const [reload, setReload] = useState(0);
+	const editable = !disabled && !readOnly;
+	const markdown = toMarkdown(tokens);
+
+	useEffect(() => {
+		onChangeRef.current = onChange;
+	}, [onChange]);
+
+	useEffect(() => {
+		onChangeRef.current?.(markdown, model);
+	}, [markdown, model]);
+
+	useEffect(() => {
+		return () => {
+			for (const controller of uploadControllers.current) {
+				controller.abort();
+			}
+			uploadControllers.current.clear();
+		};
+	}, []);
 
 	useLayoutEffect(() => {
 		_stack.splice(0).pop()?.();
 	});
+
+	function insertText(
+		text: string,
+		type: typeof ACTION._Compose | typeof ACTION._Key = ACTION._Key,
+	): boolean {
+		if (maxLength !== undefined && text) {
+			const selectedLength = model.selectedText().length;
+			const projected = markdown.length - selectedLength + text.length;
+			if (projected > maxLength) {
+				onLimitExceeded?.(maxLength, model);
+				return false;
+			}
+		}
+		action(type, text);
+		return true;
+	}
 
 	function select(
 		first: Node,
@@ -1047,20 +1230,93 @@ export function Editpal(
 		setFocus(increment);
 	}
 
+	async function uploadFiles(files: Iterable<File>) {
+		const config = extensions?.attachments;
+		if (!config || !editable) {
+			return;
+		}
+		for (const file of files) {
+			const firstElement = model.findElement(model.selection.first[0]);
+			const lastElement = model.findElement(model.selection.last[0]);
+			const bookmark = {
+				firstId: firstElement?.id,
+				firstOffset: model.selection.first[1],
+				lastId: lastElement?.id,
+				lastOffset: model.selection.last[1],
+			};
+			if (config.maxSize !== undefined && file.size > config.maxSize) {
+				config.onError?.(
+					new RangeError(
+						`${file.name} exceeds the ${config.maxSize} byte attachment limit`,
+					),
+					file,
+				);
+				continue;
+			}
+			const controller = new AbortController();
+			uploadControllers.current.add(controller);
+			try {
+				const uploaded = await config.upload(file, {
+					model,
+					reportProgress(progress) {
+						config.onProgress?.(
+							file,
+							Math.max(0, Math.min(1, progress)),
+						);
+					},
+					signal: controller.signal,
+				});
+				if (controller.signal.aborted) {
+					continue;
+				}
+				const firstKey = bookmark.firstId
+					? model._idToKey[bookmark.firstId]
+					: undefined;
+				const lastKey = bookmark.lastId
+					? model._idToKey[bookmark.lastId]
+					: undefined;
+				if (firstKey && lastKey) {
+					model.selection.setSelection(
+						firstKey,
+						bookmark.firstOffset,
+						lastKey,
+						bookmark.lastOffset,
+					);
+				}
+				model.insertAttachment(uploaded);
+				config.onUploaded?.(uploaded, file);
+			} catch (error) {
+				if (!controller.signal.aborted) {
+					config.onError?.(error, file);
+				}
+			} finally {
+				uploadControllers.current.delete(controller);
+			}
+		}
+	}
+
 	function onDrop(event: DragEvent) {
 		preventDefaultAndStop(event);
 
 		onSelect(event);
+		const files = event.dataTransfer?.files;
+		if (files?.length && extensions?.attachments) {
+			void uploadFiles(files);
+			return;
+		}
 
 		const text = event.dataTransfer?.getData("text/plain");
-		if (text) {
+		if (text && editable) {
 			model.history.batch();
-			model.action(ACTION._Key, text);
+			insertText(text);
 			model.history.batch();
 		}
 	}
 
 	function onTodoClick(event: MouseEvent) {
+		if (!editable) {
+			return;
+		}
 		const target = event.target instanceof HTMLInputElement
 			? event.target
 			: undefined;
@@ -1128,7 +1384,7 @@ export function Editpal(
 		const fn = () => {
 			model._isComposing = false;
 			if (e.data) {
-				action(ACTION._Compose, e.data);
+				insertText(e.data, ACTION._Compose);
 			}
 			setReload(increment);
 		};
@@ -1220,6 +1476,14 @@ export function Editpal(
 		text: string,
 		direction?: "backward" | "forward",
 	): boolean {
+		if (
+			text &&
+			maxLength !== undefined &&
+			markdown.length - model.selectedText().length + text.length > maxLength
+		) {
+			onLimitExceeded?.(maxLength, model);
+			return true;
+		}
 		const domSelection = document.getSelection();
 		if (
 			mode !== "markdown" ||
@@ -1337,6 +1601,10 @@ export function Editpal(
 	}
 
 	function onBeforeInput(event: InputEvent) {
+		if (!editable) {
+			preventDefaultAndStop(event);
+			return;
+		}
 		if (event.isComposing || model._isComposing) {
 			return;
 		}
@@ -1359,7 +1627,7 @@ export function Editpal(
 				if (event.data != null) {
 					preventDefaultAndStop(event);
 					if (!editSelectedMarkdown(event.data)) {
-						action(ACTION._Key, event.data);
+						insertText(event.data);
 					}
 				}
 				return;
@@ -1422,7 +1690,7 @@ export function Editpal(
 			const text = event.data ?? transfer?.getData("text/plain");
 			preventDefaultAndStop(event);
 			if (text) {
-				action(ACTION._Key, text);
+				insertText(text);
 			}
 			return;
 		}
@@ -1447,15 +1715,61 @@ export function Editpal(
 				model,
 				editor: ref,
 				mode,
+				editable,
+				extensions,
 			}}
 		>
 			<FloatingToolbar />
 			<SlashDropdown />
+			<MentionDropdown />
+
+			{extensions?.attachments &&
+				extensions.attachments.pickerLabel !== false && (
+				<div className="e-attachment-picker">
+					<button
+						type="button"
+						disabled={!editable}
+						onClick={() => fileInputRef.current?.click()}
+					>
+						{extensions.attachments.pickerLabel || "Attach files"}
+					</button>
+					<input
+						ref={fileInputRef}
+						type="file"
+						hidden
+						accept={extensions.attachments.accept}
+						multiple={extensions.attachments.multiple !== false}
+						onChange={(event) => {
+							const files = event.currentTarget.files;
+							if (files) {
+								void uploadFiles(files);
+							}
+							event.currentTarget.value = "";
+						}}
+					/>
+				</div>
+			)}
 
 			<div
+				{...editorProps}
 				ref={ref}
-				contentEditable
-				tabIndex={0}
+				id={id || editorProps?.id}
+				className={[editorProps?.className, className].filter(Boolean).join(
+					" ",
+				) ||
+					undefined}
+				style={style || editorProps?.style}
+				contentEditable={editable}
+				tabIndex={disabled ? -1 : 0}
+				role="textbox"
+				aria-label={ariaLabel || editorProps?.["aria-label"] ||
+					"Markdown editor"}
+				aria-multiline="true"
+				aria-readonly={readOnly || undefined}
+				aria-disabled={disabled || undefined}
+				aria-required={required || undefined}
+				data-ep-placeholder={placeholder}
+				data-ep-empty={markdown.length === 0 || undefined}
 				onBeforeInput={onBeforeInput}
 				onDragStart={preventDefaultAndStop}
 				onCopy={(e) => {
@@ -1469,14 +1783,20 @@ export function Editpal(
 					}
 
 					preventDefaultAndStop(e);
+					const copied = selectionTouchesMarkdownMarker(domSelection)
+						? domSelection.toString()
+						: model.selectedText();
+					e.clipboardData?.setData("text/markdown", copied);
 					e.clipboardData?.setData(
 						"text/plain",
-						selectionTouchesMarkdownMarker(domSelection)
-							? domSelection.toString()
-							: model.selectedText(),
+						copied,
 					);
 				}}
 				onCut={(e) => {
+					if (!editable) {
+						preventDefaultAndStop(e);
+						return;
+					}
 					const domSelection = document.getSelection();
 					if (
 						!domSelection ||
@@ -1487,11 +1807,13 @@ export function Editpal(
 					}
 
 					preventDefaultAndStop(e);
+					const copied = selectionTouchesMarkdownMarker(domSelection)
+						? domSelection.toString()
+						: model.selectedText();
+					e.clipboardData?.setData("text/markdown", copied);
 					e.clipboardData?.setData(
 						"text/plain",
-						selectionTouchesMarkdownMarker(domSelection)
-							? domSelection.toString()
-							: model.selectedText(),
+						copied,
 					);
 					if (editSelectedMarkdown("")) {
 						return;
@@ -1502,20 +1824,32 @@ export function Editpal(
 				}}
 				onPaste={(e) => {
 					preventDefaultAndStop(e);
+					if (!editable) {
+						return;
+					}
+					const files = e.clipboardData?.files;
+					if (files?.length && extensions?.attachments) {
+						void uploadFiles(files);
+						return;
+					}
 
-					const text = e.clipboardData?.getData("text/plain") ??
-						e.clipboardData?.getData("text") ??
+					const text = e.clipboardData?.getData("text/markdown") ||
+						e.clipboardData?.getData("text/plain") ||
+						e.clipboardData?.getData("text") ||
 						"";
 
 					model.history.batch();
 
 					if (!editSelectedMarkdown(text)) {
-						action(ACTION._Key, text);
+						insertText(text);
 					}
 
 					model.history.batch();
 				}}
 				onKeyDown={(e) => {
+					if (!editable) {
+						return;
+					}
 					const primaryModifier = e.metaKey || e.ctrlKey;
 					const key = e.key.toLowerCase();
 
@@ -1599,7 +1933,7 @@ export function Editpal(
 					if (Array.from(e.key).length === 1) {
 						preventDefaultAndStop(e);
 						if (!editSelectedMarkdown(e.key)) {
-							action(ACTION._Key, e.key);
+							insertText(e.key);
 						}
 						return;
 					}
@@ -1638,6 +1972,20 @@ export function Editpal(
 			>
 				<RenderMap key={`root-${reload}`} items={tokens} />
 			</div>
+			{name && (
+				<textarea
+					aria-hidden="true"
+					className="e-form-value"
+					tabIndex={-1}
+					readOnly
+					name={name}
+					form={form}
+					required={required}
+					disabled={disabled}
+					value={markdown}
+					onInvalid={() => ref.current?.focus()}
+				/>
+			)}
 		</EditorContext.Provider>
 	);
 }

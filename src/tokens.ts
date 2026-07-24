@@ -25,6 +25,23 @@ export interface TextTokenProps extends Record<string, any> {
 	link?: string;
 	markdownEscape?: boolean;
 	url?: string;
+	mention?: MentionData;
+}
+
+export type JsonValue =
+	| boolean
+	| null
+	| number
+	| string
+	| JsonValue[]
+	| { [key: string]: JsonValue };
+
+export interface MentionData<Value extends JsonValue = JsonValue> {
+	configId: string;
+	id: string;
+	label: string;
+	trigger: string;
+	value?: Value;
 }
 
 /** Editable text and its active inline Markdown formatting. */
@@ -46,6 +63,21 @@ export interface ImgTokenProps extends Record<string, any> {
 
 export interface ImgToken extends Token<ImgTokenProps> {
 	type: "img";
+	src: string;
+}
+
+export interface AttachmentTokenProps extends Record<string, any> {
+	alt?: string;
+	kind: "file" | "image" | "video";
+	meta?: Record<string, JsonValue>;
+	mimeType?: string;
+	name: string;
+	size?: number;
+}
+
+/** An uploaded file represented as an atomic inline editor item. */
+export interface AttachmentToken extends Token<AttachmentTokenProps> {
+	type: "attachment";
 	src: string;
 }
 
@@ -115,7 +147,7 @@ export type BlockToken =
 	| CodeToken
 	| HorizontalRuleToken;
 /** Inline document content: editable text, an image, or an automatic URL. */
-export type InlineToken = TextToken | ImgToken | UrlToken;
+export type InlineToken = TextToken | ImgToken | UrlToken | AttachmentToken;
 /** Any token that may appear in an Editpal document. */
 export type AnyToken = InlineToken | BlockToken;
 /** Root representation of a parsed Markdown document. */

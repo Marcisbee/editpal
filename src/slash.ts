@@ -39,6 +39,7 @@ export class Slash extends Exome {
 	public triggerEnd?: number;
 
 	private dismissedTrigger?: string;
+	private unsubscribers: Array<() => void> = [];
 
 	constructor(public model: Model) {
 		super();
@@ -119,8 +120,16 @@ export class Slash extends Exome {
 			);
 		};
 
-		subscribe(selection, handler);
-		subscribe(model, handler);
+		this.unsubscribers.push(
+			subscribe(selection, handler),
+			subscribe(model, handler),
+		);
+	}
+
+	public destroy() {
+		for (const unsubscribe of this.unsubscribers.splice(0)) {
+			unsubscribe();
+		}
 	}
 
 	public close() {

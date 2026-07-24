@@ -1,5 +1,5 @@
 import { h } from "preact";
-import type { ComponentChildren, VNode } from "preact";
+import type { ComponentChild, ComponentChildren, VNode } from "preact";
 
 import type {
 	BlockToken,
@@ -7,6 +7,9 @@ import type {
 	TextToken,
 	TokenRoot,
 } from "./tokens.ts";
+import type { EditpalExtensions } from "./extensions.ts";
+import { toMarkdown } from "./markdown-parser.ts";
+import { RenderAttachment } from "./plugin/attachment.tsx";
 
 /** Properties accepted by the read-only {@link MarkdownPreview} renderer. */
 export interface MarkdownPreviewProps {
@@ -16,6 +19,8 @@ export interface MarkdownPreviewProps {
 	className?: string;
 	/** Parsed Markdown document to render. */
 	tokens: TokenRoot;
+	/** Opt-in renderers shared with the editable surface. */
+	extensions?: EditpalExtensions;
 }
 
 function safeHref(value: string | undefined): string | undefined {
@@ -26,7 +31,12 @@ function safeHref(value: string | undefined): string | undefined {
 	return /^(?:https?:|mailto:|\/|#)/i.test(trimmed) ? trimmed : undefined;
 }
 
-function PreviewText({ token }: { token: TextToken }) {
+function PreviewText(
+	{ extensions, token }: {
+		extensions?: EditpalExtensions;
+		token: TextToken;
+	},
+) {
 	const {
 		boldMarker: _boldMarker,
 		code,
@@ -34,12 +44,13 @@ function PreviewText({ token }: { token: TextToken }) {
 		highlight,
 		italicMarker: _italicMarker,
 		link,
+		mention,
 		markdownEscape: _markdownEscape,
 		url: _url,
 		...style
 	} = token.props;
 
-	return (
+	const content = (
 		<span
 			key={token.id}
 			style={style}
@@ -49,9 +60,20 @@ function PreviewText({ token }: { token: TextToken }) {
 			data-ep-link={link || undefined}
 			data-t={token.text ? true : "empty"}
 		>
-			{token.text || "\u200B"}
+			{mention
+				? extensions?.mentions?.find(({ id }) => id === mention.configId)
+					?.renderMention?.({ mention, text: token.text }) ?? token.text
+				: token.text || "\u200B"}
 		</span>
 	);
+	const href = safeHref(link);
+	return href
+		? (
+			<a href={href} rel="noreferrer noopener">
+				{content}
+			</a>
+		)
+		: content;
 }
 
 function PreviewImage(
@@ -63,19 +85,10 @@ function PreviewImage(
 	}
 
 	return (
-		<span key={token.id} data-ep-img data-ep-preview-img>
-			<br />
-			<span>
-				<img src={src} alt={token.props.alt || ""} />
-				<input
-					type="text"
-					readOnly
-					tabIndex={-1}
-					aria-label="Image caption"
-					value={token.props.alt || ""}
-				/>
-			</span>
-		</span>
+		<figure key={token.id} data-ep-img data-ep-preview-img>
+			<img src={src} alt={token.props.alt || ""} />
+			{token.props.alt && <figcaption>{token.props.alt}</figcaption>}
+		</figure>
 	);
 }
 
@@ -106,19 +119,72 @@ function PreviewUrl(
 						: undefined,
 				}}
 			/>
+			<span>{token.type === "t" ? token.text : token.src}</span>
 		</a>
 	);
 }
 
-function renderInline(tokens: InlineToken[]): ComponentChildren[] {
+function renderInline(
+	tokens: InlineToken[],
+	extensions?: EditpalExtensions,
+): ComponentChildren[] {
 	return tokens.map((token) => {
 		if (token.type === "img") {
 			return <PreviewImage key={token.id} token={token} />;
 		}
-		if (token.type === "url" || token.props.url) {
+		if (token.type === "attachment") {
+			return (
+				<RenderAttachment
+					key={token.id}
+					item={token}
+					preview
+					config={extensions?.attachments}
+				/>
+			);
+		}
+		if (token.type === "url" || (token.type === "t" && token.props.url)) {
+			const source = token.type === "url" ? token.src : token.props.url || "";
+			const integration = extensions?.inlineIntegrations?.map((definition) => ({
+				definition,
+				match: definition.match(source, token),
+			})).find(({ match }) => Boolean(match));
+			if (integration?.match) {
+				const context = {
+					match: integration.match,
+					token,
+				};
+				return (
+					<span
+						data-ep-inline-integration={integration.definition.id}
+						aria-label={integration.definition.ariaLabel?.(context)}
+					>
+						{integration.definition.render(context)}
+					</span>
+				);
+			}
 			return <PreviewUrl key={token.id} token={token} />;
 		}
-		return <PreviewText key={token.id} token={token} />;
+		if (token.type === "t" && token.props.link) {
+			const integration = extensions?.inlineIntegrations?.map((definition) => ({
+				definition,
+				match: definition.match(token.props.link || "", token),
+			})).find(({ match }) => Boolean(match));
+			if (integration?.match) {
+				const context = {
+					match: integration.match,
+					token,
+				};
+				return (
+					<span
+						data-ep-inline-integration={integration.definition.id}
+						aria-label={integration.definition.ariaLabel?.(context)}
+					>
+						{integration.definition.render(context)}
+					</span>
+				);
+			}
+		}
+		return <PreviewText key={token.id} token={token} extensions={extensions} />;
 	});
 }
 
@@ -126,12 +192,14 @@ function PreviewBlock({
 	block,
 	codeEnd,
 	codeStart,
+	extensions,
 }: {
 	block: BlockToken;
 	codeEnd: boolean;
 	codeStart: boolean;
+	extensions?: EditpalExtensions;
 }) {
-	const children = renderInline(block.children);
+	const children = renderInline(block.children, extensions);
 
 	switch (block.type) {
 		case "h": {
@@ -246,23 +314,82 @@ function PreviewBlock({
 export function MarkdownPreview({
 	ariaLabel = "Markdown preview",
 	className,
+	extensions,
 	tokens,
 }: MarkdownPreviewProps): VNode {
+	const content: ComponentChild[] = [];
+	for (let index = 0; index < tokens.length; index++) {
+		const block = tokens[index];
+		if (block.type === "l") {
+			const type = block.props.type === "ol" ? "ol" : "ul";
+			const items: ComponentChild[] = [];
+			while (
+				tokens[index]?.type === "l" &&
+				(tokens[index] as BlockToken & { type: "l" }).props.type ===
+					block.props.type &&
+				(tokens[index] as BlockToken & { type: "l" }).props.indent ===
+					block.props.indent
+			) {
+				const listBlock = tokens[index];
+				items.push(
+					<PreviewBlock
+						key={listBlock.id}
+						block={listBlock}
+						codeEnd
+						codeStart
+						extensions={extensions}
+					/>,
+				);
+				index += 1;
+			}
+			index -= 1;
+			content.push(h(type, { key: `list-${block.id}` }, items));
+			continue;
+		}
+
+		const rendered = (
+			<PreviewBlock
+				key={block.id}
+				block={block}
+				codeEnd={block.type === "code" &&
+					tokens[index + 1]?.type !== "code"}
+				codeStart={block.type === "code" &&
+					tokens[index - 1]?.type !== "code"}
+				extensions={extensions}
+			/>
+		);
+		const source = toMarkdown([block]);
+		const embed = extensions?.lineEmbeds?.map((definition) => ({
+			definition,
+			match: definition.match(source, block),
+		})).find(({ match }) => Boolean(match));
+		if (embed?.match) {
+			content.push(
+				<div
+					key={`embed-${block.id}-${embed.definition.id}`}
+					data-ep-line-with-embed
+				>
+					{!embed.definition.replaceLine && rendered}
+					<div data-ep-line-embed={embed.definition.id}>
+						{embed.definition.render({
+							block,
+							match: embed.match,
+						})}
+					</div>
+				</div>,
+			);
+		} else {
+			content.push(rendered);
+		}
+	}
+
 	return (
 		<article
 			className={className}
 			data-ep-preview
 			aria-label={ariaLabel}
 		>
-			{tokens.map((block, index) => (
-				<PreviewBlock
-					key={block.id}
-					block={block}
-					codeEnd={block.type === "code" && tokens[index + 1]?.type !== "code"}
-					codeStart={block.type === "code" &&
-						tokens[index - 1]?.type !== "code"}
-				/>
-			))}
+			{content}
 		</article>
 	);
 }
