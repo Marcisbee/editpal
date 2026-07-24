@@ -5,6 +5,7 @@ import { useContext, useEffect, useMemo, useRef, useState } from "preact/hooks";
 
 import { EditorContext, preventDefaultAndStop } from "./editpal.tsx";
 import { ACTION } from "./model.ts";
+import { toMarkdown } from "./markdown-parser.ts";
 import { Toolbar } from "./toolbar.tsx";
 import type { AnyToken, InlineToken } from "./tokens.ts";
 import { isBlockToken } from "./tokens.ts";
@@ -35,12 +36,12 @@ function linkValue(token: InlineToken): string {
 }
 
 function LinkToolbar({ token }: { token: InlineToken }) {
-	const { editor, model, setActiveId } = useContext(EditorContext);
+	const { editor, extensions, model, setActiveId } = useContext(EditorContext);
 	const [url, setUrl] = useState(linkValue(token));
 
 	useEffect(() => setUrl(linkValue(token)), [token.id, linkValue(token)]);
 
-	function finish(value: string | null) {
+	function endTokenId(): string {
 		let endId = token.id;
 		if (token.type === "t" && token.props.link) {
 			const parent = model.parent(token.key);
@@ -57,8 +58,37 @@ function LinkToolbar({ token }: { token: InlineToken }) {
 				endId = child.id;
 			}
 		}
+		return endId;
+	}
+
+	function placeAfter(endId: string) {
+		const currentKey = model._idToKey[token.id];
+		const current = currentKey ? model.findElement(currentKey) : undefined;
+		const parent = current && !isBlockToken(current)
+			? model.parent(current.key)
+			: undefined;
+		const isLineEmbed = parent &&
+			extensions?.lineEmbeds?.some((definition) =>
+				Boolean(definition.match(toMarkdown([parent]), parent))
+			);
+		if (parent && isLineEmbed) {
+			const blockIndex = model.tokens.indexOf(parent);
+			const nextBlock = model.tokens[blockIndex + 1];
+			if (nextBlock?.children[0]) {
+				model.select(nextBlock.children[0], 0);
+			} else {
+				model.placeCaretAfter(endId);
+				model.action(ACTION._Enter);
+			}
+		} else {
+			model.placeCaretAfter(endId);
+		}
+	}
+
+	function finish(value: string | null) {
+		const endId = endTokenId();
 		model.updateLink(token.id, value);
-		model.placeCaretAfter(endId);
+		placeAfter(endId);
 		setActiveId(undefined);
 		editor.current?.focus({ preventScroll: true });
 	}
@@ -79,6 +109,7 @@ function LinkToolbar({ token }: { token: InlineToken }) {
 							finish(url.trim() || null);
 						}
 						if (event.key === "Escape") {
+							placeAfter(endTokenId());
 							setActiveId(undefined);
 							editor.current?.focus({ preventScroll: true });
 						}

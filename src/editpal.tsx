@@ -1059,6 +1059,10 @@ export function Editpal(
 		_stack.splice(0).pop()?.();
 	});
 
+	function activeSelectableId(): string | undefined {
+		return activeId;
+	}
+
 	function insertText(
 		text: string,
 		type: typeof ACTION._Compose | typeof ACTION._Key = ACTION._Key,
@@ -1070,6 +1074,15 @@ export function Editpal(
 				onLimitExceeded?.(maxLength, model);
 				return false;
 			}
+		}
+		const selectedId = activeSelectableId();
+		if (selectedId) {
+			model.replaceSelectable(selectedId, text);
+			setActiveId(undefined);
+			return true;
+		}
+		if (activeId) {
+			setActiveId(undefined);
 		}
 		action(type, text);
 		return true;
@@ -1090,6 +1103,26 @@ export function Editpal(
 		}
 	}
 
+	function placeCaretAfterPastedLink(link: TextToken) {
+		const parent = model.parent(link.key);
+		const isLineEmbed = parent &&
+			extensions?.lineEmbeds?.some((definition) =>
+				Boolean(definition.match(toMarkdown([parent]), parent))
+			);
+		if (!parent || !isLineEmbed) {
+			model.placeCaretAfter(link.id);
+			return;
+		}
+		const blockIndex = model.tokens.indexOf(parent);
+		const nextBlock = model.tokens[blockIndex + 1];
+		if (nextBlock?.children[0]) {
+			model.select(nextBlock.children[0], 0);
+			return;
+		}
+		model.placeCaretAfter(link.id);
+		action(ACTION._Enter);
+	}
+
 	function pasteLinkOverSelection(url: string): boolean {
 		if (model.selectionTouchesCodeBlock) {
 			return false;
@@ -1099,16 +1132,15 @@ export function Editpal(
 			return false;
 		}
 		action(ACTION._FormatAdd, ["link", url]);
-		let lastLink: TextToken | undefined;
-		for (const block of model.tokens) {
-			for (const child of block.children) {
-				if (child.type === "t" && child.props.link === url) {
-					lastLink = child;
-				}
-			}
-		}
+		const lastLink = model.keysBetween(
+			model.selection.first[0],
+			model.selection.last[0],
+		).map((key) => model.findElement(key)).reverse().find(
+			(token): token is TextToken =>
+				token?.type === "t" && token.props.link === url,
+		);
 		if (lastLink) {
-			model.placeCaretAfter(lastLink.id);
+			placeCaretAfterPastedLink(lastLink);
 		}
 		return true;
 	}
@@ -1148,7 +1180,7 @@ export function Editpal(
 			token?.type === "t" && token.props.link === url
 		);
 		if (lastLink?.type === "t") {
-			model.placeCaretAfter(lastLink.id);
+			placeCaretAfterPastedLink(lastLink);
 		}
 		return true;
 	}
@@ -1239,10 +1271,34 @@ export function Editpal(
 		) {
 			return;
 		}
+		const mentionElement = event.target instanceof Element
+			? event.target.closest<HTMLElement>("[data-ep-mention]")
+			: undefined;
+		const mentionId = mentionElement?.dataset.ep;
+		const mentionToken = mentionId
+			? model.findElement(model._idToKey[mentionId])
+			: undefined;
+		if (
+			mentionElement &&
+			mentionToken?.type === "t" &&
+			mentionToken.props.mention
+		) {
+			preventDefaultAndStop(event);
+			ref.current?.focus({ preventScroll: true });
+			const rect = mentionElement.getBoundingClientRect();
+			if (event.clientX < rect.left + rect.width / 2) {
+				model.placeCaretBefore(mentionToken.id);
+			} else {
+				model.placeCaretAfter(mentionToken.id);
+			}
+			return;
+		}
 		const selectable = event.target instanceof Element
 			? event.target.closest<HTMLElement>("[data-ep-selectable]")
 			: undefined;
 		if (selectable) {
+			preventDefaultAndStop(event);
+			ref.current?.focus({ preventScroll: true });
 			const id = selectable.dataset.ep;
 			if (id) {
 				setActiveId(id);
@@ -1255,12 +1311,7 @@ export function Editpal(
 					)
 					: token;
 				if (selectableToken && !isBlockToken(selectableToken)) {
-					model.selection.setSelection(
-						selectableToken.key,
-						0,
-						selectableToken.key,
-						0,
-					);
+					model.select(selectableToken, 0);
 					model.selection.setFormat(
 						selectableToken.type === "t" ? selectableToken.props : {},
 					);
@@ -1763,6 +1814,12 @@ export function Editpal(
 		if (event.isComposing || model._isComposing) {
 			return;
 		}
+		// A selected atomic element can have a browser caret immediately beside
+		// its contenteditable=false DOM. Preserve the explicit model selection;
+		// otherwise reconcile from the visible native caret.
+		if (!activeSelectableId()) {
+			onSelectionChange();
+		}
 
 		if (
 			(event.inputType === "deleteContentBackward" ||
@@ -1989,6 +2046,11 @@ export function Editpal(
 					if (!editable) {
 						return;
 					}
+					// Firefox may defer `selectionchange` until after the paste event.
+					// Capture the native range synchronously so async uploads retain
+					// the user's actual insertion point in every browser.
+					onSelectionChange();
+					setActiveId(undefined);
 					const files = e.clipboardData?.files;
 					if (files?.length && extensions?.attachments) {
 						void uploadFiles(files);
@@ -2019,8 +2081,32 @@ export function Editpal(
 					if (!editable) {
 						return;
 					}
+					// Native selection events can be deferred (notably in Firefox).
+					// Reconcile the model with the caret the user can actually see
+					// before applying any keyboard command.
+					const selectedBeforeReconcile = activeSelectableId();
+					if (!selectedBeforeReconcile) {
+						onSelectionChange();
+					}
 					const primaryModifier = e.metaKey || e.ctrlKey;
 					const key = e.key.toLowerCase();
+					const selectedId = selectedBeforeReconcile ||
+						activeSelectableId();
+					if (activeId && !selectedId) {
+						setActiveId(undefined);
+					}
+
+					if (
+						selectedId &&
+						(key === "backspace" || key === "delete") &&
+						!primaryModifier &&
+						!e.altKey
+					) {
+						preventDefaultAndStop(e);
+						model.removeSelectable(selectedId);
+						setActiveId(undefined);
+						return;
+					}
 
 					if (
 						(key === "backspace" || key === "delete") &&
@@ -2053,6 +2139,11 @@ export function Editpal(
 					}
 
 					if (primaryModifier && !e.altKey) {
+						if (key === "a") {
+							preventDefaultAndStop(e);
+							model.selectAll();
+							return;
+						}
 						if (key === "z") {
 							preventDefaultAndStop(e);
 							action(e.shiftKey ? ACTION._Redo : ACTION._Undo);

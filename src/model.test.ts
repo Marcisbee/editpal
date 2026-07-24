@@ -228,6 +228,88 @@ Deno.test("typing continues after a trailing mention", () => {
 	assertModelInvariants(model);
 });
 
+Deno.test("typing at either mention boundary never mutates the mention token", () => {
+	const createMentionModel = () => {
+		const model = new Model([paragraph(text("A @mar B"))]);
+		model.insertMention("0.0", 2, 6, "@marcis", {
+			configId: "people",
+			id: "marcis",
+			label: "marcis",
+			trigger: "@",
+		});
+		return model;
+	};
+
+	for (
+		const [offset, inserted, expected] of [
+			[0, "L", "A L@marcis B"],
+			[7, "R", "A @marcisR B"],
+		] as const
+	) {
+		const model = createMentionModel();
+		const mention = model.tokens[0].children.find((child) =>
+			child.type === "t" && child.props.mention
+		);
+		assertExists(mention);
+		if (mention.type !== "t") {
+			throw new Error("Expected a text mention");
+		}
+		model.selection.setSelection(
+			mention.key,
+			offset,
+			mention.key,
+			offset,
+		);
+
+		model.action(ACTION._Key, inserted);
+
+		assertEquals(documentText(model), expected);
+		assertEquals(mention.text, "@marcis");
+		assertEquals(mention.props.mention?.id, "marcis");
+		assertModelInvariants(model);
+	}
+});
+
+Deno.test("the boundary between adjacent mentions targets the expected mention", () => {
+	const first = text("@ada", {
+		mention: {
+			configId: "people",
+			id: "ada",
+			label: "ada",
+			trigger: "@",
+		},
+	});
+	const second = text("@grace", {
+		mention: {
+			configId: "people",
+			id: "grace",
+			label: "grace",
+			trigger: "@",
+		},
+	});
+	const model = new Model([paragraph(first, second)]);
+
+	model.placeCaretAfter(first.id);
+	model.action(ACTION._Remove);
+
+	assertEquals(documentText(model), "@grace");
+	assertEquals(
+		model.tokens[0].children.some((child) =>
+			child.type === "t" && child.props.mention?.id === "ada"
+		),
+		false,
+	);
+	assertEquals(
+		model.tokens[0].children.some((child) =>
+			child.type === "t" && child.props.mention?.id === "grace"
+		),
+		true,
+	);
+	model.action(ACTION._Undo);
+	assertEquals(documentText(model), "@ada@grace");
+	assertModelInvariants(model);
+});
+
 Deno.test("typing after a mention does not inherit a following link", () => {
 	const url = "https://example.com";
 	const model = new Model([
@@ -418,6 +500,109 @@ Deno.test("placing the caret after a link creates a plain typing boundary", () =
 		undefined,
 	);
 	assertModelInvariants(model);
+});
+
+Deno.test("deleting complete formatted or linked text leaves no empty markers", () => {
+	for (
+		const source of [
+			"[label](https://example.com)",
+			"**bold**",
+			"_italic_",
+			"~~struck~~",
+			"==highlighted==",
+			"`code`",
+		]
+	) {
+		const model = new Model(parseMarkdown(source));
+		const token = model.tokens[0].children[0];
+		assertEquals(token.type, "t");
+		if (token.type !== "t") {
+			continue;
+		}
+		model.selection.setSelection(
+			token.key,
+			0,
+			token.key,
+			token.text.length,
+		);
+
+		model.action(ACTION._Key, "");
+
+		assertEquals(toMarkdown(model.tokens), "");
+		model.action(ACTION._Undo);
+		assertEquals(toMarkdown(model.tokens), source);
+		assertModelInvariants(model);
+	}
+});
+
+Deno.test("selectable inline integrations and line embeds remove atomically", () => {
+	const inline = new Model(parseMarkdown(
+		"before [repository](https://github.com/example/repo) after",
+	));
+	const inlineLink = inline.tokens[0].children.find((child) =>
+		child.type === "t" && child.props.link
+	);
+	assertExists(inlineLink);
+
+	inline.removeSelectable(inlineLink.id);
+	assertEquals(toMarkdown(inline.tokens), "before  after");
+	inline.action(ACTION._Undo);
+	assertEquals(
+		toMarkdown(inline.tokens),
+		"before [repository](https://github.com/example/repo) after",
+	);
+	inline.action(ACTION._Redo);
+	assertEquals(toMarkdown(inline.tokens), "before  after");
+
+	const line = new Model(parseMarkdown(
+		"before\n[Tweet](https://x.com/example/status/1)\nafter",
+	));
+	const embedBlockId = line.tokens[1].id;
+	line.removeSelectable(embedBlockId);
+	assertEquals(toMarkdown(line.tokens), "before\nafter");
+	line.action(ACTION._Undo);
+	assertEquals(
+		toMarkdown(line.tokens),
+		"before\n[Tweet](https://x.com/example/status/1)\nafter",
+	);
+	line.action(ACTION._Redo);
+	assertEquals(toMarkdown(line.tokens), "before\nafter");
+	assertModelInvariants(inline);
+	assertModelInvariants(line);
+});
+
+Deno.test("typing replaces a selected integration or embed as one edit", () => {
+	const inline = new Model(parseMarkdown(
+		"before [repository](https://github.com/example/repo) after",
+	));
+	const inlineLink = inline.tokens[0].children.find((child) =>
+		child.type === "t" && child.props.link
+	);
+	assertExists(inlineLink);
+	inline.replaceSelectable(inlineLink.id, "replacement");
+	assertEquals(toMarkdown(inline.tokens), "before replacement after");
+	inline.action(ACTION._Undo);
+	assertEquals(
+		toMarkdown(inline.tokens),
+		"before [repository](https://github.com/example/repo) after",
+	);
+	inline.action(ACTION._Redo);
+	assertEquals(toMarkdown(inline.tokens), "before replacement after");
+
+	const line = new Model(parseMarkdown(
+		"before\n[Tweet](https://x.com/example/status/1)\nafter",
+	));
+	line.replaceSelectable(line.tokens[1].id, "replacement");
+	assertEquals(toMarkdown(line.tokens), "before\nreplacement\nafter");
+	line.action(ACTION._Undo);
+	assertEquals(
+		toMarkdown(line.tokens),
+		"before\n[Tweet](https://x.com/example/status/1)\nafter",
+	);
+	line.action(ACTION._Redo);
+	assertEquals(toMarkdown(line.tokens), "before\nreplacement\nafter");
+	assertModelInvariants(inline);
+	assertModelInvariants(line);
 });
 
 Deno.test("smart toolbar formatting targets the word under a collapsed caret", () => {
@@ -2041,4 +2226,82 @@ Deno.test("cross-run and cross-block edit ranges preserve model invariants", () 
 			assertModelInvariants(model);
 		}
 	}
+});
+
+Deno.test("multiline paste parses each Markdown line without leaking block style", () => {
+	const pasted = [
+		"> quoted",
+		"- [x] completed",
+		"- unordered",
+		"7. ordered",
+		"plain **bold**",
+		"```ts",
+		"const literal = '**not bold**';",
+		"```",
+		"after code",
+	].join("\n");
+	const model = new Model(parseMarkdown(""));
+
+	model.action(ACTION._Key, pasted);
+
+	assertEquals(toMarkdown(model.tokens), toMarkdown(parseMarkdown(pasted)));
+	assertEquals(
+		model.tokens.map((block) => block.type),
+		["quote", "todo", "l", "l", "p", "code", "p"],
+	);
+	const literal = model.tokens[5].children[0];
+	assertEquals(literal.type, "t");
+	if (literal.type === "t") {
+		assertEquals(literal.props, {});
+		assertEquals(literal.text, "const literal = '**not bold**';");
+	}
+	assertModelInvariants(model);
+
+	model.action(ACTION._Undo);
+	assertEquals(toMarkdown(model.tokens), "");
+	model.action(ACTION._Redo);
+	assertEquals(toMarkdown(model.tokens), toMarkdown(parseMarkdown(pasted)));
+	assertModelInvariants(model);
+});
+
+Deno.test("select all includes trailing atomic content and replaces as one edit", () => {
+	const model = new Model([
+		{
+			...paragraph(text("first")),
+			props: { size: 1 },
+			type: "h",
+		},
+		paragraph(text("last"), image("trailing")),
+	]);
+
+	model.selectAll();
+	assertEquals(model.selection.first, ["0.0", 0]);
+	assertEquals(model.selection.last, ["1.1", 0]);
+
+	model.action(ACTION._Key, "replacement");
+	assertEquals(toMarkdown(model.tokens), "replacement");
+	model.action(ACTION._Undo);
+	assertEquals(
+		toMarkdown(model.tokens),
+		"# first\nlast![trailing](https://example.com/image.png)",
+	);
+	model.action(ACTION._Redo);
+	assertEquals(toMarkdown(model.tokens), "replacement");
+	assertModelInvariants(model);
+});
+
+Deno.test("select all multiline replacement parses its leading block marker", () => {
+	const model = new Model(parseMarkdown("# Old heading\nold body"));
+	const replacement = "## New heading\n> quote\nplain";
+
+	model.selectAll();
+	model.action(ACTION._Key, replacement);
+
+	assertEquals(toMarkdown(model.tokens), replacement);
+	assertEquals(model.tokens.map((block) => block.type), ["h", "quote", "p"]);
+	model.action(ACTION._Undo);
+	assertEquals(toMarkdown(model.tokens), "# Old heading\nold body");
+	model.action(ACTION._Redo);
+	assertEquals(toMarkdown(model.tokens), replacement);
+	assertModelInvariants(model);
 });

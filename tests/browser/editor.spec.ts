@@ -31,6 +31,11 @@ test("async mention suggestions insert a structured mention", async ({ page }) =
 	const option = page.getByRole("option", { name: /marcis/i });
 	await expect(option).toBeVisible();
 	const listbox = page.getByRole("listbox", { name: "People" });
+	const listboxId = await listbox.getAttribute("id");
+	const firstOptionId = await option.getAttribute("id");
+	await expect(editor).toHaveAttribute("aria-expanded", "true");
+	await expect(editor).toHaveAttribute("aria-controls", listboxId!);
+	await expect(editor).toHaveAttribute("aria-activedescendant", firstOptionId!);
 	expect(
 		await listbox.evaluate((element) =>
 			element.parentElement === document.body
@@ -45,6 +50,7 @@ test("async mention suggestions insert a structured mention", async ({ page }) =
 	expect(box!.x + box!.width).toBeLessThanOrEqual(viewport!.width);
 	expect(box!.y + box!.height).toBeLessThanOrEqual(viewport!.height);
 	await option.click();
+	await expect(editor).toHaveAttribute("aria-expanded", "false");
 	await expect(editor.locator("[data-ep-mention='people']")).toContainText(
 		"@marcis",
 	);
@@ -57,6 +63,100 @@ test("async mention suggestions insert a structured mention", async ({ page }) =
 	}
 	await page.keyboard.press("Backspace");
 	await expect(editor.locator("[data-ep-mention='people']")).toHaveCount(0);
+});
+
+test("mention popup dismisses while loading or empty", async ({ page }) => {
+	const editor = page.getByRole("textbox", {
+		name: "Demo Markdown document",
+	});
+	await editor.getByText("Type @ to try the customizable mention API", {
+		exact: false,
+	}).evaluate((element) => {
+		const editor = element.closest("[contenteditable='true']") as HTMLElement;
+		const node = element.firstChild;
+		if (!editor || !node) {
+			throw new Error("Could not find a mention insertion point");
+		}
+		editor.focus();
+		const range = document.createRange();
+		range.selectNodeContents(node);
+		range.collapse(false);
+		const selection = document.getSelection();
+		selection?.removeAllRanges();
+		selection?.addRange(range);
+		document.dispatchEvent(new Event("selectionchange"));
+
+		const nativeTimeout = window.setTimeout;
+		window.setTimeout =
+			((handler: TimerHandler, timeout?: number, ...args: any[]) =>
+				nativeTimeout(
+					handler,
+					timeout === 80 ? 1_000 : timeout,
+					...args,
+				)) as typeof window.setTimeout;
+	});
+	await page.keyboard.press("Enter");
+	await page.keyboard.type("@mar");
+	const listbox = page.getByRole("listbox", { name: "People" });
+	await expect(listbox).toContainText("Loading…");
+	await page.keyboard.press("Escape");
+	await expect(listbox).toHaveCount(0);
+
+	await page.keyboard.type("zzzz");
+	await expect(listbox).toContainText("No mentions found", {
+		timeout: 2_000,
+	});
+	await page.keyboard.press("Escape");
+	await expect(listbox).toHaveCount(0);
+});
+
+test("clicking either side of a mention places the caret beside it", async ({ page }) => {
+	const editor = page.getByRole("textbox", {
+		name: "Demo Markdown document",
+	});
+	const source = page.locator("textarea[name='content']");
+	await editor.getByText("Type @ to try the customizable mention API", {
+		exact: false,
+	}).evaluate((element) => {
+		const editor = element.closest("[contenteditable='true']") as HTMLElement;
+		const node = element.firstChild;
+		if (!editor || !node) {
+			throw new Error("Could not find a mention insertion point");
+		}
+		editor.focus();
+		const range = document.createRange();
+		range.selectNodeContents(node);
+		range.collapse(false);
+		const selection = document.getSelection();
+		selection?.removeAllRanges();
+		selection?.addRange(range);
+		document.dispatchEvent(new Event("selectionchange"));
+	});
+	await page.keyboard.press("Enter");
+	await page.keyboard.type("@mar");
+	await page.getByRole("option", { name: /marcis/i }).click();
+	await page.keyboard.type(" after");
+
+	const mention = editor.locator("[data-ep-mention='people']");
+	const box = await mention.boundingBox();
+	expect(box).not.toBeNull();
+	await mention.click({ position: { x: 1, y: box!.height / 2 } });
+	await page.keyboard.type("L");
+	await expect(source).toHaveValue(/L@marcis after/);
+	await page.keyboard.press("Backspace");
+	await expect(source).toHaveValue(/@marcis after/);
+
+	const restoredBox = await mention.boundingBox();
+	expect(restoredBox).not.toBeNull();
+	await mention.click({
+		position: {
+			x: Math.max(1, restoredBox!.width - 1),
+			y: restoredBox!.height / 2,
+		},
+	});
+	await page.keyboard.type("R");
+	await expect(source).toHaveValue(/@marcisR after/);
+	await expect(mention).toHaveText("@marcis");
 });
 
 test("typing, history, and task interaction stay model-backed", async ({ page }) => {
@@ -164,6 +264,62 @@ test("images and embeds expose contextual controls when selected", async ({ page
 	await expect(linkToolbar.getByLabel("Link URL")).toHaveValue(
 		"https://twitter.com/openai/status/123456789",
 	);
+});
+
+test("inline integrations and line embeds delete atomically with history", async ({ page }) => {
+	const editor = page.getByRole("textbox", {
+		name: "Demo Markdown document",
+	});
+	const source = page.locator("textarea[name='content']");
+	const inlineIntegration = editor.locator(
+		"[data-ep-inline-integration='github-repository']",
+	);
+	await inlineIntegration.click();
+	await expect(inlineIntegration).toHaveAttribute("data-ep-s", "true");
+	await page.keyboard.press("Delete");
+	await expect(inlineIntegration).toHaveCount(0);
+	await expect(source).not.toHaveValue(/github\.com\/Marcisbee\/editpal/);
+
+	await page.keyboard.press("ControlOrMeta+z");
+	await expect(
+		editor.locator("[data-ep-inline-integration='github-repository']"),
+	).toBeVisible();
+
+	const lineEmbed = editor.locator("[data-ep-line-embed='tweet-demo']");
+	await lineEmbed.click();
+	await expect(lineEmbed).toHaveAttribute("data-ep-s", "true");
+	await page.keyboard.press("Backspace");
+	await expect(lineEmbed).toHaveCount(0);
+	await expect(source).not.toHaveValue(/twitter\.com\/openai\/status/);
+
+	await page.keyboard.press("ControlOrMeta+z");
+	await expect(editor.locator("[data-ep-line-embed='tweet-demo']"))
+		.toBeVisible();
+	await page.keyboard.press("ControlOrMeta+Shift+z");
+	await expect(editor.locator("[data-ep-line-embed='tweet-demo']")).toHaveCount(
+		0,
+	);
+
+	const restoredIntegration = editor.locator(
+		"[data-ep-inline-integration='github-repository']",
+	);
+	await restoredIntegration.click();
+	await page.keyboard.type("replacement");
+	await expect(restoredIntegration).toHaveCount(0);
+	await expect(source).toHaveValue(/\nreplacement\n/);
+	await page.keyboard.press("ControlOrMeta+z");
+	const finalIntegration = editor.locator(
+		"[data-ep-inline-integration='github-repository']",
+	);
+	await expect(finalIntegration).toBeVisible();
+	await finalIntegration.click();
+	await page.getByLabel("Link URL").focus();
+	await page.keyboard.press("Escape");
+	await page.keyboard.type(" continues");
+	await expect(source).toHaveValue(
+		/\[Marcisbee\/editpal\]\(https:\/\/github\.com\/Marcisbee\/editpal\) continues/,
+	);
+	await expect(finalIntegration).not.toContainText("continues");
 });
 
 test("text toolbar requires an explicit selection", async ({ page }) => {
@@ -358,6 +514,122 @@ test("URL paste creates Markdown links and integrations stay opt-in", async ({ p
 	);
 });
 
+test("link paste uses the edited occurrence and exits full-line embeds", async ({ page }) => {
+	const editor = page.getByRole("textbox", {
+		name: "Demo Markdown document",
+	});
+	const source = page.locator("textarea[name='content']");
+	const selectText = async (needle: string, blockText: string) => {
+		await editor.evaluate((element, values) => {
+			const block = Array.from(
+				element.querySelectorAll<HTMLElement>(
+					"p[data-ep], li[data-ep], [data-ep-h], [data-ep-quote]",
+				),
+			).find((candidate) => candidate.textContent === values.blockText);
+			if (!block) {
+				throw new Error(`Could not find block ${values.blockText}`);
+			}
+			const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+			let node: Text | undefined;
+			while (walker.nextNode()) {
+				const candidate = walker.currentNode as Text;
+				if (candidate.data.includes(values.needle)) {
+					node = candidate;
+					break;
+				}
+			}
+			if (!node) {
+				throw new Error(`Could not find ${values.needle}`);
+			}
+			const start = node.data.indexOf(values.needle);
+			const range = document.createRange();
+			range.setStart(node, start);
+			range.setEnd(node, start + values.needle.length);
+			const selection = document.getSelection();
+			selection?.removeAllRanges();
+			selection?.addRange(range);
+			document.dispatchEvent(new Event("selectionchange"));
+		}, { blockText, needle });
+	};
+	const paste = async (text: string) => {
+		await editor.evaluate((element, value) => {
+			const data = new DataTransfer();
+			data.setData("text/plain", value);
+			const event = new Event("paste", { bubbles: true, cancelable: true });
+			Object.defineProperty(event, "clipboardData", { value: data });
+			element.dispatchEvent(event);
+		}, text);
+	};
+
+	await editor.getByText("Type @ to try the customizable mention API", {
+		exact: false,
+	}).evaluate((element) => {
+		const editor = element.closest("[contenteditable=true]") as HTMLElement;
+		const node = element.firstChild;
+		if (!editor || !node) {
+			throw new Error("Could not find a link insertion point");
+		}
+		editor.focus();
+		const range = document.createRange();
+		range.selectNodeContents(node);
+		range.collapse(false);
+		const selection = document.getSelection();
+		selection?.removeAllRanges();
+		selection?.addRange(range);
+		document.dispatchEvent(new Event("selectionchange"));
+	});
+	await page.keyboard.press("Enter");
+	await page.keyboard.type("First Second");
+	await selectText("First", "First Second");
+	await paste("https://openai.com");
+	await page.keyboard.type(" continues");
+	await expect(source).toHaveValue(
+		/\[First\]\(https:\/\/openai\.com\) continues Second/,
+	);
+
+	await editor.evaluate((element) => {
+		const block = Array.from(element.querySelectorAll("p[data-ep]")).find(
+			(candidate) => candidate.textContent?.includes("continues Second"),
+		);
+		if (!block) {
+			throw new Error("Could not find the edited link block");
+		}
+		const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+		let node: Text | undefined;
+		while (walker.nextNode()) {
+			const candidate = walker.currentNode as Text;
+			if (candidate.data.includes(" Second")) {
+				node = candidate;
+			}
+		}
+		if (!node) {
+			throw new Error("Could not find the link block ending");
+		}
+		const range = document.createRange();
+		range.setStart(node, node.data.length);
+		range.collapse(true);
+		const selection = document.getSelection();
+		selection?.removeAllRanges();
+		selection?.addRange(range);
+		document.dispatchEvent(new Event("selectionchange"));
+	});
+	await page.keyboard.press("Enter");
+	await page.keyboard.type("Tweet");
+	await selectText("Tweet", "Tweet");
+	const initialEmbeds = await editor.locator("[data-ep-line-embed]").count();
+	await paste("https://x.com/openai/status/42");
+	await expect(editor.locator("[data-ep-line-embed]")).toHaveCount(
+		initialEmbeds + 1,
+	);
+	await page.keyboard.type("after embed");
+	await expect(source).toHaveValue(
+		/\[Tweet\]\(https:\/\/x\.com\/openai\/status\/42\)\nafter embed/,
+	);
+	await expect(editor.locator("[data-ep-line-embed]")).toHaveCount(
+		initialEmbeds + 1,
+	);
+});
+
 test("pasted images are selectable and leave the caret on a new line", async ({ page }) => {
 	const editor = page.getByRole("textbox", {
 		name: "Demo Markdown document",
@@ -486,4 +758,121 @@ test("preview produces semantic lists and clickable labeled links", async ({ pag
 	await expect(
 		page.locator("[data-ep-preview] a[href='https://openai.com']"),
 	).toContainText("OpenAI");
+});
+
+test("large multiline paste preserves block types, history, and visible caret", async ({ page }) => {
+	const editor = page.getByRole("textbox", {
+		name: "Demo Markdown document",
+	});
+	const source = page.locator("textarea[name='content']");
+	const sections = Array.from({ length: 80 }, (_, index) => {
+		const number = index + 1;
+		return [
+			`## Stress ${number}`,
+			`Paragraph ${number} with **bold**, _italic_, and [link](https://example.com/${number}).`,
+			`> Quote ${number}`,
+			`- [x] Task ${number}`,
+			`- Item ${number}`,
+			`${number}. Ordered ${number}`,
+			"```ts",
+			`const section${number} = "**literal**";`,
+			"```",
+			"",
+		].join("\n");
+	}).join("\n");
+
+	await editor.getByText("Type @ to try the customizable mention API", {
+		exact: false,
+	}).evaluate((element) => {
+		const node = element.firstChild;
+		if (!node) {
+			throw new Error("Could not find a long-paste insertion point");
+		}
+		const range = document.createRange();
+		range.selectNodeContents(node);
+		range.collapse(false);
+		const selection = document.getSelection();
+		selection?.removeAllRanges();
+		selection?.addRange(range);
+		document.dispatchEvent(new Event("selectionchange"));
+	});
+	await page.keyboard.press("Enter");
+	const beforePaste = await source.inputValue();
+	await editor.evaluate((element, text) => {
+		const data = new DataTransfer();
+		data.setData("text/plain", text);
+		const paste = new Event("paste", { bubbles: true, cancelable: true });
+		Object.defineProperty(paste, "clipboardData", { value: data });
+		element.dispatchEvent(paste);
+	}, sections);
+
+	await expect(source).toHaveValue(
+		new RegExp(
+			`Stress 80[\\s\\S]*const section80 = "\\*\\*literal\\*\\*";`,
+		),
+	);
+	await expect(editor.locator("[data-ep-quote]")).toHaveCount(81);
+	await expect(editor.locator("[data-ep-code]")).toHaveCount(81);
+
+	const expectCaretVisible = async () => {
+		await expect.poll(() =>
+			page.evaluate(() => {
+				const selection = document.getSelection();
+				if (!selection?.rangeCount) {
+					return false;
+				}
+				const rect = selection.getRangeAt(0).getBoundingClientRect();
+				return rect.top >= 0 && rect.bottom <= innerHeight;
+			})
+		).toBe(true);
+	};
+	await expectCaretVisible();
+
+	await page.keyboard.press("ControlOrMeta+z");
+	await expect(source).toHaveValue(beforePaste);
+	await expectCaretVisible();
+	await page.keyboard.press("ControlOrMeta+Shift+z");
+	await expect(source).toHaveValue(/Stress 80/);
+	await expectCaretVisible();
+});
+
+test("select all replaces every block and trailing atom without inheriting style", async ({ page }) => {
+	const editor = page.getByRole("textbox", {
+		name: "Demo Markdown document",
+	});
+	const source = page.locator("textarea[name='content']");
+	const original = await source.inputValue();
+	const replacement = [
+		"## Replacement heading",
+		"> Replacement quote",
+		"- [x] Replacement task",
+		"```js",
+		"const literal = '**code**';",
+		"```",
+		"Replacement tail",
+	].join("\n");
+
+	await editor.focus();
+	await page.keyboard.press("Control+a");
+	await editor.evaluate((element, text) => {
+		const data = new DataTransfer();
+		data.setData("text/plain", text);
+		const paste = new Event("paste", { bubbles: true, cancelable: true });
+		Object.defineProperty(paste, "clipboardData", { value: data });
+		element.dispatchEvent(paste);
+	}, replacement);
+
+	await expect(source).toHaveValue(replacement);
+	await expect(editor.locator("[data-ep-img]")).toHaveCount(0);
+	await expect(editor.locator("[data-ep-h='2']")).toContainText(
+		"Replacement heading",
+	);
+	await expect(editor.locator("[data-ep-code]")).toContainText(
+		"const literal = '**code**';",
+	);
+
+	await page.keyboard.press("Control+z");
+	await expect(source).toHaveValue(original);
+	await page.keyboard.press("Control+Shift+z");
+	await expect(source).toHaveValue(replacement);
 });

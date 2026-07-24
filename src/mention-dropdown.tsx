@@ -123,6 +123,7 @@ export function MentionDropdown() {
 	const signature = active
 		? `${active.config.id}:${active.key}:${active.start}:${active.end}:${active.query}`
 		: undefined;
+	const popupOpen = Boolean(active && focus && dismissed !== signature);
 
 	useEffect(() => {
 		abortRef.current?.abort();
@@ -165,7 +166,7 @@ export function MentionDropdown() {
 
 	useEffect(() => {
 		const target = editor.current;
-		if (!target || !active || !focus || !results.length) {
+		if (!target || !active || !focus) {
 			return;
 		}
 		const handler = (event: KeyboardEvent) => {
@@ -173,6 +174,13 @@ export function MentionDropdown() {
 				event.preventDefault();
 				event.stopPropagation();
 				setDismissed(signature);
+				return;
+			}
+			if (!results.length) {
+				if (event.key === "Enter" && loading) {
+					event.preventDefault();
+					event.stopPropagation();
+				}
 				return;
 			}
 			if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -221,6 +229,7 @@ export function MentionDropdown() {
 		editor.current,
 		focus,
 		model,
+		loading,
 		results,
 		signature,
 	]);
@@ -229,6 +238,51 @@ export function MentionDropdown() {
 	const anchor = active && tokenId
 		? editor.current?.querySelector<HTMLElement>(`[data-ep="${tokenId}"]`)
 		: undefined;
+
+	useLayoutEffect(() => {
+		const target = editor.current;
+		if (!target || !configs.length) {
+			return;
+		}
+		const managed = [
+			"aria-activedescendant",
+			"aria-autocomplete",
+			"aria-controls",
+			"aria-expanded",
+			"aria-haspopup",
+		] as const;
+		const previous = new Map(
+			managed.map((attribute) => [attribute, target.getAttribute(attribute)]),
+		);
+		target.setAttribute("aria-autocomplete", "list");
+		target.setAttribute("aria-expanded", String(popupOpen));
+		target.setAttribute("aria-haspopup", "listbox");
+		if (popupOpen) {
+			target.setAttribute("aria-controls", listId);
+			if (results[activeIndex]) {
+				target.setAttribute(
+					"aria-activedescendant",
+					`${listId}-option-${activeIndex}`,
+				);
+			}
+		}
+		return () => {
+			for (const [attribute, value] of previous) {
+				if (value === null) {
+					target.removeAttribute(attribute);
+				} else {
+					target.setAttribute(attribute, value);
+				}
+			}
+		};
+	}, [
+		activeIndex,
+		configs.length,
+		editor.current,
+		listId,
+		popupOpen,
+		results,
+	]);
 
 	useLayoutEffect(() => {
 		const dropdown = dropdownRef.current;
@@ -340,6 +394,7 @@ export function MentionDropdown() {
 				<button
 					type="button"
 					role="option"
+					id={`${listId}-option-${index}`}
 					aria-selected={index === activeIndex}
 					data-active={index === activeIndex || undefined}
 					key={suggestion.id}

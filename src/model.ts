@@ -68,6 +68,7 @@ export const ACTION = {
 	_InsertAttachment: 21,
 	_InsertMention: 22,
 	_UpdateImageAlt: 23,
+	_RemoveSelectable: 24,
 };
 
 interface MarkdownFormatRegion {
@@ -394,9 +395,54 @@ export class Model extends Exome {
 		});
 	}
 
+	/** Select the complete document, including trailing atomic inline items. */
+	public selectAll() {
+		const first = this.tokens[0]?.children[0];
+		const lastBlock = this.tokens[this.tokens.length - 1];
+		const last = lastBlock?.children[lastBlock.children.length - 1];
+		if (!first || !last) {
+			return;
+		}
+		this.select(
+			first,
+			0,
+			last,
+			last.type === "t" ? last.text.length : 0,
+		);
+	}
+
+	private _selectionCoversDocument(): boolean {
+		const first = this.tokens[0]?.children[0];
+		const lastBlock = this.tokens[this.tokens.length - 1];
+		const last = lastBlock?.children[lastBlock.children.length - 1];
+		if (!first || !last) {
+			return false;
+		}
+		return (
+			(
+				this.selection.first[0] !== this.selection.last[0] ||
+				this.selection.first[1] !== this.selection.last[1]
+			) &&
+			this.selection.first[0] === first.key &&
+			this.selection.first[1] === 0 &&
+			this.selection.last[0] === last.key &&
+			this.selection.last[1] === (last.type === "t" ? last.text.length : 0)
+		);
+	}
+
 	/** Update an image caption as an undoable edit. */
 	public setImageAlt(id: string, alt: string) {
 		this.action(ACTION._UpdateImageAlt, { alt, id });
+	}
+
+	/** Remove a selected atomic inline integration or whole-line embed. */
+	public removeSelectable(id: string) {
+		this.action(ACTION._RemoveSelectable, { id, text: "" });
+	}
+
+	/** Replace a selected atomic widget with ordinary paragraph text. */
+	public replaceSelectable(id: string, text: string) {
+		this.action(ACTION._RemoveSelectable, { id, text });
 	}
 
 	/** Update a Markdown image or uploaded attachment as one undoable edit. */
@@ -509,12 +555,42 @@ export class Model extends Exome {
 		}
 		const index = parent.children.indexOf(token);
 		let next = parent.children[index + 1];
-		if (next?.type !== "t" || next.props.link || next.props.url) {
+		if (
+			next?.type !== "t" ||
+			next.props.mention ||
+			next.props.link ||
+			next.props.url
+		) {
 			next = createTextToken({ typingBoundary: true });
 			parent.children.splice(index + 1, 0, next);
 			this.recalculate();
 		}
 		this.select(next, 0);
+	}
+
+	/** Put a caret immediately before an inline item without entering it. */
+	public placeCaretBefore(id: string) {
+		const key = this._idToKey[id];
+		const token = key ? this.findElement(key) : undefined;
+		const parent = token && !isBlockToken(token)
+			? this.parent(token.key)
+			: undefined;
+		if (!token || isBlockToken(token) || !parent) {
+			return;
+		}
+		const index = parent.children.indexOf(token);
+		let previous = parent.children[index - 1];
+		if (
+			previous?.type !== "t" ||
+			previous.props.mention ||
+			previous.props.link ||
+			previous.props.url
+		) {
+			previous = createTextToken({ typingBoundary: true });
+			parent.children.splice(index, 0, previous);
+			this.recalculate();
+		}
+		this.select(previous, previous.text.length);
 	}
 
 	/**
@@ -1826,8 +1902,11 @@ export class Model extends Exome {
 			},
 		};
 
-		const batch = type === ACTION._Todo
+		const batch = type === ACTION._Todo ||
+				(type === ACTION._RemoveSelectable && !data?.text)
 			? undefined
+			: type === ACTION._RemoveSelectable
+			? ACTION._Key
 			: type === ACTION._Compose
 			? ACTION._Key
 			: type;
@@ -1960,6 +2039,16 @@ export class Model extends Exome {
 
 		this._pushToHistory(type, data);
 
+		if (
+			(type === ACTION._Key || type === ACTION._Compose) &&
+			this._selectionCoversDocument()
+		) {
+			// Replacing the entire document should not inherit its first block
+			// style. A neutral paragraph also lets a pasted leading Markdown
+			// marker establish the replacement document's intended block type.
+			setBlockType(this.tokens[0], "p", {});
+		}
+
 		if (type === ACTION._UpdateImageAlt && data) {
 			const key = this._idToKey[data.id];
 			const image = key ? this.findElement(key) : undefined;
@@ -1968,6 +2057,72 @@ export class Model extends Exome {
 			}
 			image.props.alt = String(data.alt || "");
 			this.recalculate();
+			return;
+		}
+
+		if (type === ACTION._RemoveSelectable && data?.id) {
+			const key = this._idToKey[data.id];
+			const token = key ? this.findElement(key) : undefined;
+			const replacement = typeof data.text === "string" ? data.text : "";
+			if (!token) {
+				return;
+			}
+			if (isBlockToken(token)) {
+				const index = this.tokens.indexOf(token);
+				if (replacement) {
+					this.tokens.splice(
+						index,
+						1,
+						createBlockToken("p", {}, [createTextToken({}, replacement)]),
+					);
+				} else {
+					this.tokens.splice(index, 1);
+				}
+				this._ensureEditableDocument();
+				this.recalculate();
+				const next = this.tokens[Math.min(index, this.tokens.length - 1)];
+				const removedLast = index >= this.tokens.length;
+				const target = removedLast
+					? next.children[next.children.length - 1]
+					: next.children[0];
+				this.select(
+					target,
+					replacement && target.type === "t"
+						? target.text.length
+						: removedLast && target.type === "t"
+						? target.text.length
+						: 0,
+				);
+				return;
+			}
+			const parent = this.parent(token.key);
+			if (!parent) {
+				return;
+			}
+			const index = parent.children.indexOf(token);
+			const inserted = replacement
+				? createTextToken({}, replacement)
+				: undefined;
+			parent.children.splice(index, 1, ...(inserted ? [inserted] : []));
+			if (!parent.children.length) {
+				parent.children.push(createTextToken());
+			}
+			this.recalculate();
+			const currentParent = this.findElement(this._idToKey[parent.id]);
+			if (!currentParent || !isBlockToken(currentParent)) {
+				return;
+			}
+			const next = currentParent.children[index];
+			const target = next ||
+				currentParent.children[currentParent.children.length - 1];
+			this.select(
+				target,
+				inserted && target.type === "t"
+					? target.text.length
+					: next || target.type !== "t"
+					? 0
+					: target.text.length,
+			);
 			return;
 		}
 
@@ -2366,6 +2521,29 @@ export class Model extends Exome {
 				this.action(ACTION._Key, lines[0]);
 				for (const line of lines.slice(1)) {
 					this.action(ACTION._Enter);
+					const [currentKey, currentOffset] = this.selection.last;
+					const current = this.innerText(currentKey);
+					const parent = current ? this.parent(current.key) : undefined;
+					// Interactive Enter intentionally continues quotes and lists.
+					// Clipboard lines are independent Markdown source lines, so an
+					// inherited block would make every following line part of the
+					// first quote/list. Code is the exception: its lines remain
+					// literal until a closing fence is entered.
+					if (
+						current &&
+						parent &&
+						parent.type !== "p" &&
+						parent.type !== "code"
+					) {
+						setBlockType(parent, "p", {});
+						this.recalculate();
+						const restored = this.findElement(
+							this._idToKey[current.id],
+						);
+						if (restored?.type === "t") {
+							this.select(restored, currentOffset);
+						}
+					}
 					if (line) {
 						this.action(ACTION._Key, line);
 					}
@@ -2870,6 +3048,31 @@ export class Model extends Exome {
 
 			if (
 				firstElement === lastElement &&
+				firstOffset === lastOffset &&
+				firstElement.props.mention
+			) {
+				const parent = this.parent(firstElement.key);
+				if (!parent) {
+					return;
+				}
+				const index = parent.children.indexOf(firstElement);
+				const boundary = createTextToken({ typingBoundary: true });
+				parent.children.splice(
+					index + (firstOffset > 0 ? 1 : 0),
+					0,
+					boundary,
+				);
+				this.recalculate();
+				firstElement = boundary;
+				lastElement = boundary;
+				firstKey = boundary.key;
+				lastKey = boundary.key;
+				firstOffset = 0;
+				lastOffset = 0;
+			}
+
+			if (
+				firstElement === lastElement &&
 				firstOffset === 0 &&
 				lastOffset === 0
 			) {
@@ -2934,6 +3137,10 @@ export class Model extends Exome {
 
 			delete firstElement.props.url;
 			delete lastElement.props.url;
+			if (!firstElement.text) {
+				firstElement.props = markdownBaseProps(firstElement.props);
+				delete firstElement.props.mention;
+			}
 
 			this.recalculate();
 
