@@ -1,6 +1,6 @@
 {
 	"name": "editpal",
-	"version": "0.1.1",
+	"version": "0.1.2",
 	"description": "A Preact Markdown editor with visible source markers, a basic editing mode, and a read-only renderer.",
 	"type": "module",
 	"main": "./dist/editpal.js",
