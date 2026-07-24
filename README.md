@@ -6,6 +6,8 @@ component.
 
 ## Installation
 
+From npm:
+
 ```sh
 npm install editpal preact exome
 ```
@@ -14,6 +16,24 @@ Import the library stylesheet once in your application:
 
 ```ts
 import "editpal/style.css";
+```
+
+From JSR:
+
+```sh
+deno add jsr:@marcisbee/editpal
+```
+
+JSR publishes the TypeScript source. Browser applications can attach the
+versioned stylesheet exposed by the module:
+
+```ts
+import { stylesheetUrl } from "jsr:@marcisbee/editpal";
+
+const stylesheet = document.createElement("link");
+stylesheet.rel = "stylesheet";
+stylesheet.href = stylesheetUrl.href;
+document.head.append(stylesheet);
 ```
 
 ## Usage
@@ -44,8 +64,9 @@ const model = new Model(parseMarkdown("# Hello **Markdown**"));
 const markdown = toMarkdown(model.tokens);
 ```
 
-Editpal is published as an ESM package and requires Node.js 18 or newer for
-build tooling. The rendered editor targets modern browsers.
+Editpal is published to [npm](https://www.npmjs.com/package/editpal) and
+[JSR](https://jsr.io/@marcisbee/editpal). The npm package requires Node.js 18
+or newer for build tooling. The rendered editor targets modern browsers.
 
 Supported syntax includes headings, paragraphs, blockquotes, ordered and
 unordered lists, task lists, horizontal rules, fenced and inline code, images,
@@ -74,7 +95,8 @@ Available tasks:
 - `deno task lint` — lint with Deno
 - `deno task fmt` — format with Deno
 - `deno task verify` — run formatting, linting, tests, and the production build
-- `deno task package` — verify the project and inspect the npm package contents
+- `deno task package` — verify the project and inspect the npm and JSR package
+  contents
 - `deno task release:check v0.1.0` — verify a release tag against the package
   version
 
@@ -87,7 +109,8 @@ GitHub Actions verifies every pull request and push to `main`. Tags matching
 2. Requires the tagged commit to belong to `main`.
 3. Runs the complete verification and clean package build.
 4. Publishes the tarball to npm through trusted publishing.
-5. Creates a GitHub Release with generated notes and the tarball attached.
+5. Publishes the TypeScript source to JSR through OIDC.
+6. Creates a GitHub Release with generated notes and the tarball attached.
 
 ### One-time trusted publishing setup
 
@@ -104,6 +127,10 @@ In the GitHub repository, create an environment named `npm`. You can optionally
 add required reviewers to make every production release require approval. No
 `NPM_TOKEN` repository secret is needed.
 
+In the JSR settings for `@marcisbee/editpal`, link the package to the
+`Marcisbee/editpal` GitHub repository. This authorizes tokenless publishing from
+GitHub Actions; no `JSR_TOKEN` secret is needed.
+
 ### Create a release
 
 Commit all release changes on `main`, then let npm update both package metadata
@@ -114,9 +141,11 @@ npm version patch
 git push origin main --follow-tags
 ```
 
-Use `npm version minor` or `npm version major` when appropriate. The workflow
-is safe to rerun: it skips npm publication when that exact version already
-exists and still creates or refreshes the corresponding GitHub Release.
+Use `npm version minor` or `npm version major` when appropriate. The version
+lifecycle script keeps `deno.json` synchronized with `package.json`. The
+workflow is safe to rerun: npm and JSR both skip publication when that exact
+version already exists, and the workflow still creates or refreshes the
+corresponding GitHub Release.
 
 Update the version in `package.json` before creating a release tarball. The
 package is available under the [MIT License](./LICENSE).

@@ -1,5 +1,5 @@
 import { h } from "preact";
-import type { ComponentChildren } from "preact";
+import type { ComponentChildren, VNode } from "preact";
 
 import type {
 	BlockToken,
@@ -238,7 +238,7 @@ export function MarkdownPreview({
 	ariaLabel = "Markdown preview",
 	className,
 	tokens,
-}: MarkdownPreviewProps) {
+}: MarkdownPreviewProps): VNode {
 	return (
 		<article
 			className={className}

@@ -43,3 +43,6 @@ jobs:
 
       - name: Inspect npm package contents
         run: npm pack --dry-run --ignore-scripts
+
+      - name: Inspect JSR package contents
+        run: deno publish --dry-run

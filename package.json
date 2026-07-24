@@ -12,7 +12,7 @@
 			"import": "./dist/editpal.js",
 			"default": "./dist/editpal.js"
 		},
-		"./style.css": "./dist/editpal.css",
+		"./style.css": "./dist/style.css",
 		"./package.json": "./package.json"
 	},
 	"files": [
@@ -20,7 +20,7 @@
 		"README.md"
 	],
 	"sideEffects": [
-		"./dist/editpal.css"
+		"./dist/style.css"
 	],
 	"scripts": {
 		"build": "deno task build",
@@ -30,7 +30,8 @@
 		"prepack": "deno task verify",
 		"preview": "deno task preview",
 		"test": "deno task test",
-		"verify": "deno task verify"
+		"verify": "deno task verify",
+		"version": "deno run --allow-read --allow-write scripts/sync-jsr-version.ts && git add deno.json"
 	},
 	"peerDependencies": {
 		"exome": "^2.8.1",

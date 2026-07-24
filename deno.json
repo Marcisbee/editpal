@@ -1,5 +1,8 @@
 {
 	"$schema": "https://deno.land/x/deno/cli/schemas/config-file.v1.json",
+	"name": "@marcisbee/editpal",
+	"version": "0.1.0",
+	"exports": "./src/editpal.tsx",
 	"nodeModulesDir": "none",
 	"imports": {
 		"@deno/esbuild-plugin": "jsr:@deno/esbuild-plugin@^1.2.1",
@@ -27,8 +30,23 @@
 		"lint": "deno lint",
 		"fmt": "deno fmt",
 		"verify": "deno fmt --check && deno lint && deno task check && deno test && deno task build",
-		"package": "deno task verify && npm pack --dry-run --ignore-scripts",
+		"package": "deno task verify && npm pack --dry-run --ignore-scripts && deno publish --dry-run --allow-dirty",
 		"release:check": "deno run --allow-read scripts/verify-release.ts"
+	},
+	"publish": {
+		"include": [
+			"src/**/*.ts",
+			"src/**/*.tsx",
+			"src/style.css",
+			"README.md",
+			"LICENSE"
+		],
+		"exclude": [
+			"src/**/*.test.ts",
+			"src/main.tsx",
+			"src/debug.tsx",
+			"src/index.css"
+		]
 	},
 	"test": {
 		"include": ["src/"]

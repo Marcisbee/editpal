@@ -39,7 +39,7 @@ const productionOptions = {
 	minify: true,
 	platform: "browser",
 	pure: ["console.log"],
-	target: ["es2020", "chrome63"],
+	target: ["es2020"],
 } satisfies BuildOptions;
 
 async function normalizeDeclarations(directory: string): Promise<void> {
@@ -106,6 +106,14 @@ async function buildLibrary(): Promise<void> {
 	});
 
 	console.log(await analyzeMetafile(result.metafile, { verbose: true }));
+
+	await build({
+		entryNames: "style",
+		entryPoints: ["src/style.css"],
+		legalComments: "none",
+		minify: true,
+		outdir: "dist",
+	});
 
 	const declarationStatus = await new Deno.Command(Deno.execPath(), {
 		args: ["task", "types"],

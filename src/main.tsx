@@ -12,6 +12,7 @@ import { Model } from "./model.ts";
 import { Debug } from "./debug.tsx";
 
 import "./index.css";
+import "./style.css";
 
 const root = parseMarkdown(
 	[

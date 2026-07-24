@@ -249,9 +249,9 @@ export class Model extends Exome {
 	// 	focus: string;
 	// 	focusOffset: number;
 	// } | null = null;
-	public selection = new ModelSelection(this);
-	public slash = new Slash(this);
-	public history = new HistoryStore();
+	public selection: ModelSelection = new ModelSelection(this);
+	public slash: Slash = new Slash(this);
+	public history: HistoryStore = new HistoryStore();
 
 	public _idToKey: Record<string, string> = {};
 	public _elements: Record<string, AnyToken> = {};
@@ -425,7 +425,7 @@ export class Model extends Exome {
 			...block.children.map((child) => child.key),
 		]);
 
-	public keysBetween = (firstKey: string, lastKey: string) => {
+	public keysBetween = (firstKey: string, lastKey: string): string[] => {
 		const keys = this._orderedKeys();
 		const firstIndex = keys.indexOf(firstKey);
 		const lastIndex = keys.indexOf(lastKey);
@@ -448,7 +448,7 @@ export class Model extends Exome {
 		firstKey: string,
 		lastKey: string,
 		lastIncluded = true,
-	) => {
+	): void => {
 		const keys = this.keysBetween(firstKey, lastKey);
 
 		keys.shift();
@@ -465,7 +465,7 @@ export class Model extends Exome {
 		}
 	};
 
-	public findElement = (key: string) => {
+	public findElement = (key: string): AnyToken => {
 		return this._elements[key];
 	};
 
@@ -474,7 +474,7 @@ export class Model extends Exome {
 		return isBlockToken(element) ? element.children[0] : element as InlineToken;
 	};
 
-	public innerText = (key: string) => {
+	public innerText = (key: string): TextToken | undefined => {
 		const el = this.innerNode(key);
 
 		if (el.type !== "t") {

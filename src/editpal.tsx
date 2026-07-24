@@ -1,6 +1,6 @@
 import { useStore } from "exome/preact";
 import { createContext, h } from "preact";
-import type { RefObject } from "preact";
+import type { Context, RefObject, VNode } from "preact";
 import { useContext, useLayoutEffect, useRef, useState } from "preact/hooks";
 
 import type { AnyToken, BlockToken, InlineToken, TextToken } from "./tokens.ts";
@@ -20,9 +20,8 @@ import {
 	setInlineMarkdownCaret,
 } from "./utils.ts";
 
-import "./app.css";
-
 export const Model = EditorModel;
+export const stylesheetUrl: URL = new URL("./style.css", import.meta.url);
 export { MarkdownPreview } from "./preview.tsx";
 export type { MarkdownPreviewProps } from "./preview.tsx";
 export {
@@ -399,11 +398,15 @@ function increment(i: number) {
 	return i + 1;
 }
 
-export const EditorContext = createContext<{
+interface EditorContextValue {
 	model: EditorModel;
 	editor: RefObject<HTMLDivElement>;
 	mode: EditpalMode;
-}>({} as any);
+}
+
+export const EditorContext: Context<EditorContextValue> = createContext<
+	EditorContextValue
+>({} as EditorContextValue);
 
 interface EditorPoint {
 	element: InlineToken;
@@ -832,7 +835,9 @@ function markdownSourcePoint(
 	};
 }
 
-export function Editpal({ mode = "markdown", model }: EditpalProps) {
+export function Editpal(
+	{ mode = "markdown", model }: EditpalProps,
+): VNode {
 	const { tokens, _stack, action, selection } = useStore(model);
 	const ref = useRef<HTMLDivElement>(null);
 	const [focus, setFocus] = useState(0);
