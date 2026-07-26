@@ -161,19 +161,18 @@ export function SlashDropdown() {
 		});
 	}
 
-	function runAction(action?: (parent: BlockToken) => void) {
+	function removeTrigger(action?: (parent: BlockToken) => void): boolean {
 		const triggerKey = slash.triggerKey;
 		const textEl = triggerKey ? model.findElement(triggerKey) : undefined;
 		const parentEl = triggerKey ? model.parent(triggerKey) : undefined;
 
 		if (
-			!action ||
 			textEl?.type !== "t" ||
 			!parentEl ||
 			slash.triggerStart === undefined ||
 			slash.triggerEnd === undefined
 		) {
-			return;
+			return false;
 		}
 
 		let result = { offset: slash.triggerStart, text: textEl.text };
@@ -184,7 +183,7 @@ export function SlashDropdown() {
 				slash.triggerEnd!,
 			);
 			textEl.text = result.text;
-			action(parentEl);
+			action?.(parentEl);
 			selection.setSelection(
 				textEl.key,
 				result.offset,
@@ -194,6 +193,13 @@ export function SlashDropdown() {
 		});
 		slash.close();
 		restoreEditorFocus();
+		return true;
+	}
+
+	function runAction(action?: (parent: BlockToken) => void) {
+		if (action) {
+			removeTrigger(action);
+		}
 	}
 
 	useLayoutEffect(() => {
@@ -254,12 +260,33 @@ export function SlashDropdown() {
 					? `${listId}-option-${activeIndex}`
 					: undefined}
 				onInput={(event) => slash.setSearchQuery(event.currentTarget.value)}
+				onBeforeInput={(event) => {
+					if (
+						!query &&
+						(event.inputType === "deleteContentBackward" ||
+							event.inputType === "deleteContentForward")
+					) {
+						event.preventDefault();
+						event.stopPropagation();
+						removeTrigger();
+					}
+				}}
 				onKeyDown={(event) => {
 					if (event.key === "Escape") {
 						event.preventDefault();
 						event.stopPropagation();
 						slash.dismiss();
 						restoreEditorFocus();
+						return;
+					}
+
+					if (
+						!query &&
+						(event.key === "Backspace" || event.key === "Delete")
+					) {
+						event.preventDefault();
+						event.stopPropagation();
+						removeTrigger();
 						return;
 					}
 

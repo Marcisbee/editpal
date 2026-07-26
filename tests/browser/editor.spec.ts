@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 test.beforeEach(async ({ page }) => {
 	await page.goto("/");
@@ -207,6 +207,63 @@ test("typing, history, and task interaction stay model-backed", async ({ page })
 	const checked = await task.isChecked();
 	await task.click();
 	await expect(task).toBeChecked({ checked: !checked });
+});
+
+async function openEmptySlashCommand(page: Page) {
+	const editor = page.getByRole("textbox", {
+		name: "Demo Markdown document",
+	});
+	const source = page.locator("textarea[name='content']");
+	await editor.getByText("Type @ to try the customizable mention API", {
+		exact: false,
+	}).evaluate((element) => {
+		const editor = element.closest("[contenteditable='true']") as HTMLElement;
+		const node = element.firstChild;
+		if (!editor || !node) {
+			throw new Error("Could not find a slash command insertion point");
+		}
+		editor.focus();
+		const range = document.createRange();
+		range.selectNodeContents(node);
+		range.collapse(false);
+		const selection = document.getSelection();
+		selection?.removeAllRanges();
+		selection?.addRange(range);
+		document.dispatchEvent(new Event("selectionchange"));
+	});
+	await page.keyboard.press("Enter");
+	const before = await source.inputValue();
+	await page.keyboard.type("/");
+	const search = page.getByRole("searchbox", { name: "Search commands" });
+	await expect(search).toBeFocused();
+	return { before, editor, search, source };
+}
+
+test("backspace removes an empty slash command trigger", async ({ page }) => {
+	const { before, editor, search, source } = await openEmptySlashCommand(page);
+
+	await page.keyboard.press("Backspace");
+
+	await expect(search).toHaveCount(0);
+	await expect(editor).toBeFocused();
+	await expect(source).toHaveValue(before);
+});
+
+test("mobile beforeinput removes an empty slash command trigger", async ({ page }) => {
+	const { before, editor, search, source } = await openEmptySlashCommand(page);
+	await search.evaluate((element) => {
+		element.dispatchEvent(
+			new InputEvent("beforeinput", {
+				bubbles: true,
+				cancelable: true,
+				inputType: "deleteContentBackward",
+			}),
+		);
+	});
+
+	await expect(search).toHaveCount(0);
+	await expect(editor).toBeFocused();
+	await expect(source).toHaveValue(before);
 });
 
 test("file picker uploads an image attachment", async ({ page }) => {
