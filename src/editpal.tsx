@@ -1921,6 +1921,48 @@ export function Editpal(
 		}
 	}
 
+	function moveAcrossMention(direction: "left" | "right"): boolean {
+		const [firstKey, firstOffset] = model.selection.first;
+		const [lastKey, lastOffset] = model.selection.last;
+		if (firstKey !== lastKey || firstOffset !== lastOffset) {
+			return false;
+		}
+
+		const current = model.findElement(firstKey);
+		if (current?.type !== "t") {
+			return false;
+		}
+		if (current.props.mention) {
+			if (direction === "left") {
+				model.placeCaretBefore(current.id);
+			} else {
+				model.placeCaretAfter(current.id);
+			}
+			return true;
+		}
+
+		const parent = model.parent(current.key);
+		if (!parent) {
+			return false;
+		}
+		const index = parent.children.indexOf(current);
+		const adjacent = direction === "left" && firstOffset === 0
+			? parent.children[index - 1]
+			: direction === "right" && firstOffset === current.text.length
+			? parent.children[index + 1]
+			: undefined;
+		if (adjacent?.type !== "t" || !adjacent.props.mention) {
+			return false;
+		}
+
+		if (direction === "left") {
+			model.placeCaretBefore(adjacent.id);
+		} else {
+			model.placeCaretAfter(adjacent.id);
+		}
+		return true;
+	}
+
 	return (
 		<EditorContext.Provider
 			value={{
@@ -2182,6 +2224,17 @@ export function Editpal(
 
 					if (e.key.indexOf("Arrow") === 0) {
 						model.history.batch();
+						if (
+							!primaryModifier &&
+							!e.altKey &&
+							!e.shiftKey &&
+							(e.key === "ArrowLeft" || e.key === "ArrowRight") &&
+							moveAcrossMention(
+								e.key === "ArrowLeft" ? "left" : "right",
+							)
+						) {
+							preventDefaultAndStop(e);
+						}
 						return;
 					}
 
