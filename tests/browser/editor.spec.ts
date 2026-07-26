@@ -209,6 +209,44 @@ test("typing, history, and task interaction stay model-backed", async ({ page })
 	await expect(task).toBeChecked({ checked: !checked });
 });
 
+test("backspace removes an empty slash command trigger", async ({ page }) => {
+	const editor = page.getByRole("textbox", {
+		name: "Demo Markdown document",
+	});
+	const source = page.locator("textarea[name='content']");
+	await editor.click();
+	await page.keyboard.press("ControlOrMeta+End");
+	await page.keyboard.press("Enter");
+	const before = await source.inputValue();
+	await page.keyboard.type("/");
+
+	const search = page.getByRole("searchbox", { name: "Search commands" });
+	await expect(search).toBeFocused();
+	await expect(source).toHaveValue(`${before}/`);
+
+	await page.keyboard.press("Backspace");
+
+	await expect(search).toHaveCount(0);
+	await expect(editor).toBeFocused();
+	await expect(source).toHaveValue(before);
+
+	await page.keyboard.press("Enter");
+	const beforeMobileDelete = await source.inputValue();
+	await page.keyboard.type("/");
+	await expect(search).toBeFocused();
+	await search.evaluate((element) => {
+		element.dispatchEvent(new InputEvent("beforeinput", {
+			bubbles: true,
+			cancelable: true,
+			inputType: "deleteContentBackward",
+		}));
+	});
+
+	await expect(search).toHaveCount(0);
+	await expect(editor).toBeFocused();
+	await expect(source).toHaveValue(beforeMobileDelete);
+});
+
 test("file picker uploads an image attachment", async ({ page }) => {
 	const input = page.locator(".e-attachment-picker input[type=file]");
 	await input.setInputFiles({
