@@ -110,7 +110,7 @@ test("mention popup dismisses while loading or empty", async ({ page }) => {
 	await expect(listbox).toHaveCount(0);
 });
 
-test("clicking either side of a mention places the caret beside it", async ({ page }) => {
+test("pointer and keyboard navigation keep a visible caret beside mentions", async ({ page }) => {
 	const editor = page.getByRole("textbox", {
 		name: "Demo Markdown document",
 	});
@@ -135,9 +135,37 @@ test("clicking either side of a mention places the caret beside it", async ({ pa
 	await page.keyboard.press("Enter");
 	await page.keyboard.type("@mar");
 	await page.getByRole("option", { name: /marcis/i }).click();
-	await page.keyboard.type(" after");
-
 	const mention = editor.locator("[data-ep-mention='people']");
+	const expectCaretBesideMention = async (side: "before" | "after") => {
+		const mentionBox = await mention.boundingBox();
+		const caret = await editor.evaluate(() => {
+			const selection = document.getSelection();
+			if (!selection?.isCollapsed || !selection.rangeCount) {
+				return;
+			}
+			const rect = selection.getRangeAt(0).getBoundingClientRect();
+			return { height: rect.height, left: rect.left };
+		});
+		expect(mentionBox).not.toBeNull();
+		expect(caret).toBeDefined();
+		expect(caret!.height).toBeGreaterThan(0);
+		if (side === "before") {
+			expect(caret!.left).toBeLessThanOrEqual(mentionBox!.x + 1);
+		} else {
+			expect(caret!.left).toBeGreaterThanOrEqual(
+				mentionBox!.x + mentionBox!.width - 1,
+			);
+		}
+	};
+
+	await expectCaretBesideMention("after");
+	await page.keyboard.press("ArrowLeft");
+	await expectCaretBesideMention("before");
+	await page.keyboard.press("ArrowRight");
+	await expectCaretBesideMention("after");
+	await page.keyboard.type(" after");
+	await expect(source).toHaveValue(/@marcis after/);
+
 	const box = await mention.boundingBox();
 	expect(box).not.toBeNull();
 	await mention.click({ position: { x: 1, y: box!.height / 2 } });
@@ -154,6 +182,7 @@ test("clicking either side of a mention places the caret beside it", async ({ pa
 			y: restoredBox!.height / 2,
 		},
 	});
+	await expectCaretBesideMention("after");
 	await page.keyboard.type("R");
 	await expect(source).toHaveValue(/@marcisR after/);
 	await expect(mention).toHaveText("@marcis");
