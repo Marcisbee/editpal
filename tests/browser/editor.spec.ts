@@ -1,8 +1,35 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 
 test.beforeEach(async ({ page }) => {
 	await page.goto("/");
 });
+
+async function placeCaretAtTextEnd(
+	editor: Locator,
+	text: string,
+) {
+	await editor.evaluate((element, value) => {
+		const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+		let node: Text | undefined;
+		while (walker.nextNode()) {
+			const candidate = walker.currentNode as Text;
+			if (candidate.data.includes(value)) {
+				node = candidate;
+			}
+		}
+		if (!node) {
+			throw new Error(`Could not find ${value}`);
+		}
+		(element as HTMLElement).focus();
+		const range = document.createRange();
+		range.setStart(node, node.data.length);
+		range.collapse(true);
+		const selection = document.getSelection();
+		selection?.removeAllRanges();
+		selection?.addRange(range);
+		document.dispatchEvent(new Event("selectionchange"));
+	}, text);
+}
 
 test("editor exposes accessible semantics and extension renderers", async ({ page }) => {
 	const editor = page.getByRole("textbox", {
@@ -209,6 +236,95 @@ test("typing, history, and task interaction stay model-backed", async ({ page })
 	await expect(task).toBeChecked({ checked: !checked });
 });
 
+test("typing restores only the editor caret without moving the page", async ({ page }) => {
+	const editor = page.getByRole("textbox", {
+		name: "Demo Markdown document",
+	});
+	await placeCaretAtTextEnd(editor, "Preview-ready Markdown");
+	const baseline = await editor.evaluate((element) => {
+		const testWindow = window as Window & {
+			__editpalScrollIntoViewCalls?: number;
+		};
+		const original = Element.prototype.scrollIntoView;
+		testWindow.__editpalScrollIntoViewCalls = 0;
+		Element.prototype.scrollIntoView = function (
+			options?: boolean | ScrollIntoViewOptions,
+		) {
+			if (element.contains(this)) {
+				testWindow.__editpalScrollIntoViewCalls! += 1;
+			}
+			return original.call(this, options);
+		};
+		const selection = document.getSelection();
+		const caret = selection?.rangeCount
+			? selection.getRangeAt(0).getBoundingClientRect()
+			: undefined;
+		if (!caret) {
+			throw new Error("Could not measure the page-stability caret");
+		}
+		const caretDocumentTop = window.scrollY + caret.top;
+		window.scrollTo(0, Math.max(0, caretDocumentTop - innerHeight * 0.65));
+		return window.scrollY;
+	});
+
+	expect(baseline).toBeGreaterThan(0);
+	await page.keyboard.type("Page-stable typing");
+	await page.evaluate(() =>
+		new Promise((resolve) =>
+			requestAnimationFrame(() => requestAnimationFrame(resolve))
+		)
+	);
+
+	expect(await page.evaluate(() => window.scrollY)).toBe(baseline);
+	expect(await page.evaluate(() =>
+		(window as Window & { __editpalScrollIntoViewCalls?: number })
+			.__editpalScrollIntoViewCalls
+	)).toBe(0);
+});
+
+test("an overflowing editor keeps its restored caret visible internally", async ({ page }) => {
+	const editor = page.getByRole("textbox", {
+		name: "Demo Markdown document",
+	});
+	await editor.evaluate((element) => {
+		Object.assign((element as HTMLElement).style, {
+			height: "96px",
+			maxHeight: "96px",
+			minHeight: "96px",
+			overflowY: "auto",
+		});
+	});
+	await placeCaretAtTextEnd(editor, "Preview-ready Markdown");
+	await editor.evaluate((element) => {
+		element.scrollTop = 0;
+	});
+
+	await page.keyboard.type(" visible");
+	await page.evaluate(() =>
+		new Promise((resolve) =>
+			requestAnimationFrame(() => requestAnimationFrame(resolve))
+		)
+	);
+
+	const geometry = await editor.evaluate((element) => {
+		const selection = document.getSelection();
+		const caret = selection?.rangeCount
+			? selection.getRangeAt(0).getBoundingClientRect()
+			: undefined;
+		const bounds = element.getBoundingClientRect();
+		return {
+			caretBottom: caret?.bottom,
+			caretTop: caret?.top,
+			editorBottom: bounds.bottom,
+			editorTop: bounds.top,
+			scrollTop: element.scrollTop,
+		};
+	});
+	expect(geometry.scrollTop).toBeGreaterThan(0);
+	expect(geometry.caretTop).toBeGreaterThanOrEqual(geometry.editorTop);
+	expect(geometry.caretBottom).toBeLessThanOrEqual(geometry.editorBottom);
+});
+
 async function openEmptySlashCommand(page: Page) {
 	const editor = page.getByRole("textbox", {
 		name: "Demo Markdown document",
@@ -334,6 +450,7 @@ test("images and embeds expose contextual controls when selected", async ({ page
 		}),
 	).toBe("none");
 	await inlineIntegration.click();
+	await expect(page).toHaveURL("/");
 	await expect(linkToolbar.getByLabel("Link URL")).toHaveValue(
 		"https://github.com/Marcisbee/editpal",
 	);
@@ -346,7 +463,8 @@ test("images and embeds expose contextual controls when selected", async ({ page
 				style.getPropertyValue("-webkit-user-select");
 		}),
 	).toBe("none");
-	await lineEmbed.click();
+	await lineEmbed.locator("a").click();
+	await expect(page).toHaveURL("/");
 	await expect(linkToolbar.getByLabel("Link URL")).toHaveValue(
 		"https://twitter.com/openai/status/123456789",
 	);

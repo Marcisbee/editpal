@@ -2,7 +2,7 @@ import { useStore } from "exome/preact";
 import { h } from "preact";
 import { useContext } from "preact/hooks";
 
-import { EditorContext } from "../editpal.tsx";
+import { EditorContext, preventSelectableLinkActivation } from "../editpal.tsx";
 import type { TextToken, UrlToken } from "../tokens.ts";
 
 export function RenderUrl(item: (TextToken | UrlToken) & { k: string }) {
@@ -37,6 +37,7 @@ export function RenderUrl(item: (TextToken | UrlToken) & { k: string }) {
 				data-ep-selectable="inline-embed"
 				data-ep-s={activeId === id || undefined}
 				aria-label={integration.definition.ariaLabel?.(context)}
+				onClick={preventSelectableLinkActivation}
 			>
 				{integration.definition.render(context)}
 			</span>

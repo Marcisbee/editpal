@@ -1,5 +1,5 @@
 import { useStore } from "exome/preact";
-import { h } from "preact";
+import { Fragment, h } from "preact";
 import { createPortal } from "preact/compat";
 import {
 	useContext,

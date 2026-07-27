@@ -328,10 +328,94 @@ export function setCaret(
 	const focusElement = lastPoint[0].nodeType === Node.ELEMENT_NODE
 		? lastPoint[0] as Element
 		: lastPoint[0].parentElement;
-	focusElement?.scrollIntoView?.({
-		block: "nearest",
-		inline: "nearest",
+	const editor = focusElement?.closest<HTMLElement>("[data-ep-main]");
+	if (editor) {
+		scheduleCaretReveal(editor);
+	}
+}
+
+const caretRevealFrames = new WeakMap<HTMLElement, number>();
+
+/**
+ * Reveal a restored model caret only when it is actually outside a scrollport.
+ * Model-backed input restores the DOM selection after every edit; calling
+ * `scrollIntoView` there synchronously walks every ancestor and lets mobile
+ * WebKit pan the document on every keystroke.
+ */
+function scheduleCaretReveal(editor: HTMLElement) {
+	const requestFrame = globalThis.requestAnimationFrame;
+	if (!requestFrame) {
+		return;
+	}
+	const previousFrame = caretRevealFrames.get(editor);
+	if (previousFrame !== undefined) {
+		globalThis.cancelAnimationFrame?.(previousFrame);
+	}
+	const frame = requestFrame(() => {
+		caretRevealFrames.delete(editor);
+		if (!editor.isConnected || document.activeElement !== editor) {
+			return;
+		}
+
+		const selection = globalThis.getSelection?.();
+		if (
+			!selection?.isCollapsed ||
+			!selection.rangeCount ||
+			!selection.focusNode ||
+			!editor.contains(selection.focusNode)
+		) {
+			return;
+		}
+
+		const gap = 4;
+		const revealDelta = (top: number, bottom: number) => {
+			const caret = selection.getRangeAt(0).getBoundingClientRect();
+			if (caret.bottom > bottom - gap) {
+				return caret.bottom - bottom + gap;
+			}
+			if (caret.top < top + gap) {
+				return caret.top - top - gap;
+			}
+			return 0;
+		};
+
+		const scrollingElement = document.scrollingElement;
+		for (
+			let element: HTMLElement | null = editor;
+			element;
+			element = element.parentElement
+		) {
+			if (
+				element === scrollingElement ||
+				element === document.body ||
+				element === document.documentElement ||
+				element.scrollHeight <= element.clientHeight + 1
+			) {
+				continue;
+			}
+			const overflowY = getComputedStyle(element).overflowY;
+			if (!/^(?:auto|overlay|scroll)$/.test(overflowY)) {
+				continue;
+			}
+
+			const bounds = element.getBoundingClientRect();
+			element.scrollTop += revealDelta(bounds.top, bounds.bottom);
+		}
+
+		const viewport = globalThis.visualViewport;
+		const viewportTop = viewport?.offsetTop ?? 0;
+		const viewportBottom = viewportTop +
+			(viewport?.height ?? globalThis.innerHeight);
+		const documentDelta = revealDelta(viewportTop, viewportBottom);
+		if (documentDelta !== 0) {
+			if (scrollingElement) {
+				scrollingElement.scrollTop += documentDelta;
+			} else {
+				globalThis.scrollBy?.(0, documentDelta);
+			}
+		}
 	});
+	caretRevealFrames.set(editor, frame);
 }
 
 export function setMarkdownBoundaryCaret(

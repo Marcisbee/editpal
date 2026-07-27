@@ -1,4 +1,4 @@
-import { h } from "preact";
+import { Fragment, h } from "preact";
 import { createPortal } from "preact/compat";
 import { useStore } from "exome/preact";
 import { useContext, useEffect, useMemo, useRef, useState } from "preact/hooks";

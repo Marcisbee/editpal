@@ -104,6 +104,7 @@ function RenderText(
 					data-ep-selectable="inline-embed"
 					data-ep-s={activeId === item.id || undefined}
 					aria-label={integration.definition.ariaLabel?.(context)}
+					onClick={preventSelectableLinkActivation}
 				>
 					{integration.definition.render(context)}
 				</span>
@@ -480,6 +481,7 @@ function RenderMap({ items }: RenderMapProps) {
 						data-ep-line-embed={embed.id}
 						data-ep-selectable="line-embed"
 						data-ep-s={activeId === item.id || undefined}
+						onClick={preventSelectableLinkActivation}
 					>
 						{embed.render({ block: item, match, model })}
 					</div>
@@ -499,6 +501,20 @@ export function preventDefault(e: any) {
 export function preventDefaultAndStop(e: any) {
 	preventDefault(e);
 	e.stopPropagation();
+}
+
+export function preventSelectableLinkActivation(event: MouseEvent) {
+	if (
+		event.metaKey ||
+		event.ctrlKey ||
+		event.altKey ||
+		event.shiftKey ||
+		!(event.target instanceof Element) ||
+		!event.target.closest("a[href]")
+	) {
+		return;
+	}
+	preventDefaultAndStop(event);
 }
 
 /** Properties accepted by the {@link Editpal} component. */
