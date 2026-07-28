@@ -69,6 +69,9 @@ const markdown = toMarkdown(model.tokens);
 `form` and `required`) to submit the Markdown through a native HTML form.
 `maxLength` limits serialized Markdown length and `onLimitExceeded` can display
 application validation feedback.
+The editable surface defaults to `inputmode="text"` and
+`autocapitalize="sentences"` so mobile browsers provide their native prose
+keyboard behavior. Override either native attribute through `editorProps`.
 Replace a loaded document with
 `model.setMarkdown(markdown)` or `model.setTokens(tokens)`; both operations clear
 undo history. Call `model.destroy()` when a model is permanently discarded.

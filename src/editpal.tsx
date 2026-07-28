@@ -2092,6 +2092,8 @@ export function Editpal(
 					undefined}
 				style={style || editorProps?.style}
 				contentEditable={editable}
+				autoCapitalize={editorProps?.autoCapitalize ?? "sentences"}
+				inputMode={editorProps?.inputMode ?? "text"}
 				tabIndex={disabled ? -1 : 0}
 				role="textbox"
 				aria-label={ariaLabel || editorProps?.["aria-label"] ||
@@ -2315,10 +2317,9 @@ export function Editpal(
 					}
 
 					if (Array.from(e.key).length === 1) {
-						preventDefaultAndStop(e);
-						if (!editSelectedMarkdown(e.key)) {
-							insertText(e.key);
-						}
+						// Keep printable keys on the browser's native text-input path.
+						// `beforeinput` applies the resulting text to the model while
+						// preserving iOS keyboard traits and layout transitions.
 						return;
 					}
 

@@ -36,6 +36,8 @@ test("editor exposes accessible semantics and extension renderers", async ({ pag
 		name: "Demo Markdown document",
 	});
 	await expect(editor).toHaveAttribute("aria-multiline", "true");
+	await expect(editor).toHaveAttribute("autocapitalize", "sentences");
+	await expect(editor).toHaveAttribute("inputmode", "text");
 	await expect(page.locator("textarea[name='content']")).toHaveValue(
 		/# Editpal Markdown/,
 	);
@@ -45,6 +47,38 @@ test("editor exposes accessible semantics and extension renderers", async ({ pag
 	await expect(page.locator("[data-ep-line-embed]")).toContainText(
 		"Twitter / X embed demo",
 	);
+});
+
+test("printable keys retain the native text-input path", async ({ page }) => {
+	// Device emulation cannot inspect the iOS software keyboard itself. Cover
+	// the browser-facing traits and the event boundary that controls its state.
+	const editor = page.getByRole("textbox", {
+		name: "Demo Markdown document",
+	});
+	const source = page.locator("textarea[name='content']");
+	await placeCaretAtTextEnd(editor, "Preview-ready Markdown");
+	const keydown = await editor.evaluate((element) => {
+		const event = new KeyboardEvent("keydown", {
+			bubbles: true,
+			cancelable: true,
+			key: "A",
+		});
+		const accepted = element.dispatchEvent(event);
+		return { accepted, defaultPrevented: event.defaultPrevented };
+	});
+	expect(keydown).toEqual({ accepted: true, defaultPrevented: false });
+
+	await editor.evaluate((element) => {
+		element.dispatchEvent(
+			new InputEvent("beforeinput", {
+				bubbles: true,
+				cancelable: true,
+				data: "A",
+				inputType: "insertText",
+			}),
+		);
+	});
+	await expect(source).toHaveValue(/Preview-ready Markdown";A/);
 });
 
 test("a delayed Safari dead-key composition commits once inside punctuation", async ({ page }) => {
