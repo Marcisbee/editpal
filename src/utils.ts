@@ -335,6 +335,30 @@ export function setCaret(
 }
 
 const caretRevealFrames = new WeakMap<HTMLElement, number>();
+const iosKeyboardAccessoryHeight = 56;
+
+export function softwareKeyboardAccessoryInset(
+	layoutHeight: number,
+	viewportHeight: number,
+	touchPoints: number,
+): number {
+	return touchPoints > 0 && layoutHeight - viewportHeight >= 80
+		? iosKeyboardAccessoryHeight
+		: 0;
+}
+
+export function safeAreaInsetTop(): number {
+	if (!globalThis.document?.body) {
+		return 0;
+	}
+	const probe = document.createElement("div");
+	probe.style.cssText =
+		"position:fixed;visibility:hidden;pointer-events:none;padding-top:env(safe-area-inset-top)";
+	document.body.append(probe);
+	const inset = Number.parseFloat(getComputedStyle(probe).paddingTop) || 0;
+	probe.remove();
+	return inset;
+}
 
 /**
  * Reveal a restored model caret only when it is actually outside a scrollport.
@@ -405,7 +429,12 @@ function scheduleCaretReveal(editor: HTMLElement) {
 		const viewport = globalThis.visualViewport;
 		const viewportTop = viewport?.offsetTop ?? 0;
 		const viewportBottom = viewportTop +
-			(viewport?.height ?? globalThis.innerHeight);
+			(viewport?.height ?? globalThis.innerHeight) -
+			softwareKeyboardAccessoryInset(
+				globalThis.innerHeight,
+				viewport?.height ?? globalThis.innerHeight,
+				globalThis.navigator?.maxTouchPoints ?? 0,
+			);
 		const documentDelta = revealDelta(viewportTop, viewportBottom);
 		if (documentDelta !== 0) {
 			if (scrollingElement) {

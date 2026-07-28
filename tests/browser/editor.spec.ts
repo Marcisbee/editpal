@@ -236,6 +236,34 @@ test("typing, history, and task interaction stay model-backed", async ({ page })
 	await expect(task).toBeChecked({ checked: !checked });
 });
 
+test("transient WebKit root selections do not reset the typing caret", async ({ page }) => {
+	const editor = page.getByRole("textbox", {
+		name: "Demo Markdown document",
+	});
+	await placeCaretAtTextEnd(editor, "Preview-ready Markdown");
+	await editor.evaluate((element) => {
+		const selection = document.getSelection();
+		const transient = document.createRange();
+		transient.setStart(element, 0);
+		transient.collapse(true);
+		selection?.removeAllRanges();
+		selection?.addRange(transient);
+		document.dispatchEvent(new Event("selectionchange"));
+		element.dispatchEvent(
+			new InputEvent("beforeinput", {
+				bubbles: true,
+				cancelable: true,
+				data: "Z",
+				inputType: "insertText",
+			}),
+		);
+	});
+
+	await expect(editor).toContainText(
+		'const message = "Preview-ready Markdown";Z',
+	);
+});
+
 test("typing restores only the editor caret without moving the page", async ({ page }) => {
 	const editor = page.getByRole("textbox", {
 		name: "Demo Markdown document",
@@ -276,10 +304,12 @@ test("typing restores only the editor caret without moving the page", async ({ p
 	);
 
 	expect(await page.evaluate(() => window.scrollY)).toBe(baseline);
-	expect(await page.evaluate(() =>
-		(window as Window & { __editpalScrollIntoViewCalls?: number })
-			.__editpalScrollIntoViewCalls
-	)).toBe(0);
+	expect(
+		await page.evaluate(() =>
+			(window as Window & { __editpalScrollIntoViewCalls?: number })
+				.__editpalScrollIntoViewCalls
+		),
+	).toBe(0);
 });
 
 test("an overflowing editor keeps its restored caret visible internally", async ({ page }) => {
@@ -380,6 +410,34 @@ test("mobile beforeinput removes an empty slash command trigger", async ({ page 
 	await expect(search).toHaveCount(0);
 	await expect(editor).toBeFocused();
 	await expect(source).toHaveValue(before);
+});
+
+test("slash option navigation stays inside a viewport-clamped popup", async ({ page }) => {
+	const { search } = await openEmptySlashCommand(page);
+	const baseline = await page.evaluate(() => window.scrollY);
+
+	for (let index = 0; index < 12; index += 1) {
+		await page.keyboard.press("ArrowDown");
+	}
+
+	const popup = search.locator("..");
+	const bounds = await popup.boundingBox();
+	const safeTop = await page.evaluate(() =>
+		navigator.maxTouchPoints > 0 ? 56 : 0
+	);
+	expect(bounds).not.toBeNull();
+	expect(bounds!.x).toBeGreaterThanOrEqual(0);
+	expect(bounds!.y).toBeGreaterThanOrEqual(safeTop);
+	expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(
+		await page.evaluate(() => visualViewport?.width ?? innerWidth),
+	);
+	expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(
+		await page.evaluate(() =>
+			(visualViewport?.offsetTop ?? 0) +
+			(visualViewport?.height ?? innerHeight)
+		),
+	);
+	expect(await page.evaluate(() => window.scrollY)).toBe(baseline);
 });
 
 test("file picker uploads an image attachment", async ({ page }) => {

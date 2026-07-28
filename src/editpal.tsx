@@ -1395,6 +1395,19 @@ export function Editpal(
 		if (!domSelection?.anchorNode || !domSelection.focusNode) {
 			return;
 		}
+		// During contenteditable reconciliation, WebKit can briefly collapse the
+		// native selection onto the editor root at offset zero. Treating that
+		// transient range as user intent moves the model caret to the document
+		// start, so the next mobile beforeinput inserts in the wrong place.
+		// Pointer selection is resolved directly by onSelect; asynchronous
+		// selectionchange events should only replace the model selection once
+		// both endpoints have returned to rendered token content.
+		if (
+			domSelection.anchorNode === ref.current ||
+			domSelection.focusNode === ref.current
+		) {
+			return;
+		}
 
 		select(
 			domSelection.anchorNode,
