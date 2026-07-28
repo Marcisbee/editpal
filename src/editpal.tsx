@@ -2317,6 +2317,12 @@ export function Editpal(
 					}
 
 					if (Array.from(e.key).length === 1) {
+						if (selectedId) {
+							// WebKit does not emit `beforeinput` when the model-selected
+							// atom has no native editable range to receive it.
+							preventDefaultAndStop(e);
+							insertText(e.key);
+						}
 						// Keep printable keys on the browser's native text-input path.
 						// `beforeinput` applies the resulting text to the model while
 						// preserving iOS keyboard traits and layout transitions.
