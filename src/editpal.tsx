@@ -104,6 +104,7 @@ function RenderText(
 					data-ep-selectable="inline-embed"
 					data-ep-s={activeId === item.id || undefined}
 					aria-label={integration.definition.ariaLabel?.(context)}
+					onClick={preventSelectableLinkActivation}
 				>
 					{integration.definition.render(context)}
 				</span>
@@ -480,6 +481,7 @@ function RenderMap({ items }: RenderMapProps) {
 						data-ep-line-embed={embed.id}
 						data-ep-selectable="line-embed"
 						data-ep-s={activeId === item.id || undefined}
+						onClick={preventSelectableLinkActivation}
 					>
 						{embed.render({ block: item, match, model })}
 					</div>
@@ -499,6 +501,20 @@ export function preventDefault(e: any) {
 export function preventDefaultAndStop(e: any) {
 	preventDefault(e);
 	e.stopPropagation();
+}
+
+export function preventSelectableLinkActivation(event: MouseEvent) {
+	if (
+		event.metaKey ||
+		event.ctrlKey ||
+		event.altKey ||
+		event.shiftKey ||
+		!(event.target instanceof Element) ||
+		!event.target.closest("a[href]")
+	) {
+		return;
+	}
+	preventDefaultAndStop(event);
 }
 
 /** Properties accepted by the {@link Editpal} component. */
@@ -1032,6 +1048,8 @@ export function Editpal(
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const uploadControllers = useRef(new Set<AbortController>());
 	const onChangeRef = useRef(onChange);
+	const deadKeyCompositionRef = useRef(false);
+	const forcedCompositionRef = useRef(false);
 	const [focus, setFocus] = useState(0);
 	const [reload, setReload] = useState(0);
 	const [activeId, setActiveId] = useState<string>();
@@ -1379,6 +1397,19 @@ export function Editpal(
 		if (!domSelection?.anchorNode || !domSelection.focusNode) {
 			return;
 		}
+		// During contenteditable reconciliation, WebKit can briefly collapse the
+		// native selection onto the editor root at offset zero. Treating that
+		// transient range as user intent moves the model caret to the document
+		// start, so the next mobile beforeinput inserts in the wrong place.
+		// Pointer selection is resolved directly by onSelect; asynchronous
+		// selectionchange events should only replace the model selection once
+		// both endpoints have returned to rendered token content.
+		if (
+			domSelection.anchorNode === ref.current ||
+			domSelection.focusNode === ref.current
+		) {
+			return;
+		}
 
 		select(
 			domSelection.anchorNode,
@@ -1583,13 +1614,30 @@ export function Editpal(
 	}
 
 	function onCompositionStart() {
+		// Safari may start the composition before its preceding selectionchange
+		// is delivered. Capture the visible caret before selection syncing is
+		// suspended for the temporary composition DOM.
+		onSelectionChange();
+		deadKeyCompositionRef.current = false;
+		forcedCompositionRef.current = false;
 		model._isComposing = true;
+	}
+
+	function onCompositionUpdate(e: CompositionEvent) {
+		if (
+			["'", '"', "`", "´", "^", "~", "¨", "ˇ", "¸"].includes(e.data)
+		) {
+			deadKeyCompositionRef.current = true;
+		}
 	}
 
 	function onCompositionEnd(e: CompositionEvent) {
 		const fn = () => {
 			model._isComposing = false;
-			if (e.data) {
+			deadKeyCompositionRef.current = false;
+			if (forcedCompositionRef.current) {
+				forcedCompositionRef.current = false;
+			} else if (e.data) {
 				insertText(e.data, ACTION._Compose);
 			}
 			setReload(increment);
@@ -1607,6 +1655,25 @@ export function Editpal(
 		setFocus(increment);
 	}
 
+	function onCompositionKeyUp(e: KeyboardEvent) {
+		if (
+			!model._isComposing ||
+			!deadKeyCompositionRef.current ||
+			Array.from(e.key).length !== 1
+		) {
+			return;
+		}
+
+		// Safari can leave a dead-key composition open inside punctuation even
+		// after reporting the resolved character (for example Latvian ' + a).
+		// Commit that resolved key before the next keystroke can replace it.
+		model._isComposing = false;
+		forcedCompositionRef.current = true;
+		insertText(e.key, ACTION._Compose);
+		setReload(increment);
+		setFocus(increment);
+	}
+
 	useLayoutEffect(() => {
 		if (!ref.current) {
 			return;
@@ -1615,7 +1682,9 @@ export function Editpal(
 		const e = ref.current;
 
 		e.addEventListener("compositionstart", onCompositionStart);
+		e.addEventListener("compositionupdate", onCompositionUpdate);
 		e.addEventListener("compositionend", onCompositionEnd);
+		e.addEventListener("keyup", onCompositionKeyUp);
 		e.addEventListener("focus", onFocus);
 		e.addEventListener("selectstart", onSelectionStart, { once: true });
 		e.addEventListener("mousedown", onSelect, true);
@@ -1626,7 +1695,9 @@ export function Editpal(
 
 		return () => {
 			e.removeEventListener("compositionstart", onCompositionStart);
+			e.removeEventListener("compositionupdate", onCompositionUpdate);
 			e.removeEventListener("compositionend", onCompositionEnd);
+			e.removeEventListener("keyup", onCompositionKeyUp);
 			e.removeEventListener("focus", onFocus);
 			e.removeEventListener("selectstart", onSelectionStart);
 			e.removeEventListener("mousedown", onSelect, true);

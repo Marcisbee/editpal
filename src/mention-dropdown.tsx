@@ -1,5 +1,5 @@
 import { useStore } from "exome/preact";
-import { h } from "preact";
+import { Fragment, h } from "preact";
 import { createPortal } from "preact/compat";
 import {
 	useContext,
@@ -14,6 +14,7 @@ import {
 import { EditorContext } from "./editpal.tsx";
 import type { MentionConfig, MentionSuggestion } from "./extensions.ts";
 import type { TextToken } from "./tokens.ts";
+import { safeAreaInsetTop, softwareKeyboardAccessoryInset } from "./utils.ts";
 
 interface ActiveMention {
 	config: MentionConfig;
@@ -292,13 +293,30 @@ export function MentionDropdown() {
 
 		const updatePosition = () => {
 			const rect = caretRect(anchor, active.end);
+			const viewport = globalThis.visualViewport;
+			const viewportWidth = viewport?.width ?? globalThis.innerWidth;
+			const viewportHeight = viewport?.height ?? globalThis.innerHeight;
+			const touchPoints = globalThis.navigator?.maxTouchPoints ?? 0;
+			const visibleHeight = viewportHeight -
+				softwareKeyboardAccessoryInset(
+					globalThis.innerHeight,
+					viewportHeight,
+					touchPoints,
+				);
 			const margin = 8;
+			const safeTop = Math.max(
+				safeAreaInsetTop(),
+				touchPoints > 0 ? 56 : 0,
+			) + margin;
+			dropdown.style.maxHeight = `${
+				Math.max(120, visibleHeight - safeTop - margin)
+			}px`;
 			const width = dropdown.offsetWidth;
 			const height = dropdown.offsetHeight;
 			const minLeft = margin - x;
-			const maxLeft = globalThis.innerWidth - margin - width - x;
-			const minTop = margin - y;
-			const maxTop = globalThis.innerHeight - margin - height - y;
+			const maxLeft = viewportWidth - margin - width - x;
+			const minTop = safeTop - y;
+			const maxTop = visibleHeight - margin - height - y;
 			const below = rect.bottom - y;
 			const above = rect.top - height - y;
 			const preferredTop = below <= maxTop ? below : above;
@@ -320,9 +338,13 @@ export function MentionDropdown() {
 		updatePosition();
 		globalThis.addEventListener("resize", updatePosition);
 		globalThis.addEventListener("scroll", updatePosition, true);
+		globalThis.visualViewport?.addEventListener("resize", updatePosition);
+		globalThis.visualViewport?.addEventListener("scroll", updatePosition);
 		return () => {
 			globalThis.removeEventListener("resize", updatePosition);
 			globalThis.removeEventListener("scroll", updatePosition, true);
+			globalThis.visualViewport?.removeEventListener("resize", updatePosition);
+			globalThis.visualViewport?.removeEventListener("scroll", updatePosition);
 		};
 	}, [
 		active?.end,

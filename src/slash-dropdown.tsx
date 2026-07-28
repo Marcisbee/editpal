@@ -14,6 +14,7 @@ import { EditorContext } from "./editpal.tsx";
 import { removeSlashTrigger } from "./slash.ts";
 import type { BlockToken } from "./tokens.ts";
 import { setBlockType } from "./tokens.ts";
+import { safeAreaInsetTop, softwareKeyboardAccessoryInset } from "./utils.ts";
 
 function getIndent(token: BlockToken): number {
 	return "indent" in token.props ? token.props.indent ?? 0 : 0;
@@ -23,6 +24,20 @@ interface SlashOption {
 	action(parent: BlockToken): void;
 	keywords?: string[];
 	label: string;
+}
+
+function caretRect(element: HTMLElement, offset: number): DOMRect {
+	const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+	const text = walker.nextNode();
+	if (!text) {
+		return element.getBoundingClientRect();
+	}
+	const range = document.createRange();
+	range.setStart(text, Math.min(offset, text.textContent?.length || 0));
+	range.collapse(true);
+	const rect = range.getBoundingClientRect();
+	range.detach();
+	return rect.height || rect.width ? rect : element.getBoundingClientRect();
 }
 
 const slashOptions: SlashOption[] = [
@@ -101,10 +116,11 @@ export function SlashDropdown() {
 	const { slash, selection } = model;
 	const { getOffset, getPortal, focus } = useStore(selection);
 	const { isOpen, query } = useStore(slash);
-	const { x, y } = getOffset();
+	const dropdownRef = useRef<HTMLDivElement>(null);
 	const optionsRef = useRef<HTMLDivElement>(null);
 	const inputRef = useRef<HTMLInputElement>(null);
 	const listId = useId();
+	const [position, setPosition] = useState({ left: 0, top: 0 });
 
 	const portalElement = useMemo(getPortal, [getPortal]);
 	const options = useMemo<SlashOption[]>(() => [
@@ -149,6 +165,16 @@ export function SlashDropdown() {
 	useLayoutEffect(() => {
 		setActiveIndex(filteredOptions.length ? 0 : -1);
 	}, [query, filteredOptions.length]);
+
+	useLayoutEffect(() => {
+		if (!isOpen) {
+			return;
+		}
+		setActiveIndex(filteredOptions.length ? 0 : -1);
+		if (optionsRef.current) {
+			optionsRef.current.scrollTop = 0;
+		}
+	}, [isOpen]);
 
 	function restoreEditorFocus() {
 		const [key, offset] = selection.first;
@@ -207,11 +233,114 @@ export function SlashDropdown() {
 			return;
 		}
 
+		const documentScroll = document.scrollingElement?.scrollTop;
 		const frame = requestAnimationFrame(() => {
 			inputRef.current?.focus({ preventScroll: true });
+			if (documentScroll !== undefined && document.scrollingElement) {
+				document.scrollingElement.scrollTop = documentScroll;
+			}
 		});
 		return () => cancelAnimationFrame(frame);
 	}, [isOpen]);
+
+	useLayoutEffect(() => {
+		const dropdown = dropdownRef.current;
+		const triggerKey = slash.triggerKey;
+		const trigger = triggerKey ? model.findElement(triggerKey) : undefined;
+		const anchor = trigger
+			? Array.from(
+				editor.current?.querySelectorAll<HTMLElement>("[data-ep]") || [],
+			).find((candidate) => candidate.dataset.ep === trigger.id)
+			: undefined;
+		if (
+			!isOpen ||
+			!dropdown ||
+			!anchor ||
+			slash.triggerEnd === undefined
+		) {
+			return;
+		}
+
+		const updatePosition = () => {
+			const rect = caretRect(anchor, slash.triggerEnd!);
+			const viewport = globalThis.visualViewport;
+			// Fixed popovers are positioned in visual-viewport coordinates on
+			// mobile WebKit. Adding offsetTop/offsetLeft double-counts Safari's
+			// keyboard pan and strands the popup underneath the keyboard.
+			const viewportLeft = 0;
+			const viewportRight = viewport?.width ?? globalThis.innerWidth;
+			const viewportHeight = viewport?.height ?? globalThis.innerHeight;
+			const touchPoints = globalThis.navigator?.maxTouchPoints ?? 0;
+			const viewportTop = Math.max(
+				safeAreaInsetTop(),
+				touchPoints > 0 ? 56 : 0,
+			);
+			const viewportBottom = viewportHeight -
+				softwareKeyboardAccessoryInset(
+					globalThis.innerHeight,
+					viewportHeight,
+					touchPoints,
+				);
+			const margin = 8;
+			const gap = 4;
+			dropdown.style.maxHeight = `${
+				Math.max(120, viewportBottom - viewportTop - margin * 2)
+			}px`;
+			const width = dropdown.offsetWidth;
+			const height = dropdown.offsetHeight;
+			const maxLeft = Math.max(
+				viewportLeft + margin,
+				viewportRight - width - margin,
+			);
+			const maxTop = Math.max(
+				viewportTop + margin,
+				viewportBottom - height - margin,
+			);
+			const below = rect.bottom + gap;
+			const above = rect.top - height - gap;
+			const viewportPosition = {
+				left: Math.max(
+					viewportLeft + margin,
+					Math.min(rect.left, maxLeft),
+				),
+				top: Math.max(
+					viewportTop + margin,
+					Math.min(
+						below + height <= viewportBottom - margin ? below : above,
+						maxTop,
+					),
+				),
+			};
+			const offset = getOffset();
+			const next = {
+				left: viewportPosition.left - offset.x,
+				top: viewportPosition.top - offset.y,
+			};
+			setPosition((current) =>
+				current.left === next.left && current.top === next.top ? current : next
+			);
+		};
+
+		updatePosition();
+		globalThis.addEventListener("resize", updatePosition);
+		globalThis.addEventListener("scroll", updatePosition, true);
+		globalThis.visualViewport?.addEventListener("resize", updatePosition);
+		globalThis.visualViewport?.addEventListener("scroll", updatePosition);
+		return () => {
+			globalThis.removeEventListener("resize", updatePosition);
+			globalThis.removeEventListener("scroll", updatePosition, true);
+			globalThis.visualViewport?.removeEventListener("resize", updatePosition);
+			globalThis.visualViewport?.removeEventListener("scroll", updatePosition);
+		};
+	}, [
+		editor.current,
+		filteredOptions.length,
+		getOffset,
+		isOpen,
+		model,
+		slash.triggerEnd,
+		slash.triggerKey,
+	]);
 
 	useLayoutEffect(() => {
 		if (!filteredOptions[activeIndex]) {
@@ -222,13 +351,25 @@ export function SlashDropdown() {
 			return;
 		}
 
-		const el = optionsRef.current.children[activeIndex];
+		const optionsElement = optionsRef.current;
+		const el = optionsElement.children[activeIndex] as HTMLElement | undefined;
 
 		if (!el) {
 			return;
 		}
 
-		el.scrollIntoView?.({ block: "nearest" });
+		const optionTop = el.offsetTop - optionsElement.offsetTop;
+		if (optionTop < optionsElement.scrollTop) {
+			optionsElement.scrollTop = optionTop;
+		} else if (
+			optionTop + el.offsetHeight >
+				optionsElement.scrollTop + optionsElement.clientHeight
+		) {
+			optionsElement.scrollTop = Math.max(
+				0,
+				optionTop + el.offsetHeight - optionsElement.clientHeight,
+			);
+		}
 	}, [filteredOptions[activeIndex]]);
 
 	if (!editable || !isOpen) {
@@ -241,11 +382,12 @@ export function SlashDropdown() {
 
 	const output = (
 		<div
+			ref={dropdownRef}
 			className="e-fl-drop"
 			onMouseDown={(event) => event.stopPropagation()}
 			style={{
-				left: slash.x! - x,
-				top: slash.y! - y,
+				left: position.left,
+				top: position.top,
 			}}
 		>
 			<input

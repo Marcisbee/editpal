@@ -113,10 +113,10 @@ const extensions: EditpalExtensions = {
 		render: ({ match }) => {
 			const data = match.data as { owner: string; repo: string };
 			return (
-				<span className="demo-integration-pill">
+				<a href={match.source} className="demo-integration-pill">
 					<span aria-hidden="true">◉</span>
 					{data.owner}/{data.repo}
-				</span>
+				</a>
 			);
 		},
 	}],
