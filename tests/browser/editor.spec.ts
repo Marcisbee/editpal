@@ -47,6 +47,50 @@ test("editor exposes accessible semantics and extension renderers", async ({ pag
 	);
 });
 
+test("a delayed Safari dead-key composition commits once inside punctuation", async ({ page }) => {
+	await page.getByRole("button", { name: "Basic" }).click();
+	const editor = page.getByRole("textbox", {
+		name: "Demo Markdown document",
+	});
+	const source = page.locator("textarea[name='content']");
+	await editor.click();
+	await page.keyboard.press("ControlOrMeta+a");
+	await page.keyboard.press("Backspace");
+	await page.keyboard.type("test ");
+	await page.keyboard.type('""');
+	await page.keyboard.press("ArrowLeft");
+	await editor.evaluate((element) => {
+		element.dispatchEvent(
+			new CompositionEvent("compositionstart", {
+				bubbles: true,
+				data: "",
+			}),
+		);
+		element.dispatchEvent(
+			new CompositionEvent("compositionupdate", {
+				bubbles: true,
+				data: "'",
+			}),
+		);
+		element.dispatchEvent(
+			new KeyboardEvent("keyup", {
+				bubbles: true,
+				key: "ā",
+			}),
+		);
+		element.dispatchEvent(
+			new CompositionEvent("compositionend", {
+				bubbles: true,
+				data: "ā",
+			}),
+		);
+	});
+	await expect(source).toHaveValue(/test "ā"/);
+	expect(await source.inputValue()).not.toContain("āā");
+	await page.keyboard.type("x");
+	await expect(source).toHaveValue(/test "āx"/);
+});
+
 test("async mention suggestions insert a structured mention", async ({ page }) => {
 	const editor = page.getByRole("textbox", {
 		name: "Demo Markdown document",
