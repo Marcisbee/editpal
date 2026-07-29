@@ -266,28 +266,41 @@ export function stringSplice(
 	return str.slice(0, start) + (add || "") + str.slice(end);
 }
 
-export function getTokenElement(id: string): HTMLElement | undefined {
-	if (typeof document === "undefined") {
-		return;
+export function getEditorSelection(editor: HTMLElement): Selection | null {
+	const root = editor.getRootNode() as Document | ShadowRoot;
+	if ("getSelection" in root && typeof root.getSelection === "function") {
+		return root.getSelection();
 	}
+	return editor.ownerDocument.getSelection();
+}
 
-	const escapedId = typeof CSS !== "undefined" && CSS.escape
-		? CSS.escape(id)
-		: id.replace(/["\\]/g, "\\$&");
-	return document.querySelector<HTMLElement>(`[data-ep="${escapedId}"]`) ||
+export function getTokenElement(
+	editor: HTMLElement,
+	id: string,
+): HTMLElement | undefined {
+	const css = editor.ownerDocument.defaultView?.CSS;
+	const escapedId = css?.escape ? css.escape(id) : id.replace(/["\\]/g, "\\$&");
+	return editor.querySelector<HTMLElement>(`[data-ep="${escapedId}"]`) ||
 		undefined;
 }
 
-export function getTextNode(id: string): Node | undefined {
-	const element = getTokenElement(id);
+export function getTextNode(
+	editor: HTMLElement,
+	id: string,
+): Node | undefined {
+	const element = getTokenElement(editor, id);
 	const textNode = Array.from(element?.childNodes || [])
-		.find((node) => node.nodeType === Node.TEXT_NODE);
+		.find((node) => node.nodeType === 3);
 
 	return textNode || element;
 }
 
-function caretPoint(id: string, offset: number): [Node, number] | undefined {
-	const element = getTokenElement(id);
+function caretPoint(
+	editor: HTMLElement,
+	id: string,
+	offset: number,
+): [Node, number] | undefined {
+	const element = getTokenElement(editor, id);
 	if (!element) {
 		return;
 	}
@@ -300,12 +313,12 @@ function caretPoint(id: string, offset: number): [Node, number] | undefined {
 		}
 	}
 
-	const node = getTextNode(id);
+	const node = getTextNode(editor, id);
 	if (!node) {
 		return;
 	}
 
-	const maxOffset = node.nodeType === Node.TEXT_NODE
+	const maxOffset = node.nodeType === 3
 		? node.textContent?.length || 0
 		: node.nodeName === "BR"
 		? 0
@@ -315,14 +328,15 @@ function caretPoint(id: string, offset: number): [Node, number] | undefined {
 }
 
 export function setCaret(
+	editor: HTMLElement,
 	first: string,
 	firstOffset: number,
 	last: string = first,
 	lastOffset: number = firstOffset,
 ) {
-	const sel = globalThis.getSelection?.();
-	const firstPoint = caretPoint(first, firstOffset);
-	const lastPoint = caretPoint(last, lastOffset);
+	const sel = getEditorSelection(editor);
+	const firstPoint = caretPoint(editor, first, firstOffset);
+	const lastPoint = caretPoint(editor, last, lastOffset);
 
 	if (!sel || !firstPoint || !lastPoint) {
 		return;
@@ -331,18 +345,17 @@ export function setCaret(
 	if (typeof sel.setBaseAndExtent === "function") {
 		sel.setBaseAndExtent(...firstPoint, ...lastPoint);
 	} else {
-		const range = document.createRange();
+		const range = editor.ownerDocument.createRange();
 		range.setStart(...firstPoint);
 		range.setEnd(...lastPoint);
 		sel.removeAllRanges();
 		sel.addRange(range);
 	}
 
-	const focusElement = lastPoint[0].nodeType === Node.ELEMENT_NODE
+	const focusElement = lastPoint[0].nodeType === 1
 		? lastPoint[0] as Element
 		: lastPoint[0].parentElement;
-	const editor = focusElement?.closest<HTMLElement>("[data-ep-main]");
-	if (editor) {
+	if (focusElement && editor.contains(focusElement)) {
 		scheduleCaretReveal(editor);
 	}
 }
@@ -360,15 +373,19 @@ export function softwareKeyboardAccessoryInset(
 		: 0;
 }
 
-export function safeAreaInsetTop(): number {
-	if (!globalThis.document?.body) {
+export function safeAreaInsetTop(
+	ownerDocument: Document = globalThis.document,
+): number {
+	if (!ownerDocument?.body) {
 		return 0;
 	}
-	const probe = document.createElement("div");
+	const probe = ownerDocument.createElement("div");
 	probe.style.cssText =
 		"position:fixed;visibility:hidden;pointer-events:none;padding-top:env(safe-area-inset-top)";
-	document.body.append(probe);
-	const inset = Number.parseFloat(getComputedStyle(probe).paddingTop) || 0;
+	ownerDocument.body.append(probe);
+	const inset = Number.parseFloat(
+		ownerDocument.defaultView?.getComputedStyle(probe).paddingTop || "",
+	) || 0;
 	probe.remove();
 	return inset;
 }
@@ -380,21 +397,24 @@ export function safeAreaInsetTop(): number {
  * WebKit pan the document on every keystroke.
  */
 function scheduleCaretReveal(editor: HTMLElement) {
-	const requestFrame = globalThis.requestAnimationFrame;
-	if (!requestFrame) {
+	const ownerDocument = editor.ownerDocument;
+	const view = ownerDocument.defaultView;
+	if (!view) {
 		return;
 	}
+	const requestFrame = view.requestAnimationFrame.bind(view);
 	const previousFrame = caretRevealFrames.get(editor);
 	if (previousFrame !== undefined) {
-		globalThis.cancelAnimationFrame?.(previousFrame);
+		view.cancelAnimationFrame(previousFrame);
 	}
 	const frame = requestFrame(() => {
 		caretRevealFrames.delete(editor);
-		if (!editor.isConnected || document.activeElement !== editor) {
+		const root = editor.getRootNode() as Document | ShadowRoot;
+		if (!editor.isConnected || root.activeElement !== editor) {
 			return;
 		}
 
-		const selection = globalThis.getSelection?.();
+		const selection = getEditorSelection(editor);
 		if (
 			!selection?.isCollapsed ||
 			!selection.rangeCount ||
@@ -416,7 +436,7 @@ function scheduleCaretReveal(editor: HTMLElement) {
 			return 0;
 		};
 
-		const scrollingElement = document.scrollingElement;
+		const scrollingElement = ownerDocument.scrollingElement;
 		for (
 			let element: HTMLElement | null = editor;
 			element;
@@ -424,13 +444,13 @@ function scheduleCaretReveal(editor: HTMLElement) {
 		) {
 			if (
 				element === scrollingElement ||
-				element === document.body ||
-				element === document.documentElement ||
+				element === ownerDocument.body ||
+				element === ownerDocument.documentElement ||
 				element.scrollHeight <= element.clientHeight + 1
 			) {
 				continue;
 			}
-			const overflowY = getComputedStyle(element).overflowY;
+			const overflowY = view.getComputedStyle(element).overflowY;
 			if (!/^(?:auto|overlay|scroll)$/.test(overflowY)) {
 				continue;
 			}
@@ -439,21 +459,21 @@ function scheduleCaretReveal(editor: HTMLElement) {
 			element.scrollTop += revealDelta(bounds.top, bounds.bottom);
 		}
 
-		const viewport = globalThis.visualViewport;
+		const viewport = view.visualViewport;
 		const viewportTop = viewport?.offsetTop ?? 0;
 		const viewportBottom = viewportTop +
-			(viewport?.height ?? globalThis.innerHeight) -
+			(viewport?.height ?? view.innerHeight) -
 			softwareKeyboardAccessoryInset(
-				globalThis.innerHeight,
-				viewport?.height ?? globalThis.innerHeight,
-				globalThis.navigator?.maxTouchPoints ?? 0,
+				view.innerHeight,
+				viewport?.height ?? view.innerHeight,
+				view.navigator.maxTouchPoints ?? 0,
 			);
 		const documentDelta = revealDelta(viewportTop, viewportBottom);
 		if (documentDelta !== 0) {
 			if (scrollingElement) {
 				scrollingElement.scrollTop += documentDelta;
 			} else {
-				globalThis.scrollBy?.(0, documentDelta);
+				view.scrollBy(0, documentDelta);
 			}
 		}
 	});
@@ -461,11 +481,12 @@ function scheduleCaretReveal(editor: HTMLElement) {
 }
 
 export function setMarkdownBoundaryCaret(
+	editor: HTMLElement,
 	id: string,
 	side: "before" | "after",
 ) {
-	const element = getTokenElement(id);
-	const selection = globalThis.getSelection?.();
+	const element = getTokenElement(editor, id);
+	const selection = getEditorSelection(editor);
 	if (!element || !selection) {
 		return;
 	}
@@ -477,7 +498,11 @@ export function setMarkdownBoundaryCaret(
 	);
 	const marker = side === "before" ? markers[0] : markers[markers.length - 1];
 	if (!marker || marker.parentNode !== element) {
-		setCaret(id, side === "before" ? 0 : element.textContent?.length || 0);
+		setCaret(
+			editor,
+			id,
+			side === "before" ? 0 : element.textContent?.length || 0,
+		);
 		return;
 	}
 
@@ -492,7 +517,7 @@ export function setMarkdownBoundaryCaret(
 		return;
 	}
 
-	const range = document.createRange();
+	const range = editor.ownerDocument.createRange();
 	range.setStart(element, offset);
 	range.collapse(true);
 	selection.removeAllRanges();
@@ -500,11 +525,12 @@ export function setMarkdownBoundaryCaret(
 }
 
 export function setInlineMarkdownCaret(
+	editor: HTMLElement,
 	blockId: string,
 	sourceOffset: number,
 ) {
-	const block = getTokenElement(blockId);
-	const selection = globalThis.getSelection?.();
+	const block = getTokenElement(editor, blockId);
+	const selection = getEditorSelection(editor);
 	if (!block || !selection) {
 		return;
 	}
@@ -524,7 +550,7 @@ export function setInlineMarkdownCaret(
 		}
 
 		const textNode = Array.from(element.childNodes).find((node) =>
-			node.nodeType === Node.TEXT_NODE
+			node.nodeType === 3
 		);
 		if (!textNode) {
 			return;
@@ -556,7 +582,7 @@ export function setInlineMarkdownCaret(
 		return;
 	}
 
-	const range = document.createRange();
+	const range = editor.ownerDocument.createRange();
 	range.setStart(...point);
 	range.collapse(true);
 	selection.removeAllRanges();
@@ -564,12 +590,13 @@ export function setInlineMarkdownCaret(
 }
 
 export function setCodeFenceCaret(
+	editor: HTMLElement,
 	blockId: string,
 	side: "end" | "start",
 	offset: number,
 ) {
-	const block = getTokenElement(blockId);
-	const selection = globalThis.getSelection?.();
+	const block = getTokenElement(editor, blockId);
+	const selection = getEditorSelection(editor);
 	const marker = block?.querySelector<HTMLElement>(
 		`[data-ep-code-fence-side="${side}"]`,
 	);
@@ -577,7 +604,7 @@ export function setCodeFenceCaret(
 	if (
 		!selection ||
 		!textNode ||
-		textNode.nodeType !== Node.TEXT_NODE
+		textNode.nodeType !== 3
 	) {
 		return;
 	}
@@ -591,7 +618,7 @@ export function setCodeFenceCaret(
 		return;
 	}
 
-	const range = document.createRange();
+	const range = editor.ownerDocument.createRange();
 	range.setStart(...point);
 	range.collapse(true);
 	selection.removeAllRanges();

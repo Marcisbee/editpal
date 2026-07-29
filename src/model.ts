@@ -320,7 +320,7 @@ export class Model extends Exome {
 	public _idToKey: Record<string, string> = {};
 	public _elements: Record<string, AnyToken> = {};
 	public _isComposing = false;
-	public _stack: Array<() => void> = [];
+	public _stack: Array<(editor: HTMLElement) => void> = [];
 
 	constructor(
 		tokens: TokenRoot = [createBlockToken("p", {}, [createTextToken()])],
@@ -1477,8 +1477,8 @@ export class Model extends Exome {
 						tokenId: caretText.id,
 					});
 					this.selection.setFormat(outsideFormat);
-					this._stack.push(() =>
-						setMarkdownBoundaryCaret(caretText.id, "after")
+					this._stack.push((editor) =>
+						setMarkdownBoundaryCaret(editor, caretText.id, "after")
 					);
 				}
 			}
@@ -1544,7 +1544,7 @@ export class Model extends Exome {
 		const blockId = caretBlock.id;
 		const textId = caretText.id;
 		this.select(caretText, textOffset);
-		this._stack.push(() => {
+		this._stack.push((editor) => {
 			const currentTextKey = this._idToKey[textId];
 			const currentText = currentTextKey
 				? this.findElement(currentTextKey)
@@ -1559,7 +1559,7 @@ export class Model extends Exome {
 				);
 				this.selection.setFormat(this.getSelectionFormat());
 			}
-			setCodeFenceCaret(blockId, side, markerOffset);
+			setCodeFenceCaret(editor, blockId, side, markerOffset);
 		});
 	}
 
@@ -1874,8 +1874,9 @@ export class Model extends Exome {
 
 				this.recalculate();
 
-				this._stack.push(() => {
+				this._stack.push((editor) => {
 					setCaret(
+						editor,
 						this.findElement(first[0]).id,
 						first[1],
 						this.findElement(last[0]).id,
@@ -1889,8 +1890,9 @@ export class Model extends Exome {
 
 				this.recalculate();
 
-				this._stack.push(() => {
+				this._stack.push((editor) => {
 					setCaret(
+						editor,
 						this.findElement(first[0]).id,
 						first[1],
 						this.findElement(last[0]).id,
@@ -2391,8 +2393,8 @@ export class Model extends Exome {
 					Math.min(caret.offset, caretElement.text.length),
 				);
 			}
-			this._stack.push(() =>
-				setInlineMarkdownCaret(blockId, caretSourceOffset)
+			this._stack.push((editor) =>
+				setInlineMarkdownCaret(editor, blockId, caretSourceOffset)
 			);
 			return;
 		}
@@ -3247,8 +3249,8 @@ export class Model extends Exome {
 		// );
 
 		// this._selectSilent(first, firstOffset);
-		this._stack.push(() =>
-			setCaret(first.id, firstOffset, last.id, lastOffset)
+		this._stack.push((editor) =>
+			setCaret(editor, first.id, firstOffset, last.id, lastOffset)
 		);
 
 		this.update();

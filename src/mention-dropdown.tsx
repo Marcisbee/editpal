@@ -25,12 +25,13 @@ interface ActiveMention {
 }
 
 function caretRect(element: HTMLElement, offset: number): DOMRect {
-	const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+	const ownerDocument = element.ownerDocument;
+	const walker = ownerDocument.createTreeWalker(element, 4);
 	const text = walker.nextNode();
 	if (!text) {
 		return element.getBoundingClientRect();
 	}
-	const range = document.createRange();
+	const range = ownerDocument.createRange();
 	range.setStart(text, Math.min(offset, text.textContent?.length || 0));
 	range.collapse(true);
 	const rect = range.getBoundingClientRect();
@@ -96,7 +97,12 @@ export function MentionDropdown() {
 	const [position, setPosition] = useState({ left: 0, top: 0 });
 	const { x, y } = getOffset();
 	const configuredPortal = useMemo(getPortal, [getPortal]);
-	const portal = configuredPortal ?? globalThis.document?.body ?? null;
+	const editorRoot = editor.current?.getRootNode();
+	const portal = configuredPortal ??
+		(editorRoot?.nodeType === 11
+			? editorRoot as unknown as HTMLElement
+			: editor.current?.ownerDocument.body) ??
+		null;
 
 	const active = useMemo(() => {
 		if (
@@ -293,19 +299,24 @@ export function MentionDropdown() {
 
 		const updatePosition = () => {
 			const rect = caretRect(anchor, active.end);
-			const viewport = globalThis.visualViewport;
-			const viewportWidth = viewport?.width ?? globalThis.innerWidth;
-			const viewportHeight = viewport?.height ?? globalThis.innerHeight;
-			const touchPoints = globalThis.navigator?.maxTouchPoints ?? 0;
+			const ownerDocument = anchor.ownerDocument;
+			const view = ownerDocument.defaultView;
+			if (!view) {
+				return;
+			}
+			const viewport = view.visualViewport;
+			const viewportWidth = viewport?.width ?? view.innerWidth;
+			const viewportHeight = viewport?.height ?? view.innerHeight;
+			const touchPoints = view.navigator.maxTouchPoints ?? 0;
 			const visibleHeight = viewportHeight -
 				softwareKeyboardAccessoryInset(
-					globalThis.innerHeight,
+					view.innerHeight,
 					viewportHeight,
 					touchPoints,
 				);
 			const margin = 8;
 			const safeTop = Math.max(
-				safeAreaInsetTop(),
+				safeAreaInsetTop(ownerDocument),
 				touchPoints > 0 ? 56 : 0,
 			) + margin;
 			dropdown.style.maxHeight = `${
@@ -336,15 +347,16 @@ export function MentionDropdown() {
 		};
 
 		updatePosition();
-		globalThis.addEventListener("resize", updatePosition);
-		globalThis.addEventListener("scroll", updatePosition, true);
-		globalThis.visualViewport?.addEventListener("resize", updatePosition);
-		globalThis.visualViewport?.addEventListener("scroll", updatePosition);
+		const view = anchor.ownerDocument.defaultView;
+		view?.addEventListener("resize", updatePosition);
+		view?.addEventListener("scroll", updatePosition, true);
+		view?.visualViewport?.addEventListener("resize", updatePosition);
+		view?.visualViewport?.addEventListener("scroll", updatePosition);
 		return () => {
-			globalThis.removeEventListener("resize", updatePosition);
-			globalThis.removeEventListener("scroll", updatePosition, true);
-			globalThis.visualViewport?.removeEventListener("resize", updatePosition);
-			globalThis.visualViewport?.removeEventListener("scroll", updatePosition);
+			view?.removeEventListener("resize", updatePosition);
+			view?.removeEventListener("scroll", updatePosition, true);
+			view?.visualViewport?.removeEventListener("resize", updatePosition);
+			view?.visualViewport?.removeEventListener("scroll", updatePosition);
 		};
 	}, [
 		active?.end,

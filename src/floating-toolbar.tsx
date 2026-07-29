@@ -9,6 +9,7 @@ import { toMarkdown } from "./markdown-parser.ts";
 import { Toolbar } from "./toolbar.tsx";
 import type { AnyToken, InlineToken } from "./tokens.ts";
 import { isBlockToken } from "./tokens.ts";
+import { getEditorSelection } from "./utils.ts";
 
 function linkedToken(token: AnyToken | undefined): InlineToken | undefined {
 	if (!token) {
@@ -270,7 +271,9 @@ export function FloatingToolbar() {
 				return element.getBoundingClientRect();
 			}
 		}
-		const selection = globalThis.getSelection();
+		const selection = editor.current
+			? getEditorSelection(editor.current)
+			: null;
 		if (!selection?.rangeCount) {
 			return null;
 		}
@@ -291,7 +294,8 @@ export function FloatingToolbar() {
 		return null;
 	}
 	const placeBelow = rect.top - y < 90;
-	const viewportWidth = globalThis.innerWidth || 0;
+	const viewportWidth = editor.current?.ownerDocument.defaultView?.innerWidth ||
+		0;
 	const center = rect.left + rect.width / 2 - x;
 	const left = viewportWidth
 		? Math.max(170, Math.min(center, viewportWidth - 170))

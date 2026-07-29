@@ -4,6 +4,64 @@ test.beforeEach(async ({ page }) => {
 	await page.goto("/");
 });
 
+test("caret restoration stays within each editor root", async ({ page }) => {
+	await page.goto("/root-fixture.html");
+
+	await page.getByRole("button", {
+		name: "Select Second scoped editor",
+	}).click();
+	const second = page.getByRole("textbox", {
+		name: "Second scoped editor",
+	});
+	await expect.poll(() =>
+		second.evaluate((editor) => {
+			const selection = editor.ownerDocument.getSelection();
+			return Boolean(
+				selection?.focusNode && editor.contains(selection.focusNode),
+			);
+		})
+	).toBe(true);
+	await page.keyboard.type("!");
+	await expect(second).toContainText("Second editor!");
+
+	const shadow = page.getByRole("textbox", {
+		name: "Shadow scoped editor",
+	});
+	await page.getByRole("button", {
+		name: "Select Shadow scoped editor",
+	}).click();
+	await expect.poll(() =>
+		shadow.evaluate((editor) => {
+			const root = editor.getRootNode() as ShadowRoot;
+			const selection = root.getSelection?.() ??
+				editor.ownerDocument.getSelection();
+			return Boolean(
+				selection?.focusNode && editor.contains(selection.focusNode),
+			);
+		})
+	).toBe(true);
+	await page.keyboard.type("!");
+	await expect(shadow).toContainText("Shadow editor!");
+
+	const frame = page.frameLocator("iframe");
+	const iframeEditor = frame.getByRole("textbox", {
+		name: "Iframe scoped editor",
+	});
+	await frame.getByRole("button", {
+		name: "Select Iframe scoped editor",
+	}).click();
+	await expect.poll(() =>
+		iframeEditor.evaluate((editor) => {
+			const selection = editor.ownerDocument.getSelection();
+			return Boolean(
+				selection?.focusNode && editor.contains(selection.focusNode),
+			);
+		})
+	).toBe(true);
+	await page.keyboard.type("!");
+	await expect(iframeEditor).toContainText("Iframe editor!");
+});
+
 async function placeCaretAtTextEnd(
 	editor: Locator,
 	text: string,
