@@ -668,6 +668,19 @@ test("inline integrations and line embeds delete atomically with history", async
 		"[data-ep-inline-integration='github-repository']",
 	);
 	await expect(finalIntegration).toBeVisible();
+	await expect.poll(async () =>
+		finalIntegration.evaluate((element) => {
+			const selection = document.getSelection();
+			const parent = element.parentNode;
+			if (!selection?.isCollapsed || !parent) {
+				return false;
+			}
+			const index = Array.from(parent.childNodes).indexOf(element);
+			return selection.anchorNode === parent &&
+				(selection.anchorOffset === index ||
+					selection.anchorOffset === index + 1);
+		})
+	).toBe(true);
 	await finalIntegration.click();
 	await page.getByLabel("Link URL").focus();
 	await page.keyboard.press("Escape");

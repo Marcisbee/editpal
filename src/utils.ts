@@ -287,6 +287,19 @@ export function getTextNode(id: string): Node | undefined {
 }
 
 function caretPoint(id: string, offset: number): [Node, number] | undefined {
+	const element = getTokenElement(id);
+	if (!element) {
+		return;
+	}
+	if (element.contentEditable === "false" && element.parentNode) {
+		// A range inside an atomic widget is invalid in an editable host. Keep
+		// the native caret at its rendered document position instead.
+		const index = Array.from(element.parentNode.childNodes).indexOf(element);
+		if (index >= 0) {
+			return [element.parentNode, index + (offset > 0 ? 1 : 0)];
+		}
+	}
+
 	const node = getTextNode(id);
 	if (!node) {
 		return;
