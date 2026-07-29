@@ -659,7 +659,31 @@ test("inline integrations and line embeds delete atomically with history", async
 	const restoredIntegration = editor.locator(
 		"[data-ep-inline-integration='github-repository']",
 	);
-	await restoredIntegration.click();
+	const integrationBox = await restoredIntegration.boundingBox();
+	expect(integrationBox).not.toBeNull();
+	await restoredIntegration.click({
+		position: {
+			x: 1,
+			y: integrationBox!.height / 2,
+		},
+	});
+	await expect.poll(async () =>
+		restoredIntegration.evaluate((element) => {
+			const selection = document.getSelection();
+			if (!selection?.isCollapsed || !selection.rangeCount) {
+				return false;
+			}
+			const caret = selection.getRangeAt(0).getBoundingClientRect();
+			const integration = element.getBoundingClientRect();
+			return caret.height > 0 && caret.left <= integration.left + 1;
+		})
+	).toBe(true);
+	await restoredIntegration.click({
+		position: {
+			x: Math.max(1, integrationBox!.width - 1),
+			y: integrationBox!.height / 2,
+		},
+	});
 	await page.keyboard.type("replacement");
 	await expect(restoredIntegration).toHaveCount(0);
 	await expect(source).toHaveValue(/\nreplacement\n/);
@@ -671,14 +695,13 @@ test("inline integrations and line embeds delete atomically with history", async
 	await expect.poll(async () =>
 		finalIntegration.evaluate((element) => {
 			const selection = document.getSelection();
-			const parent = element.parentNode;
-			if (!selection?.isCollapsed || !parent) {
+			if (!selection?.isCollapsed || !selection.rangeCount) {
 				return false;
 			}
-			const index = Array.from(parent.childNodes).indexOf(element);
-			return selection.anchorNode === parent &&
-				(selection.anchorOffset === index ||
-					selection.anchorOffset === index + 1);
+			const caret = selection.getRangeAt(0).getBoundingClientRect();
+			const integration = element.getBoundingClientRect();
+			return caret.height > 0 &&
+				caret.left >= integration.right - 1;
 		})
 	).toBe(true);
 	await finalIntegration.click();

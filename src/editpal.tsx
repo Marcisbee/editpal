@@ -27,6 +27,7 @@ import {
 import {
 	nextGraphemeBoundary,
 	previousGraphemeBoundary,
+	setCaret,
 	setCodeFenceCaret,
 	setInlineMarkdownCaret,
 } from "./utils.ts";
@@ -1328,10 +1329,27 @@ export function Editpal(
 					)
 					: token;
 				if (selectableToken && !isBlockToken(selectableToken)) {
-					model.select(selectableToken, 0);
-					model.selection.setFormat(
-						selectableToken.type === "t" ? selectableToken.props : {},
-					);
+					if (token && isBlockToken(token)) {
+						model.select(selectableToken, 0);
+						model.selection.setFormat(
+							selectableToken.type === "t" ? selectableToken.props : {},
+						);
+					} else {
+						const bounds = selectable.getBoundingClientRect();
+						if (event.clientX < bounds.left + bounds.width / 2) {
+							model.placeCaretBefore(selectableToken.id);
+						} else {
+							model.placeCaretAfter(selectableToken.id);
+						}
+						model.selection.setFormat(model.getSelectionFormat());
+						const [caretKey, caretOffset] = model.selection.first;
+						const caretToken = model.findElement(caretKey);
+						if (caretToken && !isBlockToken(caretToken)) {
+							_stack.push(() => setCaret(caretToken.id, caretOffset));
+						}
+						model.history.batch();
+						return;
+					}
 				}
 			}
 		} else {
