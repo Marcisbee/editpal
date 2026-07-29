@@ -66,10 +66,9 @@ jobs:
           cache: npm
 
       - name: Set up Deno
-        uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.9.x
-          cache: true
+        run: |
+          npm install --global --prefix "$RUNNER_TEMP/deno" deno@2.9.4
+          echo "$RUNNER_TEMP/deno/bin" >> "$GITHUB_PATH"
 
       - name: Install dependencies
         run: npm ci
