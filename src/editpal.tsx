@@ -19,10 +19,11 @@ import type {
 	AnyToken,
 	BlockToken,
 	InlineToken,
+	TableRowToken,
 	TextToken,
 	TokenRoot,
 } from "./tokens.ts";
-import { isBlockToken } from "./tokens.ts";
+import { isBlockToken, tableRowCells } from "./tokens.ts";
 import { ACTION, Model as EditorModel } from "./model.ts";
 import type { ModelSelectionBookmark } from "./model.ts";
 import type { MarkdownBoundary } from "./selection.ts";
@@ -210,6 +211,7 @@ function RenderText(
 		link,
 		mention,
 		markdownEscape: _markdownEscape,
+		tableCell: _tableCell,
 		typingBoundary: _typingBoundary,
 		url: _url,
 		...style
@@ -427,6 +429,41 @@ function RenderItem(
 				<span data-ep-hr-caret>
 					<RenderMap items={item.children} />
 				</span>
+			</div>
+		);
+	}
+
+	if (item.type === "tr") {
+		const row = item as TableRowToken;
+		const cells = tableRowCells(row);
+		return (
+			<div
+				key={item.id}
+				data-ep={item.id}
+				data-ep-table-row
+				data-ep-table-header={row.props.header || undefined}
+				role="row"
+				style={{
+					gridTemplateColumns: `repeat(${cells.length}, minmax(0, 1fr))`,
+				}}
+			>
+				{cells.map((children, index) => (
+					<span
+						data-ep-table-cell
+						data-ep-table-align={row.props.alignments[index] === "none"
+							? undefined
+							: row.props.alignments[index]}
+						key={`${item.id}-cell-${index}`}
+						role={row.props.header ? "columnheader" : "cell"}
+						style={{
+							textAlign: row.props.alignments[index] === "none"
+								? undefined
+								: row.props.alignments[index],
+						}}
+					>
+						<RenderMap items={children} />
+					</span>
+				))}
 			</div>
 		);
 	}
@@ -1015,6 +1052,7 @@ function adjacentMarkdownMarker(
 interface MarkdownSourcePoint {
 	block: BlockToken;
 	offset: number;
+	token?: InlineToken;
 }
 
 function sourceNumber(
@@ -1148,6 +1186,7 @@ function markdownSourcePoint(
 	return {
 		block,
 		offset: sourceOffset,
+		token: isBlockToken(token) ? undefined : token,
 	};
 }
 
@@ -2162,6 +2201,9 @@ export function Editpal(
 			blockId: anchor.block.id,
 			end,
 			start,
+			tableCell: anchor.token?.props.tableCell === focus.token?.props.tableCell
+				? anchor.token?.props.tableCell
+				: undefined,
 			text,
 		});
 		return true;

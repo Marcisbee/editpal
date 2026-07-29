@@ -91,6 +91,7 @@ interface EditMarkdownData {
 	blockId: string;
 	end: number;
 	start: number;
+	tableCell?: number;
 	text: string;
 }
 
@@ -1752,7 +1753,14 @@ export class Model extends Exome {
 			return false;
 		}
 
-		const chunks = inlineMarkdownChunks(parent.children);
+		const tableCell = parent.type === "tr"
+			? caretElement.props.tableCell
+			: undefined;
+		const originalChildren = parent.type === "tr" &&
+				typeof tableCell === "number"
+			? parent.children.filter((child) => child.props.tableCell === tableCell)
+			: parent.children;
+		const chunks = inlineMarkdownChunks(originalChildren);
 		const baseProps = new Map<number, Record<string, any>>();
 		let source = "";
 		let caretSourceOffset = -1;
@@ -1796,7 +1804,7 @@ export class Model extends Exome {
 				),
 			);
 		const nextChildren = parsed.map(({ token }) => token);
-		if (semantic(parent.children) === semantic(nextChildren)) {
+		if (semantic(originalChildren) === semantic(nextChildren)) {
 			return false;
 		}
 
@@ -1813,7 +1821,17 @@ export class Model extends Exome {
 			: 0;
 		const parentId = parent.id;
 
-		parent.children = nextChildren;
+		if (parent.type === "tr" && typeof tableCell === "number") {
+			const firstIndex = parent.children.findIndex((child) =>
+				child.props.tableCell === tableCell
+			);
+			const cellLength = parent.children.filter((child) =>
+				child.props.tableCell === tableCell
+			).length;
+			parent.children.splice(firstIndex, cellLength, ...nextChildren);
+		} else {
+			parent.children = nextChildren;
+		}
 		this.recalculate();
 
 		const currentParentKey = this._idToKey[parentId];
@@ -1822,7 +1840,10 @@ export class Model extends Exome {
 			: undefined;
 		if (currentParent && isBlockToken(currentParent)) {
 			const textChildren = currentParent.children.filter(
-				(child): child is TextToken => child.type === "t",
+				(child): child is TextToken =>
+					child.type === "t" &&
+					(typeof tableCell !== "number" ||
+						child.props.tableCell === tableCell),
 			);
 			const caretText = textChildren[
 				Math.min(caretTextIndex, Math.max(0, textChildren.length - 1))
@@ -2716,7 +2737,13 @@ export class Model extends Exome {
 				return;
 			}
 
-			const chunks = inlineMarkdownChunks(block.children);
+			const targetChildren = block.type === "tr" &&
+					typeof request.tableCell === "number"
+				? block.children.filter((child) =>
+					child.props.tableCell === request.tableCell
+				)
+				: block.children;
+			const chunks = inlineMarkdownChunks(targetChildren);
 			const baseProps = new Map<number, Record<string, any>>();
 			let source = "";
 			for (const chunk of chunks) {
@@ -2751,7 +2778,21 @@ export class Model extends Exome {
 			const caretSourceOffset = start + inserted.length;
 			const caret = parsedMarkdownCaret(parsed, caretSourceOffset);
 			const blockId = block.id;
-			block.children = parsed.map(({ token }) => token);
+			const nextChildren = parsed.map(({ token }) => token);
+			if (
+				block.type === "tr" &&
+				typeof request.tableCell === "number"
+			) {
+				const firstIndex = block.children.findIndex((child) =>
+					child.props.tableCell === request.tableCell
+				);
+				const cellLength = block.children.filter((child) =>
+					child.props.tableCell === request.tableCell
+				).length;
+				block.children.splice(firstIndex, cellLength, ...nextChildren);
+			} else {
+				block.children = nextChildren;
+			}
 			this.recalculate();
 
 			const caretElement = caret
@@ -2763,9 +2804,11 @@ export class Model extends Exome {
 					Math.min(caret.offset, caretElement.text.length),
 				);
 			}
-			this._stack.push((editor) =>
-				setInlineMarkdownCaret(editor, blockId, caretSourceOffset)
-			);
+			if (block.type !== "tr") {
+				this._stack.push((editor) =>
+					setInlineMarkdownCaret(editor, blockId, caretSourceOffset)
+				);
+			}
 			return;
 		}
 

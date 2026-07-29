@@ -4,9 +4,11 @@ import type { ComponentChild, ComponentChildren, VNode } from "preact";
 import type {
 	BlockToken,
 	InlineToken,
+	TableRowToken,
 	TextToken,
 	TokenRoot,
 } from "./tokens.ts";
+import { tableRowCells } from "./tokens.ts";
 import type { EditpalExtensions } from "./extensions.ts";
 import { toMarkdown } from "./markdown-parser.ts";
 import { RenderAttachment } from "./plugin/attachment.tsx";
@@ -46,6 +48,8 @@ function PreviewText(
 		link,
 		mention,
 		markdownEscape: _markdownEscape,
+		tableCell: _tableCell,
+		typingBoundary: _typingBoundary,
 		url: _url,
 		...style
 	} = token.props;
@@ -303,6 +307,29 @@ function PreviewBlock({
 					<hr />
 				</div>
 			);
+		case "tr": {
+			const row = block as TableRowToken;
+			const Cell = row.props.header ? "th" : "td";
+			return (
+				<tr key={row.id} data-ep={row.id}>
+					{tableRowCells(row).map((tokens, index) => (
+						<Cell
+							key={`${row.id}-cell-${index}`}
+							style={{
+								textAlign: row.props.alignments[index] === "none"
+									? undefined
+									: row.props.alignments[index],
+							}}
+							data-ep-table-align={row.props.alignments[index] === "none"
+								? undefined
+								: row.props.alignments[index]}
+						>
+							{renderInline(tokens, extensions)}
+						</Cell>
+					))}
+				</tr>
+			);
+		}
 	}
 }
 
@@ -348,6 +375,52 @@ export function MarkdownPreview({
 					key: `list-${block.id}`,
 					start: type === "ol" ? block.props.start : undefined,
 				}, items),
+			);
+			continue;
+		}
+
+		if (block.type === "tr") {
+			const rows: TableRowToken[] = [];
+			while (
+				tokens[index]?.type === "tr" &&
+				(rows.length === 0 ||
+					!(tokens[index] as TableRowToken).props.header)
+			) {
+				rows.push(tokens[index] as TableRowToken);
+				index += 1;
+			}
+			index -= 1;
+			const headerRows = rows.filter((row) => row.props.header);
+			const bodyRows = rows.filter((row) => !row.props.header);
+			content.push(
+				<table key={`table-${block.id}`} data-ep-table>
+					{headerRows.length > 0 && (
+						<thead>
+							{headerRows.map((row) => (
+								<PreviewBlock
+									key={row.id}
+									block={row}
+									codeEnd
+									codeStart
+									extensions={extensions}
+								/>
+							))}
+						</thead>
+					)}
+					{bodyRows.length > 0 && (
+						<tbody>
+							{bodyRows.map((row) => (
+								<PreviewBlock
+									key={row.id}
+									block={row}
+									codeEnd
+									codeStart
+									extensions={extensions}
+								/>
+							))}
+						</tbody>
+					)}
+				</table>,
 			);
 			continue;
 		}
