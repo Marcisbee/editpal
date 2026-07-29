@@ -31,6 +31,7 @@ import {
 	toMarkdown,
 } from "./markdown-parser.ts";
 import {
+	getEditorSelection,
 	nextGraphemeBoundary,
 	previousGraphemeBoundary,
 	setCaret,
@@ -1154,8 +1155,15 @@ export function Editpal(
 	}, []);
 
 	useLayoutEffect(() => {
-		_stack.splice(0).pop()?.();
+		const editor = ref.current;
+		if (editor) {
+			_stack.splice(0).pop()?.(editor);
+		}
 	});
+
+	function domSelection(): Selection | null {
+		return ref.current ? getEditorSelection(ref.current) : null;
+	}
 
 	function activeSelectableId(): string | undefined {
 		return activeId;
@@ -1352,12 +1360,13 @@ export function Editpal(
 				);
 				if (sourcePoint) {
 					const codeFenceSide = selectedMarker.dataset.epCodeFenceSide;
-					_stack.push(() => {
+					_stack.push((editor) => {
 						if (
 							codeFenceSide === "start" ||
 							codeFenceSide === "end"
 						) {
 							setCodeFenceCaret(
+								editor,
 								sourcePoint.block.id,
 								codeFenceSide,
 								sourcePoint.offset,
@@ -1365,6 +1374,7 @@ export function Editpal(
 							return;
 						}
 						setInlineMarkdownCaret(
+							editor,
 							sourcePoint.block.id,
 							sourcePoint.offset,
 						);
@@ -1441,7 +1451,9 @@ export function Editpal(
 						const [caretKey, caretOffset] = model.selection.first;
 						const caretToken = model.findElement(caretKey);
 						if (caretToken && !isBlockToken(caretToken)) {
-							_stack.push(() => setCaret(caretToken.id, caretOffset));
+							_stack.push((editor) =>
+								setCaret(editor, caretToken.id, caretOffset)
+							);
 						}
 						model.history.batch();
 						return;
@@ -1461,20 +1473,27 @@ export function Editpal(
 			return;
 		}
 
+		const ownerDocument = ref.current?.ownerDocument;
+		if (!ownerDocument) {
+			return;
+		}
 		let range: Range | null;
-		if (document.caretRangeFromPoint) {
+		if (ownerDocument.caretRangeFromPoint) {
 			// edge, chrome, android
-			range = document.caretRangeFromPoint(event.clientX, event.clientY);
-		} else if (document.caretPositionFromPoint) {
+			range = ownerDocument.caretRangeFromPoint(
+				event.clientX,
+				event.clientY,
+			);
+		} else if (ownerDocument.caretPositionFromPoint) {
 			// firefox
-			const position = document.caretPositionFromPoint(
+			const position = ownerDocument.caretPositionFromPoint(
 				event.clientX,
 				event.clientY,
 			);
 			if (!position) {
 				return;
 			}
-			range = document.createRange();
+			range = ownerDocument.createRange();
 			range.setStart(position.offsetNode, position.offset);
 			range.setEnd(position.offsetNode, position.offset);
 		} else {
@@ -1485,9 +1504,9 @@ export function Editpal(
 			return;
 		}
 
-		const domSelection = document.getSelection();
-		domSelection?.removeAllRanges();
-		domSelection?.addRange(range);
+		const selection = domSelection();
+		selection?.removeAllRanges();
+		selection?.addRange(range);
 
 		model.history.batch();
 
@@ -1501,13 +1520,16 @@ export function Editpal(
 
 	// Arrow keys doesn't update selection in FireFox
 	function onSelectionStart() {
-		document.addEventListener("selectionchange", onSelectionChange);
+		ref.current?.getRootNode().addEventListener(
+			"selectionchange",
+			onSelectionChange,
+		);
 	}
 
 	function onSelectionChange() {
-		const domSelection = document.getSelection();
+		const selection = domSelection();
 
-		if (!domSelection?.anchorNode || !domSelection.focusNode) {
+		if (!selection?.anchorNode || !selection.focusNode) {
 			return;
 		}
 		// During contenteditable reconciliation, WebKit can briefly collapse the
@@ -1518,17 +1540,17 @@ export function Editpal(
 		// selectionchange events should only replace the model selection once
 		// both endpoints have returned to rendered token content.
 		if (
-			domSelection.anchorNode === ref.current ||
-			domSelection.focusNode === ref.current
+			selection.anchorNode === ref.current ||
+			selection.focusNode === ref.current
 		) {
 			return;
 		}
 
 		select(
-			domSelection.anchorNode,
-			domSelection.focusNode,
-			domSelection.anchorOffset,
-			domSelection.focusOffset,
+			selection.anchorNode,
+			selection.focusNode,
+			selection.anchorOffset,
+			selection.focusOffset,
 		);
 	}
 
@@ -1602,7 +1624,10 @@ export function Editpal(
 			...model.selection.first,
 			...model.selection.first,
 		);
-		document.removeEventListener("selectionchange", onSelectionChange);
+		ref.current?.getRootNode().removeEventListener(
+			"selectionchange",
+			onSelectionChange,
+		);
 		setFocus(increment);
 	}
 
@@ -1743,7 +1768,7 @@ export function Editpal(
 		) {
 			return;
 		}
-		const currentSelection = document.getSelection();
+		const currentSelection = domSelection();
 		if (currentSelection && !currentSelection.isCollapsed) {
 			return;
 		}
@@ -1764,7 +1789,7 @@ export function Editpal(
 			0,
 			Math.min(Math.round(ratio * markerLength), markerLength),
 		);
-		const range = document.createRange();
+		const range = marker.ownerDocument.createRange();
 		range.setStart(textNode, offset);
 		range.collapse(true);
 
@@ -1837,7 +1862,10 @@ export function Editpal(
 			e.removeEventListener("drop", onDrop);
 			e.removeEventListener("click", onTodoClick);
 			e.removeEventListener("click", onMarkdownMarkerClick);
-			document.removeEventListener("selectionchange", onSelectionChange);
+			e.getRootNode().removeEventListener(
+				"selectionchange",
+				onSelectionChange,
+			);
 		};
 	}, [focus, mode]);
 
@@ -1849,27 +1877,27 @@ export function Editpal(
 	}
 
 	function selectionTouchesMarkdownMarker(
-		domSelection = document.getSelection(),
+		selection = domSelection(),
 	): boolean {
 		if (
 			mode !== "markdown" ||
-			!domSelection?.anchorNode ||
-			!domSelection.focusNode ||
+			!selection?.anchorNode ||
+			!selection.focusNode ||
 			!ref.current
 		) {
 			return false;
 		}
 		if (
-			markerElement(domSelection.anchorNode) ||
-			markerElement(domSelection.focusNode)
+			markerElement(selection.anchorNode) ||
+			markerElement(selection.focusNode)
 		) {
 			return true;
 		}
-		if (domSelection.isCollapsed || !domSelection.rangeCount) {
+		if (selection.isCollapsed || !selection.rangeCount) {
 			return false;
 		}
 
-		const range = domSelection.getRangeAt(0);
+		const range = selection.getRangeAt(0);
 		return Array.from(
 			ref.current.querySelectorAll<HTMLElement>("[data-ep-md-marker]"),
 		).some((marker) => {
@@ -1893,25 +1921,25 @@ export function Editpal(
 			announceLimit();
 			return true;
 		}
-		const domSelection = document.getSelection();
+		const selection = domSelection();
 		if (
 			mode !== "markdown" ||
 			/[\r\n]/.test(text) ||
-			!domSelection?.anchorNode ||
-			!domSelection.focusNode ||
+			!selection?.anchorNode ||
+			!selection.focusNode ||
 			!ref.current
 		) {
 			return false;
 		}
 		const anchor = markdownSourcePoint(
 			model,
-			domSelection.anchorNode,
-			domSelection.anchorOffset,
+			selection.anchorNode,
+			selection.anchorOffset,
 		);
 		const focus = markdownSourcePoint(
 			model,
-			domSelection.focusNode,
-			domSelection.focusOffset,
+			selection.focusNode,
+			selection.focusOffset,
 		);
 		if (!anchor || !focus || anchor.block.id !== focus.block.id) {
 			return false;
@@ -1919,17 +1947,17 @@ export function Editpal(
 
 		let start = Math.min(anchor.offset, focus.offset);
 		let end = Math.max(anchor.offset, focus.offset);
-		let activeMarker = markerElement(domSelection.anchorNode) ||
-			markerElement(domSelection.focusNode);
-		if (domSelection.isCollapsed) {
+		let activeMarker = markerElement(selection.anchorNode) ||
+			markerElement(selection.focusNode);
+		if (selection.isCollapsed) {
 			const backward = direction === "backward";
 			const marker = direction
 				? adjacentMarkdownMarker(
-					domSelection.anchorNode,
-					domSelection.anchorOffset,
+					selection.anchorNode,
+					selection.anchorOffset,
 					backward,
 				)
-				: markerElement(domSelection.anchorNode);
+				: markerElement(selection.anchorNode);
 			if (!marker) {
 				return false;
 			}
@@ -1943,7 +1971,7 @@ export function Editpal(
 			} else if (direction === "forward") {
 				end = nextGraphemeBoundary(source, end);
 			}
-		} else if (!selectionTouchesMarkdownMarker(domSelection)) {
+		} else if (!selectionTouchesMarkdownMarker(selection)) {
 			return false;
 		}
 
@@ -1975,24 +2003,24 @@ export function Editpal(
 	}
 
 	function enterSelectedCodeFence(): boolean {
-		const domSelection = document.getSelection();
+		const selection = domSelection();
 		if (
 			mode !== "markdown" ||
-			!domSelection?.isCollapsed ||
-			!domSelection.anchorNode
+			!selection?.isCollapsed ||
+			!selection.anchorNode
 		) {
 			return false;
 		}
 
-		const marker = markerElement(domSelection.anchorNode);
+		const marker = markerElement(selection.anchorNode);
 		const codeFence = marker?.closest<HTMLElement>(
 			"[data-ep-code-fence]",
 		);
 		const side = codeFence?.dataset.epCodeFenceSide;
 		const sourcePoint = markdownSourcePoint(
 			model,
-			domSelection.anchorNode,
-			domSelection.anchorOffset,
+			selection.anchorNode,
+			selection.anchorOffset,
 		);
 		if (
 			!sourcePoint ||
@@ -2264,18 +2292,18 @@ export function Editpal(
 				onBeforeInput={onBeforeInput}
 				onDragStart={preventDefaultAndStop}
 				onCopy={(e) => {
-					const domSelection = document.getSelection();
+					const selection = domSelection();
 					if (
-						!domSelection ||
-						domSelection.isCollapsed ||
-						!ref.current?.contains(domSelection.anchorNode)
+						!selection ||
+						selection.isCollapsed ||
+						!ref.current?.contains(selection.anchorNode)
 					) {
 						return;
 					}
 
 					preventDefaultAndStop(e);
-					const copied = selectionTouchesMarkdownMarker(domSelection)
-						? domSelection.toString()
+					const copied = selectionTouchesMarkdownMarker(selection)
+						? selection.toString()
 						: model.selectedText();
 					e.clipboardData?.setData("text/markdown", copied);
 					e.clipboardData?.setData(
@@ -2288,18 +2316,18 @@ export function Editpal(
 						preventDefaultAndStop(e);
 						return;
 					}
-					const domSelection = document.getSelection();
+					const selection = domSelection();
 					if (
-						!domSelection ||
-						domSelection.isCollapsed ||
-						!ref.current?.contains(domSelection.anchorNode)
+						!selection ||
+						selection.isCollapsed ||
+						!ref.current?.contains(selection.anchorNode)
 					) {
 						return;
 					}
 
 					preventDefaultAndStop(e);
-					const copied = selectionTouchesMarkdownMarker(domSelection)
-						? domSelection.toString()
+					const copied = selectionTouchesMarkdownMarker(selection)
+						? selection.toString()
 						: model.selectedText();
 					e.clipboardData?.setData("text/markdown", copied);
 					e.clipboardData?.setData(
