@@ -24,6 +24,8 @@ export interface TextTokenProps extends Record<string, any> {
 	italicMarker?: string;
 	link?: string;
 	markdownEscape?: boolean;
+	/** Internal cell index for inline content belonging to a table row. */
+	tableCell?: number;
 	url?: string;
 	mention?: MentionData;
 	/** Internal empty token used to keep typing outside an inline atom. */
@@ -140,6 +142,17 @@ export interface HorizontalRuleToken extends Token {
 	children: InlineToken[];
 }
 
+export type TableAlignment = "center" | "left" | "none" | "right";
+
+export interface TableRowToken extends Token {
+	type: "tr";
+	props: {
+		alignments: TableAlignment[];
+		header?: boolean;
+	};
+	children: InlineToken[];
+}
+
 /** A block-level Markdown token such as a paragraph, heading, or code line. */
 export type BlockToken =
 	| ParagraphToken
@@ -148,7 +161,8 @@ export type BlockToken =
 	| ListToken
 	| QuoteToken
 	| CodeToken
-	| HorizontalRuleToken;
+	| HorizontalRuleToken
+	| TableRowToken;
 /** Inline document content: editable text, an image, or an automatic URL. */
 export type InlineToken = TextToken | ImgToken | UrlToken | AttachmentToken;
 /** Any token that may appear in an Editpal document. */
@@ -184,4 +198,27 @@ export function setBlockType<Type extends BlockType>(
 ): BlockTokenOfType<Type> {
 	Object.assign(token, { type, props });
 	return token as BlockTokenOfType<Type>;
+}
+
+/** Return the inline content for each cell in a parsed table row. */
+export function tableRowCells(
+	row: TableRowToken,
+): InlineToken[][] {
+	const count = Math.max(
+		row.props.alignments.length,
+		...row.children.map((child) =>
+			typeof child.props.tableCell === "number" ? child.props.tableCell + 1 : 1
+		),
+	);
+	const cells = Array.from({ length: count }, () => [] as InlineToken[]);
+	for (const child of row.children) {
+		const index = typeof child.props.tableCell === "number"
+			? Math.max(0, Math.floor(child.props.tableCell))
+			: 0;
+		while (cells.length <= index) {
+			cells.push([]);
+		}
+		cells[index].push(child);
+	}
+	return cells;
 }

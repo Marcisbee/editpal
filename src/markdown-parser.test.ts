@@ -130,3 +130,69 @@ Deno.test("tilde code fences parse and serialize canonically", () => {
 		"```js\nconst value = `tick`;\n```",
 	);
 });
+
+Deno.test("document Markdown parses and serializes aligned tables", () => {
+	const markdown = [
+		"| Name | Score | Notes |",
+		"| :--- | ---: | :---: |",
+		"| **Ada** | 10 | `a|b` |",
+		"| Grace | 9 | compiler |",
+	].join("\n");
+	const tokens = parseMarkdown(markdown);
+
+	assertEquals(
+		tokens.map(({ props, type }) => ({ props, type })),
+		[
+			{
+				props: {
+					alignments: ["left", "right", "center"],
+					header: true,
+				},
+				type: "tr",
+			},
+			{
+				props: { alignments: ["left", "right", "center"] },
+				type: "tr",
+			},
+			{
+				props: { alignments: ["left", "right", "center"] },
+				type: "tr",
+			},
+		],
+	);
+	assertEquals(toMarkdown(tokens), markdown);
+	assertEquals(
+		tokens[1].children.filter((child) => child.type === "t").map((child) => ({
+			code: child.props.code,
+			tableCell: child.props.tableCell,
+			text: child.text,
+		})),
+		[
+			{ code: undefined, tableCell: 0, text: "Ada" },
+			{ code: undefined, tableCell: 1, text: "10" },
+			{ code: true, tableCell: 2, text: "a|b" },
+		],
+	);
+});
+
+Deno.test("table cells preserve escaped pipes and normalize missing cells", () => {
+	const tokens = parseMarkdown(
+		"| Value | Detail |\n| --- | --- |\n| one \\| two |",
+	);
+
+	assertEquals(
+		toMarkdown(tokens),
+		[
+			"| Value | Detail |",
+			"| --- | --- |",
+			"| one \\| two |  |",
+		].join("\n"),
+	);
+});
+
+Deno.test("pipes without a delimiter row remain paragraphs", () => {
+	const tokens = parseMarkdown("| one | two |\nordinary text");
+
+	assertEquals(tokens.map(({ type }) => type), ["p", "p"]);
+	assertEquals(toMarkdown(tokens), "| one | two |\nordinary text");
+});

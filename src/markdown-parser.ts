@@ -2,9 +2,12 @@ import { inlineMarkdownAffixes, MARKDOWN_PROP_KEYS } from "./markdown.ts";
 import type {
 	BlockToken,
 	InlineToken,
+	TableAlignment,
+	TableRowToken,
 	TextToken,
 	TokenRoot,
 } from "./tokens.ts";
+import { tableRowCells } from "./tokens.ts";
 import {
 	createBlockToken,
 	createImgToken,
@@ -398,6 +401,112 @@ function blockChildren(markdown: string): InlineToken[] {
 	return parseInlineMarkdown(markdown);
 }
 
+function splitTableRow(line: string): string[] | undefined {
+	const source = line.trim();
+	if (!source) {
+		return;
+	}
+
+	const cells: string[] = [];
+	let cellStart = source.startsWith("|") ? 1 : 0;
+	let codeMarkerLength = 0;
+	let foundDelimiter = false;
+
+	for (let index = cellStart; index < source.length; index++) {
+		if (source[index] === "\\") {
+			index += 1;
+			continue;
+		}
+		if (source[index] === "`") {
+			let runLength = 1;
+			while (source[index + runLength] === "`") {
+				runLength += 1;
+			}
+			if (codeMarkerLength === 0) {
+				codeMarkerLength = runLength;
+			} else if (codeMarkerLength === runLength) {
+				codeMarkerLength = 0;
+			}
+			index += runLength - 1;
+			continue;
+		}
+		if (source[index] !== "|" || codeMarkerLength !== 0) {
+			continue;
+		}
+
+		foundDelimiter = true;
+		cells.push(source.slice(cellStart, index).trim());
+		cellStart = index + 1;
+	}
+
+	if (!foundDelimiter) {
+		return;
+	}
+	const finalCell = source.slice(cellStart).trim();
+	if (finalCell || !source.endsWith("|")) {
+		cells.push(finalCell);
+	}
+	return cells.length ? cells : undefined;
+}
+
+function tableAlignments(line: string): TableAlignment[] | undefined {
+	const cells = splitTableRow(line);
+	if (
+		!cells?.length ||
+		cells.some((cell) => !/^:?-{3,}:?$/.test(cell))
+	) {
+		return;
+	}
+	return cells.map((cell) =>
+		cell.startsWith(":") && cell.endsWith(":")
+			? "center"
+			: cell.endsWith(":")
+			? "right"
+			: cell.startsWith(":")
+			? "left"
+			: "none"
+	);
+}
+
+function tableRowChildren(cells: string[]): InlineToken[] {
+	return cells.flatMap((cell, tableCell) => {
+		const children = blockChildren(cell);
+		for (const child of children) {
+			child.props = { ...child.props, tableCell };
+		}
+		const first = children[0];
+		if (first?.type === "t") {
+			first.props.typingBoundary = true;
+		}
+		return children;
+	});
+}
+
+function tableRowMarkdown(row: TableRowToken): string {
+	const cells = tableRowCells(row).map((children) =>
+		inlineMarkdownChunks(children).map((chunk) =>
+			chunk.props && !chunk.props.code && !chunk.props.markdownEscape
+				? chunk.text.replaceAll("|", "\\|")
+				: chunk.text
+		).join("")
+	);
+	return `| ${cells.join(" | ")} |`;
+}
+
+function tableDelimiterMarkdown(alignments: TableAlignment[]): string {
+	return `| ${
+		alignments.map((alignment) =>
+			alignment === "center"
+				? ":---:"
+				: alignment === "right"
+				? "---:"
+				: alignment === "left"
+				? ":---"
+				: "---"
+		).join(" | ")
+	} |`;
+}
+
 /**
  * Parse a Markdown document into the token model consumed by Editpal.
  *
@@ -439,6 +548,45 @@ export function parseMarkdown(markdown: string): TokenRoot {
 
 		if (/^\s{0,3}(?:-{3,}|\*{3,}|_{3,})\s*$/.test(line)) {
 			blocks.push(createBlockToken("hr", {}, [createTextToken()]));
+			continue;
+		}
+
+		const alignments = index + 1 < lines.length
+			? tableAlignments(lines[index + 1])
+			: undefined;
+		const headerCells = alignments ? splitTableRow(line) : undefined;
+		if (
+			alignments &&
+			headerCells &&
+			headerCells.length === alignments.length
+		) {
+			blocks.push(
+				createBlockToken(
+					"tr",
+					{ alignments, header: true },
+					tableRowChildren(headerCells),
+				),
+			);
+			index += 2;
+			while (index < lines.length) {
+				const cells = splitTableRow(lines[index]);
+				if (!cells) {
+					break;
+				}
+				const normalized = cells.slice(0, alignments.length);
+				while (normalized.length < alignments.length) {
+					normalized.push("");
+				}
+				blocks.push(
+					createBlockToken(
+						"tr",
+						{ alignments: [...alignments] },
+						tableRowChildren(normalized),
+					),
+				);
+				index += 1;
+			}
+			index -= 1;
 			continue;
 		}
 
@@ -534,6 +682,8 @@ function blockMarkdown(block: BlockToken): string {
 			}] ${inline}`;
 		case "hr":
 			return "---";
+		case "tr":
+			return tableRowMarkdown(block);
 		default:
 			return inline;
 	}
@@ -555,6 +705,9 @@ export function toMarkdown(tokens: TokenRoot): string {
 		const block = tokens[index];
 		if (block.type !== "code") {
 			output.push(blockMarkdown(block));
+			if (block.type === "tr" && block.props.header) {
+				output.push(tableDelimiterMarkdown(block.props.alignments));
+			}
 			continue;
 		}
 

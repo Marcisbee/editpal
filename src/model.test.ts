@@ -114,6 +114,36 @@ Deno.test("empty input is normalized into an editable paragraph", () => {
 	assertModelInvariants(model);
 });
 
+Deno.test("table rows remain editable model content", () => {
+	const model = new Model(
+		parseMarkdown("| A | B |\n| --- | --- |\n| one | two |"),
+	);
+
+	model.selection.setSelection("1.0", 3, "1.0", 3);
+	model.action(ACTION._Key, "!");
+
+	assertEquals(
+		toMarkdown(model.tokens),
+		"| A | B |\n| --- | --- |\n| one! | two |",
+	);
+	assertModelInvariants(model);
+});
+
+Deno.test("typed inline Markdown stays within its table cell", () => {
+	const model = new Model(
+		parseMarkdown("| A | B |\n| --- | --- |\n|  | **two** |"),
+	);
+
+	model.selection.setSelection("1.0", 0, "1.0", 0);
+	model.action(ACTION._Key, "**one**");
+
+	assertEquals(
+		toMarkdown(model.tokens),
+		"| A | B |\n| --- | --- |\n| **one** | **two** |",
+	);
+	assertModelInvariants(model);
+});
+
 Deno.test("backspace removes a whole Unicode grapheme", () => {
 	const model = new Model([paragraph(text("A👨‍👩‍👧‍👦e\u0301"))]);
 	const child = model.innerText("0.0")!;

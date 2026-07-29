@@ -1152,6 +1152,34 @@ test("preview produces semantic lists and clickable labeled links", async ({ pag
 	).toContainText("OpenAI");
 });
 
+test("Markdown tables stay editable and render with semantic alignment", async ({ page }) => {
+	const editor = page.getByRole("textbox", {
+		name: "Demo Markdown document",
+	});
+	const source = page.locator("textarea[name='content']");
+	await expect(editor.locator("[data-ep-table-row]")).toHaveCount(3);
+	await placeCaretAtTextEnd(editor, "Centered");
+	await page.keyboard.type("!");
+	await expect(source).toHaveValue(/\| Alignment \| Centered! \| Right \|/);
+
+	await page.getByRole("button", { name: "Preview" }).click();
+	const table = page.locator("[data-ep-preview] table[data-ep-table]");
+	await expect(table.locator("thead th")).toHaveCount(3);
+	await expect(table.locator("tbody tr")).toHaveCount(2);
+	await expect(table.locator("thead th").nth(0)).toHaveCSS(
+		"text-align",
+		"left",
+	);
+	await expect(table.locator("thead th").nth(1)).toHaveCSS(
+		"text-align",
+		"center",
+	);
+	await expect(table.locator("thead th").nth(2)).toHaveCSS(
+		"text-align",
+		"right",
+	);
+});
+
 test("large multiline paste preserves block types, history, and visible caret", async ({ page }) => {
 	const editor = page.getByRole("textbox", {
 		name: "Demo Markdown document",

@@ -78,6 +78,10 @@ action turns that selection into a labeled link. Selecting an image, attachment,
 embed, or existing link opens the corresponding contextual controls for editing
 or unlinking it.
 
+GitHub-style Markdown tables are parsed, edited, and rendered with left, center,
+and right column alignment. Inline Markdown remains available inside table
+cells.
+
 ## Extensions
 
 All extensions are opt-in. An editor with no `extensions` keeps the default
