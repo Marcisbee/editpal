@@ -694,6 +694,35 @@ Deno.test("setMarkdown replaces content and clears history", () => {
 	assertModelInvariants(model);
 });
 
+Deno.test("continuous typing keeps one reversible history snapshot pair", () => {
+	const model = new Model(parseMarkdown(""));
+
+	for (const character of "a".repeat(1_000)) {
+		model.action(ACTION._Key, character);
+	}
+
+	assertEquals(model.history._batch.length, 1);
+	model.action(ACTION._Undo);
+	assertEquals(toMarkdown(model.tokens), "");
+	model.action(ACTION._Redo);
+	assertEquals(toMarkdown(model.tokens), "a".repeat(1_000));
+});
+
+Deno.test("structural edits split merged typing history", () => {
+	const model = new Model(parseMarkdown(""));
+
+	model.action(ACTION._Key, "before");
+	model.action(ACTION._Enter);
+	model.action(ACTION._Key, "after");
+
+	model.action(ACTION._Undo);
+	assertEquals(toMarkdown(model.tokens), "before\n");
+	model.action(ACTION._Undo);
+	assertEquals(toMarkdown(model.tokens), "before");
+	model.action(ACTION._Undo);
+	assertEquals(toMarkdown(model.tokens), "");
+});
+
 Deno.test("custom transactions are one undoable extension edit", () => {
 	const model = new Model([paragraph(text("before"))]);
 	model.transact(() => {
