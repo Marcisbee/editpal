@@ -193,6 +193,38 @@ test("native keyboard text is inserted from beforeinput, not keydown", async ({ 
 	expect((await source.inputValue()).match(/ß/g)).toHaveLength(1);
 });
 
+test("ArrowRight leaves manually typed inline Markdown formatting", async ({ page }) => {
+	await page.getByRole("button", { name: "Basic" }).click();
+	const editor = page.getByRole("textbox", {
+		name: "Demo Markdown document",
+	});
+	const source = page.locator("textarea[name='content']");
+
+	await editor.focus();
+	await page.keyboard.press("ControlOrMeta+End");
+	for (
+		const markdown of [
+			"`code`",
+			"**bold**",
+			"_italic_",
+			"~~strikethrough~~",
+			"==highlighted==",
+		]
+	) {
+		await page.keyboard.press("Enter");
+		await page.keyboard.type(markdown);
+		await expect(source).toHaveValue(
+			new RegExp(`${markdown.replaceAll("*", "\\*")}$`),
+		);
+
+		await page.keyboard.press("ArrowRight");
+		await page.keyboard.type(" after");
+		await expect(source).toHaveValue(
+			new RegExp(`${markdown.replaceAll("*", "\\*")} after$`),
+		);
+	}
+});
+
 test("drag and drop uses structured Editpal data and undoes atomically", async ({ page }) => {
 	await page.getByRole("button", { name: "Basic" }).click();
 	const editor = page.getByRole("textbox", {
