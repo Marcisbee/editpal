@@ -70,6 +70,7 @@ export function Toolbar({ hideLink = false }: { hideLink?: boolean }) {
 				<button
 					type="button"
 					aria-label="Bold"
+					aria-pressed={format.fontWeight === "bold"}
 					title="Bold (**)"
 					data-e-tb-active={format.fontWeight === "bold" || undefined}
 					onMouseDown={preventDefaultAndStop}
@@ -83,6 +84,7 @@ export function Toolbar({ hideLink = false }: { hideLink?: boolean }) {
 				<button
 					type="button"
 					aria-label="Italic"
+					aria-pressed={format.fontStyle === "italic"}
 					title="Italic (_)"
 					data-e-tb-active={format.fontStyle === "italic" || undefined}
 					onMouseDown={preventDefaultAndStop}
@@ -96,6 +98,7 @@ export function Toolbar({ hideLink = false }: { hideLink?: boolean }) {
 				<button
 					type="button"
 					aria-label="Strikethrough"
+					aria-pressed={format.textDecoration === "line-through"}
 					title="Strikethrough (~~)"
 					data-e-tb-active={format.textDecoration === "line-through" ||
 						undefined}
@@ -110,6 +113,7 @@ export function Toolbar({ hideLink = false }: { hideLink?: boolean }) {
 				<button
 					type="button"
 					aria-label="Inline code"
+					aria-pressed={format.code === true}
 					title="Inline code (`)"
 					data-e-tb-active={format.code === true || undefined}
 					onMouseDown={preventDefaultAndStop}
@@ -123,6 +127,7 @@ export function Toolbar({ hideLink = false }: { hideLink?: boolean }) {
 				<button
 					type="button"
 					aria-label="Highlight"
+					aria-pressed={format.highlight === true}
 					title="Highlight (==)"
 					data-e-tb-active={format.highlight === true || undefined}
 					onMouseDown={preventDefaultAndStop}
@@ -137,6 +142,7 @@ export function Toolbar({ hideLink = false }: { hideLink?: boolean }) {
 					<button
 						type="button"
 						aria-label="Link"
+						aria-pressed={Boolean(format.link)}
 						title="Add link"
 						data-e-tb-active={Boolean(format.link) || undefined}
 						onMouseDown={preventDefaultAndStop}
