@@ -1468,6 +1468,18 @@ test("Markdown tables stay editable and render with semantic alignment", async (
 	});
 	const source = page.locator("textarea[name='content']");
 	await expect(editor.locator("[data-ep-table-row]")).toHaveCount(3);
+	const firstCell = editor.locator("[data-ep-table-cell]").first();
+	await expect(firstCell).toHaveCSS("position", "relative");
+	expect(
+		await firstCell.evaluate((cell) =>
+			getComputedStyle(cell, "::before").position
+		),
+	).toBe("absolute");
+	expect(
+		await editor.locator("[data-ep-table-cell]:last-child").first().evaluate(
+			(cell) => getComputedStyle(cell, "::after").position,
+		),
+	).toBe("absolute");
 	await placeCaretAtTextEnd(editor, "Centered");
 	await page.keyboard.type("!");
 	await expect(source).toHaveValue(/\| Alignment \| Centered! \| Right \|/);

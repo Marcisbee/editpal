@@ -175,15 +175,22 @@ p[data-ep],
 [data-ep-main][data-ep-mode="markdown"] [data-ep-table-cell]::before {
 	content: '|';
 	font-weight: 400;
-	margin-right: 0.45em;
+	inset-inline-start: 0.55em;
 	opacity: 0.5;
+	position: absolute;
+}
+
+[data-ep-main][data-ep-mode="markdown"] [data-ep-table-cell] {
+	padding-inline: 1.45em;
+	position: relative;
 }
 
 [data-ep-main][data-ep-mode="markdown"] [data-ep-table-cell]:last-child::after {
 	content: '|';
 	font-weight: 400;
-	margin-left: 0.45em;
+	inset-inline-end: 0.55em;
 	opacity: 0.5;
+	position: absolute;
 }
 
 [data-ep-preview] [data-ep-table] {
