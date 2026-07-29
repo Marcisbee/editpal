@@ -65,8 +65,10 @@ const markdown = toMarkdown(model.tokens);
 ```
 
 `Editpal` also accepts `ariaLabel`, `className`, `disabled`, `editorProps`, `id`,
-`onChange`, `placeholder`, `readOnly`, and `style`. Pass `name` (and optionally
-`form` and `required`) to submit the Markdown through a native HTML form.
+`onChange`, `placeholder`, `readOnly`, and `style`. Tab follows the page's
+native focus order by default. Set `indentOnTab` to opt into Tab indentation;
+Escape then releases focus from the editor. Pass `name` (and optionally `form`
+and `required`) to submit the Markdown through a native HTML form.
 `maxLength` limits serialized Markdown length and `onLimitExceeded` can display
 application validation feedback.
 Replace a loaded document with
@@ -76,7 +78,9 @@ undo history. Call `model.destroy()` when a model is permanently discarded.
 The floating text toolbar appears only for an explicit text selection. Its link
 action turns that selection into a labeled link. Selecting an image, attachment,
 embed, or existing link opens the corresponding contextual controls for editing
-or unlinking it.
+or unlinking it. Press Alt+F10 while the editor is focused to move focus to the
+visible toolbar, use the arrow keys to move between its buttons, and press Escape
+to return to the editor.
 
 ## Extensions
 

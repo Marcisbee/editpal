@@ -596,6 +596,11 @@ export interface EditpalProps {
 	style?: HTMLAttributes<HTMLDivElement>["style"];
 	/** Additional native attributes applied before Editpal's managed handlers. */
 	editorProps?: HTMLAttributes<HTMLDivElement>;
+	/**
+	 * Use Tab and Shift+Tab for document indentation instead of native focus
+	 * navigation. Escape releases focus from the editor when enabled.
+	 */
+	indentOnTab?: boolean;
 	/** Submit the Markdown value with a native HTML form. */
 	name?: string;
 	/** Associate the hidden form value with a form element by id. */
@@ -1084,6 +1089,7 @@ export function Editpal(
 		extensions,
 		form,
 		id,
+		indentOnTab = false,
 		maxLength,
 		mode = "markdown",
 		model,
@@ -1098,6 +1104,7 @@ export function Editpal(
 ): VNode {
 	const { tokens, _stack, action, selection } = useStore(model);
 	const ref = useRef<HTMLDivElement>(null);
+	const floatingToolbarRef = useRef<HTMLDivElement>(null);
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const uploadControllers = useRef(new Set<AbortController>());
 	const onChangeRef = useRef(onChange);
@@ -2190,7 +2197,7 @@ export function Editpal(
 				replaceAsset,
 			}}
 		>
-			<FloatingToolbar />
+			<FloatingToolbar toolbarRef={floatingToolbarRef} />
 			<SlashDropdown />
 			<MentionDropdown />
 			<div
@@ -2367,6 +2374,24 @@ export function Editpal(
 					}
 
 					if (
+						e.altKey &&
+						!e.ctrlKey &&
+						!e.metaKey &&
+						!e.shiftKey &&
+						e.key === "F10"
+					) {
+						const toolbar = floatingToolbarRef.current;
+						const firstControl = toolbar?.querySelector<HTMLButtonElement>(
+							"button:not([disabled])",
+						);
+						if (firstControl) {
+							preventDefaultAndStop(e);
+							firstControl.focus({ preventScroll: true });
+						}
+						return;
+					}
+
+					if (
 						selectedId &&
 						Array.from(e.key).length === 1 &&
 						(!primaryModifier ||
@@ -2466,6 +2491,12 @@ export function Editpal(
 						return;
 					}
 
+					if (indentOnTab && e.key === "Escape") {
+						preventDefaultAndStop(e);
+						ref.current?.blur();
+						return;
+					}
+
 					if (e.key.indexOf("Arrow") === 0) {
 						model.history.batch();
 						if (
@@ -2482,7 +2513,7 @@ export function Editpal(
 						return;
 					}
 
-					if (e.key === "Tab") {
+					if (indentOnTab && e.key === "Tab") {
 						preventDefault(e);
 						action(e.shiftKey ? ACTION._ShiftTab : ACTION._Tab);
 						return;

@@ -54,6 +54,53 @@ test("editor exposes accessible semantics and extension renderers", async ({ pag
 	);
 });
 
+test("Tab follows focus order and the floating toolbar supports keyboard navigation", async ({ page }) => {
+	const editor = page.getByRole("textbox", {
+		name: "Demo Markdown document",
+	});
+	const source = page.locator("textarea[name='content']");
+	const initial = await source.inputValue();
+
+	await editor.focus();
+	await page.keyboard.press("Tab");
+	await expect(editor).not.toBeFocused();
+	await expect(source).toHaveValue(initial);
+
+	await editor.evaluate((element) => {
+		const heading = element.querySelector("[data-ep-h] [data-t]");
+		const node = heading?.firstChild;
+		if (!node || node.nodeType !== Node.TEXT_NODE) {
+			throw new Error("Could not find heading text");
+		}
+		(element as HTMLElement).focus();
+		const range = document.createRange();
+		range.setStart(node, 0);
+		range.setEnd(node, Math.min(7, node.textContent?.length || 0));
+		const selection = document.getSelection();
+		selection?.removeAllRanges();
+		selection?.addRange(range);
+		document.dispatchEvent(new Event("selectionchange"));
+	});
+
+	const toolbar = page.getByRole("toolbar", { name: "Text formatting" });
+	await expect(toolbar).toBeVisible();
+	await page.keyboard.press("Alt+F10");
+	const bold = toolbar.getByRole("button", { name: "Bold" });
+	const italic = toolbar.getByRole("button", { name: "Italic" });
+	await expect(bold).toBeFocused();
+	await expect(bold).toHaveAttribute("aria-pressed", "false");
+	await expect(bold).toHaveAttribute("tabindex", "0");
+	await expect(italic).toHaveAttribute("tabindex", "-1");
+
+	await page.keyboard.press("ArrowRight");
+	await expect(italic).toBeFocused();
+	await expect(italic).toHaveAttribute("tabindex", "0");
+	await expect(bold).toHaveAttribute("tabindex", "-1");
+
+	await page.keyboard.press("Escape");
+	await expect(editor).toBeFocused();
+});
+
 test("native keyboard text is inserted from beforeinput, not keydown", async ({ page }) => {
 	await page.getByRole("button", { name: "Basic" }).click();
 	const editor = page.getByRole("textbox", {
