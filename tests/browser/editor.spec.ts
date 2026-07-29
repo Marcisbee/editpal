@@ -33,8 +33,10 @@ test("caret restoration stays within each editor root", async ({ page }) => {
 	await expect.poll(() =>
 		shadow.evaluate((editor) => {
 			const root = editor.getRootNode() as ShadowRoot;
-			const selection = root.getSelection?.() ??
-				editor.ownerDocument.getSelection();
+			const rootSelection = root.getSelection?.();
+			const selection = rootSelection?.focusNode
+				? rootSelection
+				: editor.ownerDocument.getSelection();
 			return Boolean(
 				selection?.focusNode && editor.contains(selection.focusNode),
 			);
@@ -249,6 +251,13 @@ test("drag and drop uses structured Editpal data and undoes atomically", async (
 		targetRange.setStart(target, target.data.length);
 		targetRange.collapse(true);
 		const rect = targetRange.getBoundingClientRect();
+		// Synthetic drop events do not move the native insertion caret on
+		// mobile WebKit. Mirror the browser's real drag caret before dispatching
+		// the event so the editor has a valid fallback when point hit-testing is
+		// unavailable for synthetic coordinates.
+		selection?.removeAllRanges();
+		selection?.addRange(targetRange);
+		document.dispatchEvent(new Event("selectionchange"));
 		element.dispatchEvent(
 			new DragEvent("drop", {
 				bubbles: true,
