@@ -81,6 +81,83 @@ test("printable keys retain the native text-input path", async ({ page }) => {
 	await expect(source).toHaveValue(/Preview-ready Markdown";A/);
 });
 
+test("Latvian AltGraph input is not treated as an editor shortcut", async ({ page }) => {
+	const editor = page.getByRole("textbox", {
+		name: "Demo Markdown document",
+	});
+	const source = page.locator("textarea[name='content']");
+	await placeCaretAtTextEnd(editor, "Preview-ready Markdown");
+	const keydown = await editor.evaluate((element) => {
+		const event = new KeyboardEvent("keydown", {
+			bubbles: true,
+			cancelable: true,
+			ctrlKey: true,
+			key: "a",
+		});
+		Object.defineProperty(event, "getModifierState", {
+			value: (modifier: string) => modifier === "AltGraph",
+		});
+		const accepted = element.dispatchEvent(event);
+		return { accepted, defaultPrevented: event.defaultPrevented };
+	});
+	expect(keydown).toEqual({ accepted: true, defaultPrevented: false });
+
+	await editor.evaluate((element) => {
+		element.dispatchEvent(
+			new InputEvent("beforeinput", {
+				bubbles: true,
+				cancelable: true,
+				data: "āčēģīķļņšūž",
+				inputType: "insertText",
+			}),
+		);
+	});
+	await expect(source).toHaveValue(
+		/Preview-ready Markdown";āčēģīķļņšūž/,
+	);
+});
+
+test("Latvian apostrophe dead key stays on the composition path", async ({ page }) => {
+	const editor = page.getByRole("textbox", {
+		name: "Demo Markdown document",
+	});
+	const source = page.locator("textarea[name='content']");
+	await placeCaretAtTextEnd(editor, "Preview-ready Markdown");
+	const keydown = await editor.evaluate((element) => {
+		const event = new KeyboardEvent("keydown", {
+			bubbles: true,
+			cancelable: true,
+			code: "Quote",
+			key: "Dead",
+		});
+		const accepted = element.dispatchEvent(event);
+		return { accepted, defaultPrevented: event.defaultPrevented };
+	});
+	expect(keydown).toEqual({ accepted: true, defaultPrevented: false });
+
+	await editor.evaluate((element) => {
+		element.dispatchEvent(
+			new CompositionEvent("compositionstart", {
+				bubbles: true,
+				data: "",
+			}),
+		);
+		element.dispatchEvent(
+			new CompositionEvent("compositionupdate", {
+				bubbles: true,
+				data: "'",
+			}),
+		);
+		element.dispatchEvent(
+			new CompositionEvent("compositionend", {
+				bubbles: true,
+				data: "ļ",
+			}),
+		);
+	});
+	await expect(source).toHaveValue(/Preview-ready Markdown";ļ/);
+});
+
 test("a delayed Safari dead-key composition commits once inside punctuation", async ({ page }) => {
 	await page.getByRole("button", { name: "Basic" }).click();
 	const editor = page.getByRole("textbox", {

@@ -2203,7 +2203,11 @@ export function Editpal(
 					if (!selectedBeforeReconcile) {
 						onSelectionChange();
 					}
-					const primaryModifier = e.metaKey || e.ctrlKey;
+					// AltGraph can be exposed as Control (or Control+Alt) even
+					// though it is producing text. Do not interpret those layout
+					// chords as editor shortcuts.
+					const primaryModifier = !e.getModifierState("AltGraph") &&
+						(e.metaKey || e.ctrlKey);
 					const key = e.key.toLowerCase();
 					const selectedId = selectedBeforeReconcile ||
 						activeSelectableId();
