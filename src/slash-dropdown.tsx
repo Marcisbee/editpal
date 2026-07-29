@@ -26,13 +26,18 @@ interface SlashOption {
 	label: string;
 }
 
+function isNode(value: EventTarget | null): value is Node {
+	return Boolean(value && "nodeType" in value);
+}
+
 function caretRect(element: HTMLElement, offset: number): DOMRect {
-	const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+	const ownerDocument = element.ownerDocument;
+	const walker = ownerDocument.createTreeWalker(element, 4);
 	const text = walker.nextNode();
 	if (!text) {
 		return element.getBoundingClientRect();
 	}
-	const range = document.createRange();
+	const range = ownerDocument.createRange();
 	range.setStart(text, Math.min(offset, text.textContent?.length || 0));
 	range.collapse(true);
 	const rect = range.getBoundingClientRect();
@@ -233,14 +238,19 @@ export function SlashDropdown() {
 			return;
 		}
 
-		const documentScroll = document.scrollingElement?.scrollTop;
-		const frame = requestAnimationFrame(() => {
+		const ownerDocument = editor.current?.ownerDocument;
+		const view = ownerDocument?.defaultView;
+		if (!ownerDocument || !view) {
+			return;
+		}
+		const documentScroll = ownerDocument.scrollingElement?.scrollTop;
+		const frame = view.requestAnimationFrame(() => {
 			inputRef.current?.focus({ preventScroll: true });
-			if (documentScroll !== undefined && document.scrollingElement) {
-				document.scrollingElement.scrollTop = documentScroll;
+			if (documentScroll !== undefined && ownerDocument.scrollingElement) {
+				ownerDocument.scrollingElement.scrollTop = documentScroll;
 			}
 		});
-		return () => cancelAnimationFrame(frame);
+		return () => view.cancelAnimationFrame(frame);
 	}, [isOpen]);
 
 	useLayoutEffect(() => {
@@ -263,21 +273,26 @@ export function SlashDropdown() {
 
 		const updatePosition = () => {
 			const rect = caretRect(anchor, slash.triggerEnd!);
-			const viewport = globalThis.visualViewport;
+			const ownerDocument = anchor.ownerDocument;
+			const view = ownerDocument.defaultView;
+			if (!view) {
+				return;
+			}
+			const viewport = view.visualViewport;
 			// Fixed popovers are positioned in visual-viewport coordinates on
 			// mobile WebKit. Adding offsetTop/offsetLeft double-counts Safari's
 			// keyboard pan and strands the popup underneath the keyboard.
 			const viewportLeft = 0;
-			const viewportRight = viewport?.width ?? globalThis.innerWidth;
-			const viewportHeight = viewport?.height ?? globalThis.innerHeight;
-			const touchPoints = globalThis.navigator?.maxTouchPoints ?? 0;
+			const viewportRight = viewport?.width ?? view.innerWidth;
+			const viewportHeight = viewport?.height ?? view.innerHeight;
+			const touchPoints = view.navigator.maxTouchPoints ?? 0;
 			const viewportTop = Math.max(
-				safeAreaInsetTop(),
+				safeAreaInsetTop(ownerDocument),
 				touchPoints > 0 ? 56 : 0,
 			);
 			const viewportBottom = viewportHeight -
 				softwareKeyboardAccessoryInset(
-					globalThis.innerHeight,
+					view.innerHeight,
 					viewportHeight,
 					touchPoints,
 				);
@@ -322,15 +337,16 @@ export function SlashDropdown() {
 		};
 
 		updatePosition();
-		globalThis.addEventListener("resize", updatePosition);
-		globalThis.addEventListener("scroll", updatePosition, true);
-		globalThis.visualViewport?.addEventListener("resize", updatePosition);
-		globalThis.visualViewport?.addEventListener("scroll", updatePosition);
+		const view = anchor.ownerDocument.defaultView;
+		view?.addEventListener("resize", updatePosition);
+		view?.addEventListener("scroll", updatePosition, true);
+		view?.visualViewport?.addEventListener("resize", updatePosition);
+		view?.visualViewport?.addEventListener("scroll", updatePosition);
 		return () => {
-			globalThis.removeEventListener("resize", updatePosition);
-			globalThis.removeEventListener("scroll", updatePosition, true);
-			globalThis.visualViewport?.removeEventListener("resize", updatePosition);
-			globalThis.visualViewport?.removeEventListener("scroll", updatePosition);
+			view?.removeEventListener("resize", updatePosition);
+			view?.removeEventListener("scroll", updatePosition, true);
+			view?.visualViewport?.removeEventListener("resize", updatePosition);
+			view?.visualViewport?.removeEventListener("scroll", updatePosition);
 		};
 	}, [
 		editor.current,
@@ -455,13 +471,13 @@ export function SlashDropdown() {
 				onBlur={(event) => {
 					const next = event.relatedTarget;
 					if (
-						next instanceof Node &&
+						isNode(next) &&
 						event.currentTarget.parentElement?.contains(next)
 					) {
 						return;
 					}
 					slash.dismiss();
-					if (next instanceof Node && editor.current?.contains(next)) {
+					if (isNode(next) && editor.current?.contains(next)) {
 						return;
 					}
 					selection.setFocus(false);

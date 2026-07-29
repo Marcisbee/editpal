@@ -65,8 +65,10 @@ const markdown = toMarkdown(model.tokens);
 ```
 
 `Editpal` also accepts `ariaLabel`, `className`, `disabled`, `editorProps`, `id`,
-`onChange`, `placeholder`, `readOnly`, and `style`. Pass `name` (and optionally
-`form` and `required`) to submit the Markdown through a native HTML form.
+`onChange`, `placeholder`, `readOnly`, and `style`. Tab follows the page's
+native focus order by default. Set `indentOnTab` to opt into Tab indentation;
+Escape then releases focus from the editor. Pass `name` (and optionally `form`
+and `required`) to submit the Markdown through a native HTML form.
 `maxLength` limits serialized Markdown length and `onLimitExceeded` can display
 application validation feedback.
 Replace a loaded document with
@@ -76,7 +78,9 @@ undo history. Call `model.destroy()` when a model is permanently discarded.
 The floating text toolbar appears only for an explicit text selection. Its link
 action turns that selection into a labeled link. Selecting an image, attachment,
 embed, or existing link opens the corresponding contextual controls for editing
-or unlinking it.
+or unlinking it. Press Alt+F10 while the editor is focused to move focus to the
+visible toolbar, use the arrow keys to move between its buttons, and press Escape
+to return to the editor.
 
 GitHub-style Markdown tables are parsed, edited, and rendered with left, center,
 and right column alignment. Inline Markdown remains available inside table
@@ -170,6 +174,9 @@ Pasting a URL over selected text turns that text into a labeled link; pasting a
 URL at a caret inserts an editable `[url](url)` Markdown link. Typing a URL does
 not promote it into a special editor item. Pasted images use the attachment
 upload pipeline and leave the caret on the following line so typing can continue.
+Drag and drop adds `application/x-editpal-drag` alongside Markdown and plain-text
+fallbacks. Editpal-to-Editpal drops retain formatting, mentions, assets, and
+embeds as structured tokens, and a move is restored by one undo.
 
 ### Inline integrations
 

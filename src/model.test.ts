@@ -724,6 +724,35 @@ Deno.test("setMarkdown replaces content and clears history", () => {
 	assertModelInvariants(model);
 });
 
+Deno.test("continuous typing keeps one reversible history snapshot pair", () => {
+	const model = new Model(parseMarkdown(""));
+
+	for (const character of "a".repeat(1_000)) {
+		model.action(ACTION._Key, character);
+	}
+
+	assertEquals(model.history._batch.length, 1);
+	model.action(ACTION._Undo);
+	assertEquals(toMarkdown(model.tokens), "");
+	model.action(ACTION._Redo);
+	assertEquals(toMarkdown(model.tokens), "a".repeat(1_000));
+});
+
+Deno.test("structural edits split merged typing history", () => {
+	const model = new Model(parseMarkdown(""));
+
+	model.action(ACTION._Key, "before");
+	model.action(ACTION._Enter);
+	model.action(ACTION._Key, "after");
+
+	model.action(ACTION._Undo);
+	assertEquals(toMarkdown(model.tokens), "before\n");
+	model.action(ACTION._Undo);
+	assertEquals(toMarkdown(model.tokens), "before");
+	model.action(ACTION._Undo);
+	assertEquals(toMarkdown(model.tokens), "");
+});
+
 Deno.test("custom transactions are one undoable extension edit", () => {
 	const model = new Model([paragraph(text("before"))]);
 	model.transact(() => {
@@ -2170,6 +2199,157 @@ Deno.test("plain-text selection serialization includes atoms and block breaks", 
 		model.selectedText(),
 		"ee https://example.com now\nDiagram caption",
 	);
+});
+
+Deno.test("structured fragments preserve mentions and assets during a move", () => {
+	const mention = text("@marcis", {
+		mention: {
+			configId: "people",
+			id: "marcis",
+			label: "Marcis",
+			trigger: "@",
+			value: { role: "maintainer" },
+		},
+	});
+	const attachment: InlineToken = {
+		id: `attachment-${crypto.randomUUID()}`,
+		key: "",
+		props: {
+			kind: "file",
+			meta: { storageId: "asset-42" },
+			mimeType: "application/pdf",
+			name: "notes.pdf",
+			size: 42,
+		},
+		src: "https://example.com/notes.pdf",
+		type: "attachment",
+	};
+	const model = new Model([
+		paragraph(
+			text("Before "),
+			mention,
+			text(" and "),
+			attachment,
+			text(" after"),
+		),
+	]);
+	model.selection.setSelection("0.1", 0, "0.3", 0);
+	const fragment = model.selectedFragment();
+	const bookmark = model.selectionBookmark()!;
+	const before = toMarkdown(model.tokens);
+
+	model.selection.setSelection("0.4", 6, "0.4", 6);
+	assertEquals(model.moveFragment(fragment, bookmark), true);
+
+	const movedMention = model.tokens[0].children.find((child) =>
+		child.type === "t" && child.props.mention
+	);
+	const movedAttachment = model.tokens[0].children.find((child) =>
+		child.type === "attachment"
+	);
+	assertEquals(
+		movedMention?.type === "t" ? movedMention.props.mention?.value : undefined,
+		{ role: "maintainer" },
+	);
+	assertEquals(
+		movedAttachment?.type === "attachment"
+			? movedAttachment.props.meta
+			: undefined,
+		{ storageId: "asset-42" },
+	);
+	assertEquals(model.history._undo.length, 1);
+
+	model.action(ACTION._Undo);
+	assertEquals(toMarkdown(model.tokens), before);
+	model.action(ACTION._Redo);
+	assertEquals(model.history._undo.length, 1);
+	assertModelInvariants(model);
+});
+
+Deno.test("same-token structured moves retain inline formatting atomically", () => {
+	const model = new Model([
+		paragraph(text("one two three", { fontWeight: "bold" })),
+	]);
+	model.selection.setSelection("0.0", 4, "0.0", 7);
+	const fragment = model.selectedFragment();
+	const bookmark = model.selectionBookmark()!;
+
+	model.selection.setSelection("0.0", 0, "0.0", 0);
+	assertEquals(model.moveFragment(fragment, bookmark), true);
+	assertEquals(documentText(model), "twoone  three");
+	assertEquals(textWithFormat(model, "fontWeight", "bold"), "twoone  three");
+	assertEquals(model.history._undo.length, 1);
+
+	model.action(ACTION._Undo);
+	assertEquals(documentText(model), "one two three");
+	model.action(ACTION._Redo);
+	assertEquals(documentText(model), "twoone  three");
+	assertModelInvariants(model);
+});
+
+Deno.test("atomic assets can be selected as structured drag fragments", () => {
+	const asset = image("Diagram");
+	const model = new Model([
+		paragraph(text("before "), asset, text(" after")),
+	]);
+	const assetId =
+		model.tokens[0].children.find((child) => child.type === "img")!
+			.id;
+
+	assertEquals(model.selectToken(assetId), true);
+	const fragment = model.selectedFragment();
+	const bookmark = model.selectionBookmark()!;
+	assertEquals(
+		fragment.flatMap((block) => block.children).some((child) =>
+			child.type === "img" && child.props.alt === "Diagram"
+		),
+		true,
+	);
+
+	const last = model.tokens[0].children[model.tokens[0].children.length - 1];
+	model.select(last, last.type === "t" ? last.text.length : 0);
+	assertEquals(model.moveFragment(fragment, bookmark), true);
+	assertEquals(
+		model.tokens[0].children.filter((child) => child.type === "img").length,
+		1,
+	);
+	assertEquals(model.history._undo.length, 1);
+
+	model.action(ACTION._Undo);
+	assertEquals(model.tokens[0].children[1].type, "img");
+	assertModelInvariants(model);
+});
+
+Deno.test("structured insertion keeps block types at an empty drop target", () => {
+	const source = new Model([
+		{
+			children: [text("Heading")],
+			id: `heading-${crypto.randomUUID()}`,
+			key: "",
+			props: { size: 2 },
+			type: "h",
+		},
+		{
+			children: [text("Item")],
+			id: `list-${crypto.randomUUID()}`,
+			key: "",
+			props: { indent: 1, type: "ul" },
+			type: "l",
+		},
+	]);
+	source.selectAll();
+	const fragment = source.selectedFragment();
+	const target = new Model([paragraph(text(""))]);
+
+	assertEquals(target.insertFragment(fragment), true);
+	assertEquals(target.tokens.map((block) => block.type), ["h", "l"]);
+	assertEquals(target.tokens[0].props, { size: 2 });
+	assertEquals(target.tokens[1].props, { indent: 1, type: "ul" });
+	assertEquals(target.history._undo.length, 1);
+
+	target.action(ACTION._Undo);
+	assertEquals(target.tokens.map((block) => block.type), ["p"]);
+	assertModelInvariants(target);
 });
 
 Deno.test("deterministic edit sequences preserve model invariants", () => {

@@ -136,6 +136,13 @@ interface InsertMentionData {
 	text: string;
 }
 
+export interface ModelSelectionBookmark {
+	firstId: string;
+	firstOffset: number;
+	lastId: string;
+	lastOffset: number;
+}
+
 function isWordCharacter(value: string, offset: number): boolean {
 	if (offset < 0 || offset >= value.length) {
 		return false;
@@ -321,7 +328,7 @@ export class Model extends Exome {
 	public _idToKey: Record<string, string> = {};
 	public _elements: Record<string, AnyToken> = {};
 	public _isComposing = false;
-	public _stack: Array<() => void> = [];
+	public _stack: Array<(editor: HTMLElement) => void> = [];
 
 	constructor(
 		tokens: TokenRoot = [createBlockToken("p", {}, [createTextToken()])],
@@ -1143,6 +1150,367 @@ export class Model extends Exome {
 		return output.join("\n");
 	};
 
+	/** Capture the active range as structured editor tokens. */
+	public selectedFragment = (): TokenRoot => {
+		const collapsed = this.selection.first[0] === this.selection.last[0] &&
+			this.selection.first[1] === this.selection.last[1];
+		if (collapsed) {
+			return [];
+		}
+
+		const [firstKey, firstOffset] = this._resolveSelectionPoint(
+			this.selection.first,
+		);
+		const [lastKey, lastOffset] = this._resolveSelectionPoint(
+			this.selection.last,
+			true,
+		);
+		const [firstBlock, firstChild] = firstKey.split(".").map(Number);
+		const [lastBlock, lastChild] = lastKey.split(".").map(Number);
+
+		return this.tokens.slice(firstBlock, lastBlock + 1).map(
+			(block, relativeBlockIndex) => {
+				const blockIndex = firstBlock + relativeBlockIndex;
+				const start = blockIndex === firstBlock ? firstChild : 0;
+				const end = blockIndex === lastBlock
+					? lastChild
+					: block.children.length - 1;
+				const cloned = cloneToken(block);
+				cloned.children = cloned.children.slice(start, end + 1);
+
+				const first = cloned.children[0];
+				const last = cloned.children[cloned.children.length - 1];
+				if (first?.type === "t" && blockIndex === firstBlock) {
+					first.text = first.text.slice(firstOffset);
+				}
+				if (last?.type === "t" && blockIndex === lastBlock) {
+					const endOffset = first === last
+						? Math.max(0, lastOffset - firstOffset)
+						: lastOffset;
+					last.text = last.text.slice(0, endOffset);
+				}
+				if (cloned.children.length === 0) {
+					cloned.children.push(createTextToken());
+				}
+				return cloned;
+			},
+		);
+	};
+
+	/** Capture stable token IDs for restoring the active range after a drop. */
+	public selectionBookmark = (): ModelSelectionBookmark | undefined => {
+		const first = this.findElement(this.selection.first[0]);
+		const last = this.findElement(this.selection.last[0]);
+		if (!first || !last) {
+			return;
+		}
+		return {
+			firstId: first.id,
+			firstOffset: this.selection.first[1],
+			lastId: last.id,
+			lastOffset: this.selection.last[1],
+		};
+	};
+
+	/** Select one complete block or inline token for an atomic drag. */
+	public selectToken(id: string): boolean {
+		const key = this._idToKey[id];
+		const token = key ? this.findElement(key) : undefined;
+		if (!token) {
+			return false;
+		}
+		if (isBlockToken(token)) {
+			const first = token.children[0];
+			const last = token.children[token.children.length - 1];
+			if (!first || !last) {
+				return false;
+			}
+			this.select(
+				first,
+				0,
+				last,
+				last.type === "t" ? last.text.length : 0,
+			);
+			return !(
+				this.selection.first[0] === this.selection.last[0] &&
+				this.selection.first[1] === this.selection.last[1]
+			);
+		}
+		if (token.type === "t") {
+			this.select(token, 0, token, token.text.length);
+			return token.text.length > 0;
+		}
+
+		const parent = this.parent(token.key);
+		if (!parent) {
+			return false;
+		}
+		const index = parent.children.indexOf(token);
+		let before = parent.children[index - 1];
+		let after = parent.children[index + 1];
+		if (before?.type !== "t") {
+			before = createTextToken({ typingBoundary: true });
+			parent.children.splice(index, 0, before);
+		}
+		const currentIndex = parent.children.indexOf(token);
+		if (after?.type !== "t") {
+			after = createTextToken({ typingBoundary: true });
+			parent.children.splice(currentIndex + 1, 0, after);
+		}
+		this.recalculate();
+		this.select(before, before.text.length, after, 0);
+		return true;
+	}
+
+	private _selectionContainsPoint(
+		bookmark: ModelSelectionBookmark,
+		key: string,
+		offset: number,
+	): boolean {
+		const firstKey = this._idToKey[bookmark.firstId];
+		const lastKey = this._idToKey[bookmark.lastId];
+		if (!firstKey || !lastKey) {
+			return false;
+		}
+		const keys = this.tokens.flatMap((block) =>
+			block.children.map((child) => child.key)
+		);
+		const firstIndex = keys.indexOf(firstKey);
+		const lastIndex = keys.indexOf(lastKey);
+		const pointIndex = keys.indexOf(key);
+		if (firstIndex < 0 || lastIndex < 0 || pointIndex < firstIndex) {
+			return false;
+		}
+		if (pointIndex > lastIndex) {
+			return false;
+		}
+		if (firstIndex === lastIndex) {
+			return offset >= bookmark.firstOffset && offset <= bookmark.lastOffset;
+		}
+		if (pointIndex === firstIndex && offset < bookmark.firstOffset) {
+			return false;
+		}
+		if (pointIndex === lastIndex && offset > bookmark.lastOffset) {
+			return false;
+		}
+		return true;
+	}
+
+	private _insertDropMarker(marker: string): TextToken | undefined {
+		if (
+			this.selection.first[0] !== this.selection.last[0] ||
+			this.selection.first[1] !== this.selection.last[1]
+		) {
+			this.history.lock(() => this.action(ACTION._Key, ""));
+		}
+		const [key, offset] = this.selection.first;
+		const element = this.innerText(key);
+		const parent = element ? this.parent(element.key) : undefined;
+		if (!element || !parent) {
+			return;
+		}
+		const index = parent.children.indexOf(element);
+		const before = createTextToken(
+			element.props,
+			element.text.slice(0, offset),
+		);
+		const dropMarker = createTextToken({
+			"data-editpal-drop-marker": marker,
+			typingBoundary: true,
+		});
+		const after = createTextToken(
+			element.props,
+			element.text.slice(offset),
+		);
+		parent.children.splice(index, 1, before, dropMarker, after);
+		this.recalculate();
+		return dropMarker;
+	}
+
+	private _insertFragmentAtMarker(
+		fragment: TokenRoot,
+		marker: TextToken,
+	): boolean {
+		const parent = this.parent(marker.key);
+		const parentIndex = parent ? this.tokens.indexOf(parent) : -1;
+		const markerIndex = parent?.children.indexOf(marker) ?? -1;
+		if (
+			!parent || parentIndex < 0 || markerIndex < 0 || fragment.length === 0
+		) {
+			return false;
+		}
+
+		const blocks = cloneToken(fragment);
+		const before = parent.children.slice(0, markerIndex);
+		const after = parent.children.slice(markerIndex + 1);
+		const targetIsEmpty = [...before, ...after].every((child) =>
+			child.type === "t" && child.text.length === 0
+		);
+		let caret: InlineToken;
+
+		if (targetIsEmpty) {
+			this.tokens.splice(parentIndex, 1, ...blocks);
+			const lastBlock = blocks[blocks.length - 1];
+			const last = lastBlock.children[lastBlock.children.length - 1];
+			if (last?.type === "t" && !last.props.mention) {
+				caret = last;
+			} else {
+				caret = createTextToken({ typingBoundary: true });
+				lastBlock.children.push(caret);
+			}
+		} else if (blocks.length === 1) {
+			parent.children.splice(
+				markerIndex,
+				1,
+				...blocks[0].children,
+			);
+			caret = after[0] ||
+				parent.children[
+					markerIndex + blocks[0].children.length - 1
+				];
+		} else {
+			parent.children = [...before, ...blocks[0].children];
+			const trailing = blocks[blocks.length - 1];
+			trailing.children.push(...after);
+			this.tokens.splice(
+				parentIndex + 1,
+				0,
+				...blocks.slice(1),
+			);
+			caret = after[0] ||
+				trailing.children[trailing.children.length - 1];
+		}
+
+		this.recalculate();
+		const currentCaret = this.findElement(this._idToKey[caret.id]);
+		if (currentCaret && !isBlockToken(currentCaret)) {
+			this.select(
+				currentCaret,
+				currentCaret.type === "t" && !after.includes(currentCaret)
+					? currentCaret.text.length
+					: 0,
+			);
+		}
+		return true;
+	}
+
+	/** Insert a structured fragment at the active selection as one undo step. */
+	public insertFragment(fragment: TokenRoot): boolean {
+		if (!fragment.length) {
+			return false;
+		}
+		let inserted = false;
+		this.transact(() => {
+			const markerId = ranID();
+			const marker = this._insertDropMarker(markerId);
+			if (marker) {
+				inserted = this._insertFragmentAtMarker(fragment, marker);
+			}
+		});
+		return inserted;
+	}
+
+	/** Move a structured range to the active caret as one undo step. */
+	public moveFragment(
+		fragment: TokenRoot,
+		source: ModelSelectionBookmark,
+	): boolean {
+		const target = this.selection.first;
+		if (
+			!fragment.length ||
+			this._selectionContainsPoint(source, target[0], target[1])
+		) {
+			return false;
+		}
+
+		let moved = false;
+		this.transact(() => {
+			const markerId = ranID();
+			const markerText = `\uE000editpal:${markerId}\uE001`;
+			const targetElement = this.innerText(target[0]);
+			if (!targetElement) {
+				return;
+			}
+			const adjustedSource = { ...source };
+			if (
+				targetElement.id === adjustedSource.firstId &&
+				target[1] <= adjustedSource.firstOffset
+			) {
+				adjustedSource.firstOffset += markerText.length;
+			}
+			if (
+				targetElement.id === adjustedSource.lastId &&
+				target[1] <= adjustedSource.lastOffset
+			) {
+				adjustedSource.lastOffset += markerText.length;
+			}
+			targetElement.text = targetElement.text.slice(0, target[1]) +
+				markerText + targetElement.text.slice(target[1]);
+			this.recalculate();
+
+			const firstKey = this._idToKey[adjustedSource.firstId];
+			const lastKey = this._idToKey[adjustedSource.lastId];
+			const first = firstKey ? this.findElement(firstKey) : undefined;
+			const last = lastKey ? this.findElement(lastKey) : undefined;
+			if (!first || !last) {
+				return;
+			}
+			this.select(
+				first,
+				adjustedSource.firstOffset,
+				last,
+				adjustedSource.lastOffset,
+			);
+			this.history.lock(() => this.action(ACTION._Key, ""));
+			const markerTextToken = this.tokens.flatMap((block) => block.children)
+				.find((child): child is TextToken =>
+					child.type === "t" && child.text.includes(markerText)
+				);
+			if (!markerTextToken) {
+				return;
+			}
+			const markerOffset = markerTextToken.text.indexOf(markerText);
+			markerTextToken.text = markerTextToken.text.slice(0, markerOffset) +
+				markerTextToken.text.slice(markerOffset + markerText.length);
+			this.recalculate();
+			const currentMarkerText = this.findElement(
+				this._idToKey[markerTextToken.id],
+			);
+			if (!currentMarkerText || currentMarkerText.type !== "t") {
+				return;
+			}
+			this.select(currentMarkerText, markerOffset);
+			const marker = this._insertDropMarker(markerId);
+			if (marker) {
+				moved = this._insertFragmentAtMarker(fragment, marker);
+			}
+		});
+		return moved;
+	}
+
+	/** Remove a previously bookmarked range as one undo step. */
+	public removeBookmarkedSelection(
+		bookmark: ModelSelectionBookmark,
+	): boolean {
+		const firstKey = this._idToKey[bookmark.firstId];
+		const lastKey = this._idToKey[bookmark.lastId];
+		const first = firstKey ? this.findElement(firstKey) : undefined;
+		const last = lastKey ? this.findElement(lastKey) : undefined;
+		if (!first || !last) {
+			return false;
+		}
+		this.transact(() => {
+			this.select(
+				first,
+				bookmark.firstOffset,
+				last,
+				bookmark.lastOffset,
+			);
+			this.history.lock(() => this.action(ACTION._Key, ""));
+		});
+		return true;
+	}
+
 	private _textPointAtBlockOffset(
 		block: BlockToken,
 		requestedOffset: number,
@@ -1498,8 +1866,8 @@ export class Model extends Exome {
 						tokenId: caretText.id,
 					});
 					this.selection.setFormat(outsideFormat);
-					this._stack.push(() =>
-						setMarkdownBoundaryCaret(caretText.id, "after")
+					this._stack.push((editor) =>
+						setMarkdownBoundaryCaret(editor, caretText.id, "after")
 					);
 				}
 			}
@@ -1565,7 +1933,7 @@ export class Model extends Exome {
 		const blockId = caretBlock.id;
 		const textId = caretText.id;
 		this.select(caretText, textOffset);
-		this._stack.push(() => {
+		this._stack.push((editor) => {
 			const currentTextKey = this._idToKey[textId];
 			const currentText = currentTextKey
 				? this.findElement(currentTextKey)
@@ -1580,7 +1948,7 @@ export class Model extends Exome {
 				);
 				this.selection.setFormat(this.getSelectionFormat());
 			}
-			setCodeFenceCaret(blockId, side, markerOffset);
+			setCodeFenceCaret(editor, blockId, side, markerOffset);
 		});
 	}
 
@@ -1884,45 +2252,6 @@ export class Model extends Exome {
 	}
 
 	private _pushToHistory = (type: number, data?: any) => {
-		const first = this.selection.first.slice() as [string, number];
-		const last = this.selection.last.slice() as [string, number];
-		const tokensString = JSON.stringify(this.tokens);
-		const trace = {
-			undo: () => {
-				this.selection.first = first;
-				this.selection.last = last;
-				this.tokens = JSON.parse(tokensString);
-
-				this.recalculate();
-
-				this._stack.push(() => {
-					setCaret(
-						this.findElement(first[0]).id,
-						first[1],
-						this.findElement(last[0]).id,
-						last[1],
-					);
-				});
-			},
-			redo: () => {
-				this.selection.first = first;
-				this.selection.last = last;
-
-				this.recalculate();
-
-				this._stack.push(() => {
-					setCaret(
-						this.findElement(first[0]).id,
-						first[1],
-						this.findElement(last[0]).id,
-						last[1],
-					);
-				});
-
-				this.action(type, data);
-			},
-		};
-
 		const batch = type === ACTION._Todo ||
 				(type === ACTION._RemoveSelectable && !data?.text)
 			? undefined
@@ -1931,7 +2260,50 @@ export class Model extends Exome {
 			: type === ACTION._Compose
 			? ACTION._Key
 			: type;
-		this.history.push(trace, batch);
+
+		if (this.history.locked || this.history.continues(batch)) {
+			return;
+		}
+
+		type Snapshot = {
+			tokens: string;
+			first: [string, number];
+			last: [string, number];
+		};
+		const snapshot = (): Snapshot => ({
+			tokens: JSON.stringify(this.tokens),
+			first: this.selection.first.slice() as [string, number],
+			last: this.selection.last.slice() as [string, number],
+		});
+		const before = snapshot();
+		let after: Snapshot | undefined;
+		const restore = (state: Snapshot) => {
+			this.tokens = JSON.parse(state.tokens);
+			this.selection.first = state.first.slice() as [string, number];
+			this.selection.last = state.last.slice() as [string, number];
+			this.recalculate();
+
+			this._stack.push((editor) => {
+				setCaret(
+					editor,
+					this.findElement(state.first[0]).id,
+					state.first[1],
+					this.findElement(state.last[0]).id,
+					state.last[1],
+				);
+			});
+		};
+		const close = () => {
+			after ??= snapshot();
+		};
+		this.history.push({
+			close,
+			undo: () => restore(before),
+			redo: () => {
+				close();
+				restore(after!);
+			},
+		}, batch);
 	};
 
 	private _cut = (
@@ -2433,8 +2805,8 @@ export class Model extends Exome {
 				);
 			}
 			if (block.type !== "tr") {
-				this._stack.push(() =>
-					setInlineMarkdownCaret(blockId, caretSourceOffset)
+				this._stack.push((editor) =>
+					setInlineMarkdownCaret(editor, blockId, caretSourceOffset)
 				);
 			}
 			return;
@@ -3290,8 +3662,8 @@ export class Model extends Exome {
 		// );
 
 		// this._selectSilent(first, firstOffset);
-		this._stack.push(() =>
-			setCaret(first.id, firstOffset, last.id, lastOffset)
+		this._stack.push((editor) =>
+			setCaret(editor, first.id, firstOffset, last.id, lastOffset)
 		);
 
 		this.update();

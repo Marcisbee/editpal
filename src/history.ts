@@ -10,6 +10,7 @@ import { addMiddleware, Exome } from "exome";
 export interface Trace {
 	undo(): void;
 	redo(): void;
+	close?(): void;
 }
 
 type TraceBatch = Trace[];
@@ -31,6 +32,7 @@ export class HistoryStore extends Exome {
 	public set max(value: number) {
 		this._max = Math.max(0, Math.floor(value));
 		this._undo.splice(0, Math.max(0, this._undo.length - this._max));
+		this._redo.splice(0, Math.max(0, this._redo.length - this._max));
 	}
 
 	public lock = <Value>(fn: () => Value): Value => {
@@ -54,11 +56,13 @@ export class HistoryStore extends Exome {
 			}
 
 			const batch = undo.reduceRight((acc, trace) => {
+				trace.close?.();
 				trace.undo();
 				return acc.concat(trace);
 			}, [] as TraceBatch);
 
 			this._redo.push(batch);
+			this._trim(this._redo);
 		});
 	}
 
@@ -76,14 +80,7 @@ export class HistoryStore extends Exome {
 			}, [] as TraceBatch);
 
 			this._undo.push(batch);
-			// console.log(redo);
-			// // redo.forEach((trace) => {
-			// //   (
-			// //     trace.restoreHandler || loadLocalState
-			// //   )(trace.instance, trace.payload, trace.state[trace.state.length - 1]);
-			// // });
-
-			// this._undo.push(redo);
+			this._trim(this._undo);
 		});
 	}
 
@@ -92,18 +89,22 @@ export class HistoryStore extends Exome {
 			return;
 		}
 
+		for (const trace of this._batch) {
+			trace.close?.();
+		}
 		this._undo.push(this._batch);
 		this._batch = [];
 		this._lastBatchId = undefined;
 
-		if (this._undo.length > this._max) {
-			this._undo.shift();
-		}
+		this._trim(this._undo);
 	};
 
-	// push(keydown, 'key')       // start batch
-	// push(keydown, 'key')       // continue batch
-	// push(backspace, 'delete')  // start new batch
+	public continues(batch?: string | number): boolean {
+		return batch !== undefined &&
+			this._lastBatchId === batch &&
+			this._batch.length > 0;
+	}
+
 	public push(trace: Trace, batch?: string | number) {
 		if (this.locked) {
 			return;
@@ -115,6 +116,11 @@ export class HistoryStore extends Exome {
 			this.batch();
 		}
 
+		const previous = this._undo[this._undo.length - 1];
+		for (const previousTrace of previous || []) {
+			previousTrace.close?.();
+		}
+
 		this._lastBatchId = batch;
 
 		if (batch === undefined) {
@@ -123,14 +129,16 @@ export class HistoryStore extends Exome {
 			this._batch.push(trace);
 		}
 
-		if (this._undo.length > this._max) {
-			this._undo.shift();
-		}
+		this._trim(this._undo);
 	}
 
 	public clear() {
 		this.batch();
 		this._undo = [];
 		this._redo = [];
+	}
+
+	private _trim(queue: TraceBatch[]) {
+		queue.splice(0, Math.max(0, queue.length - this._max));
 	}
 }

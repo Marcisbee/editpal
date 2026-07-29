@@ -1,6 +1,12 @@
 import { useStore } from "exome/preact";
 import { createContext, h } from "preact";
-import type { Context, HTMLAttributes, RefObject, VNode } from "preact";
+import type {
+	ComponentChild,
+	Context,
+	HTMLAttributes,
+	RefObject,
+	VNode,
+} from "preact";
 import {
 	useContext,
 	useEffect,
@@ -15,9 +21,11 @@ import type {
 	InlineToken,
 	TableRowToken,
 	TextToken,
+	TokenRoot,
 } from "./tokens.ts";
 import { isBlockToken, tableRowCells } from "./tokens.ts";
 import { ACTION, Model as EditorModel } from "./model.ts";
+import type { ModelSelectionBookmark } from "./model.ts";
 import type { MarkdownBoundary } from "./selection.ts";
 import { RenderImage } from "./plugin/image.tsx";
 import { RenderAttachment } from "./plugin/attachment.tsx";
@@ -31,6 +39,7 @@ import {
 	toMarkdown,
 } from "./markdown-parser.ts";
 import {
+	getEditorSelection,
 	nextGraphemeBoundary,
 	previousGraphemeBoundary,
 	setCaret,
@@ -42,6 +51,70 @@ import { MentionDropdown } from "./mention-dropdown.tsx";
 
 export const Model = EditorModel;
 export type { UpdateAssetData } from "./model.ts";
+export const EDITPAL_DRAG_MIME_TYPE = "application/x-editpal-drag";
+
+interface EditpalDragPayload {
+	fragment: TokenRoot;
+	version: 1;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function parseEditpalDragPayload(
+	value: string,
+): EditpalDragPayload | undefined {
+	if (!value) {
+		return;
+	}
+	try {
+		const payload = JSON.parse(value) as Partial<EditpalDragPayload>;
+		if (
+			payload.version !== 1 ||
+			!Array.isArray(payload.fragment) ||
+			!payload.fragment.every((block) =>
+				isRecord(block) &&
+				["code", "h", "hr", "l", "p", "quote", "todo"].includes(
+					String(block.type),
+				) &&
+				isRecord(block.props) &&
+				Array.isArray(block.children) &&
+				block.children.length > 0 &&
+				block.children.every((child) => {
+					if (
+						!isRecord(child) ||
+						!["attachment", "img", "t", "url"].includes(
+							String(child.type),
+						) ||
+						!isRecord(child.props)
+					) {
+						return false;
+					}
+					if (child.type === "t") {
+						return typeof child.text === "string";
+					}
+					if (typeof child.src !== "string") {
+						return false;
+					}
+					return child.type !== "attachment" ||
+						(
+							["file", "image", "video"].includes(
+								String(child.props.kind),
+							) &&
+							typeof child.props.name === "string"
+						);
+				})
+			)
+		) {
+			return;
+		}
+		return payload as EditpalDragPayload;
+	} catch {
+		return;
+	}
+}
+
 /**
  * URL of the stylesheet matching the installed package version.
  *
@@ -88,7 +161,7 @@ function RenderText(
 		sourceStart?: number;
 	},
 ) {
-	const { activeId, extensions, model } = useContext(EditorContext);
+	const { activeId, editable, extensions, model } = useContext(EditorContext);
 	if (item.props?.url) {
 		return <RenderUrl {...item} key={item.id} />;
 	}
@@ -110,6 +183,7 @@ function RenderText(
 					data-ep-inline-integration={integration.definition.id}
 					data-ep-selectable="inline-embed"
 					data-ep-s={activeId === item.id || undefined}
+					draggable={editable}
 					aria-label={integration.definition.ariaLabel?.(context)}
 					onClick={preventSelectableLinkActivation}
 				>
@@ -155,6 +229,7 @@ function RenderText(
 			data-ep-source-end={sourceEnd}
 			data-ep-source-start={sourceStart}
 			data-t={text ? true : "empty"}
+			draggable={mention ? editable : undefined}
 		>
 			{markdownBefore?.map(({ key, marker, sourceEnd, sourceStart }) => (
 				<span
@@ -213,11 +288,17 @@ function RenderItem(
 
 	if (item.type === "h") {
 		const { size, ...style } = item.props || {};
+		const level = Math.max(1, Math.min(size || 1, 6));
 
-		return (
-			<strong key={item.id} style={style} data-ep-h={size} data-ep={item.id}>
-				<RenderMap items={item.children} />
-			</strong>
+		return h(
+			`h${level}`,
+			{
+				"data-ep": item.id,
+				"data-ep-h": level,
+				key: item.id,
+				style,
+			},
+			<RenderMap items={item.children} />,
 		);
 	}
 
@@ -415,10 +496,12 @@ function RenderMap({ items }: RenderMapProps) {
 		return null;
 	}
 
-	const { activeId, extensions, mode, model } = useContext(EditorContext);
+	const { activeId, editable, extensions, mode, model } = useContext(
+		EditorContext,
+	);
 	let sourceOffset = 0;
 
-	return items.map((item, index) => {
+	const renderedItems = items.map((item, index) => {
 		const previous = items[index - 1];
 		const next = items[index + 1];
 		const markdown = mode === "markdown" && item.type === "t" &&
@@ -524,6 +607,7 @@ function RenderMap({ items }: RenderMapProps) {
 						data-ep-line-embed={embed.id}
 						data-ep-selectable="line-embed"
 						data-ep-s={activeId === item.id || undefined}
+						draggable={editable}
 						onClick={preventSelectableLinkActivation}
 					>
 						{embed.render({ block: item, match, model })}
@@ -533,6 +617,46 @@ function RenderMap({ items }: RenderMapProps) {
 		}
 		return rendered;
 	});
+
+	if (!items.some(isBlockToken)) {
+		return renderedItems;
+	}
+
+	const grouped: ComponentChild[] = [];
+	for (let index = 0; index < items.length; index++) {
+		const item = items[index];
+		if (item.type !== "l") {
+			grouped.push(renderedItems[index]);
+			continue;
+		}
+
+		const type = item.props.type === "ol" ? "ol" : "ul";
+		const listItems: ComponentChild[] = [];
+		while (
+			items[index]?.type === "l" &&
+			(items[index] as BlockToken & { type: "l" }).props.type ===
+				item.props.type &&
+			(items[index] as BlockToken & { type: "l" }).props.indent ===
+				item.props.indent
+		) {
+			listItems.push(renderedItems[index]);
+			index += 1;
+		}
+		index -= 1;
+		grouped.push(
+			h(
+				type,
+				{
+					"data-ep-list": type,
+					key: `list-${item.id}`,
+					start: type === "ol" ? item.props.start : undefined,
+				},
+				listItems,
+			),
+		);
+	}
+
+	return grouped;
 }
 
 // rome-ignore lint/suspicious/noExplicitAny: <explanation>
@@ -586,6 +710,11 @@ export interface EditpalProps {
 	style?: HTMLAttributes<HTMLDivElement>["style"];
 	/** Additional native attributes applied before Editpal's managed handlers. */
 	editorProps?: HTMLAttributes<HTMLDivElement>;
+	/**
+	 * Use Tab and Shift+Tab for document indentation instead of native focus
+	 * navigation. Escape releases focus from the editor when enabled.
+	 */
+	indentOnTab?: boolean;
 	/** Submit the Markdown value with a native HTML form. */
 	name?: string;
 	/** Associate the hidden form value with a form element by id. */
@@ -1076,6 +1205,7 @@ export function Editpal(
 		extensions,
 		form,
 		id,
+		indentOnTab = false,
 		maxLength,
 		mode = "markdown",
 		model,
@@ -1090,15 +1220,34 @@ export function Editpal(
 ): VNode {
 	const { tokens, _stack, action, selection } = useStore(model);
 	const ref = useRef<HTMLDivElement>(null);
+	const floatingToolbarRef = useRef<HTMLDivElement>(null);
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const uploadControllers = useRef(new Set<AbortController>());
 	const onChangeRef = useRef(onChange);
 	const committedCompositionRef = useRef<string | null>(null);
+	const dragRef = useRef<
+		{
+			bookmark: ModelSelectionBookmark;
+			fragment: TokenRoot;
+		} | undefined
+	>();
+	const previousModeRef = useRef(mode);
 	const [focus, setFocus] = useState(0);
 	const [reload, setReload] = useState(0);
 	const [activeId, setActiveId] = useState<string>();
+	const [announcement, setAnnouncement] = useState({
+		id: 0,
+		message: "",
+	});
 	const editable = !disabled && !readOnly;
 	const markdown = toMarkdown(tokens);
+
+	function announce(message: string) {
+		setAnnouncement((current) => ({
+			id: current.id + 1,
+			message,
+		}));
+	}
 
 	useEffect(() => {
 		onChangeRef.current = onChange;
@@ -1107,6 +1256,15 @@ export function Editpal(
 	useEffect(() => {
 		onChangeRef.current?.(markdown, model);
 	}, [markdown, model]);
+
+	useEffect(() => {
+		if (previousModeRef.current !== mode) {
+			announce(
+				`${mode === "markdown" ? "Markdown" : "Basic"} editing mode.`,
+			);
+			previousModeRef.current = mode;
+		}
+	}, [mode]);
 
 	useEffect(() => {
 		return () => {
@@ -1118,11 +1276,34 @@ export function Editpal(
 	}, []);
 
 	useLayoutEffect(() => {
-		_stack.splice(0).pop()?.();
+		const editor = ref.current;
+		if (editor) {
+			_stack.splice(0).pop()?.(editor);
+		}
 	});
+
+	function domSelection(): Selection | null {
+		return ref.current ? getEditorSelection(ref.current) : null;
+	}
 
 	function activeSelectableId(): string | undefined {
 		return activeId;
+	}
+
+	function announceLimit() {
+		if (maxLength === undefined) {
+			return;
+		}
+		announce(`Maximum length of ${maxLength} characters reached.`);
+		onLimitExceeded?.(maxLength, model);
+	}
+
+	function historyAction(type: typeof ACTION._Undo | typeof ACTION._Redo) {
+		const available = type === ACTION._Undo ? model.canUndo : model.canRedo;
+		action(type);
+		if (available) {
+			announce(type === ACTION._Undo ? "Undo complete." : "Redo complete.");
+		}
 	}
 
 	function insertText(
@@ -1133,7 +1314,7 @@ export function Editpal(
 			const selectedLength = model.selectedText().length;
 			const projected = markdown.length - selectedLength + text.length;
 			if (projected > maxLength) {
-				onLimitExceeded?.(maxLength, model);
+				announceLimit();
 				return false;
 			}
 		}
@@ -1300,12 +1481,13 @@ export function Editpal(
 				);
 				if (sourcePoint) {
 					const codeFenceSide = selectedMarker.dataset.epCodeFenceSide;
-					_stack.push(() => {
+					_stack.push((editor) => {
 						if (
 							codeFenceSide === "start" ||
 							codeFenceSide === "end"
 						) {
 							setCodeFenceCaret(
+								editor,
 								sourcePoint.block.id,
 								codeFenceSide,
 								sourcePoint.offset,
@@ -1313,6 +1495,7 @@ export function Editpal(
 							return;
 						}
 						setInlineMarkdownCaret(
+							editor,
 							sourcePoint.block.id,
 							sourcePoint.offset,
 						);
@@ -1389,7 +1572,9 @@ export function Editpal(
 						const [caretKey, caretOffset] = model.selection.first;
 						const caretToken = model.findElement(caretKey);
 						if (caretToken && !isBlockToken(caretToken)) {
-							_stack.push(() => setCaret(caretToken.id, caretOffset));
+							_stack.push((editor) =>
+								setCaret(editor, caretToken.id, caretOffset)
+							);
 						}
 						model.history.batch();
 						return;
@@ -1409,20 +1594,27 @@ export function Editpal(
 			return;
 		}
 
+		const ownerDocument = ref.current?.ownerDocument;
+		if (!ownerDocument) {
+			return;
+		}
 		let range: Range | null;
-		if (document.caretRangeFromPoint) {
+		if (ownerDocument.caretRangeFromPoint) {
 			// edge, chrome, android
-			range = document.caretRangeFromPoint(event.clientX, event.clientY);
-		} else if (document.caretPositionFromPoint) {
+			range = ownerDocument.caretRangeFromPoint(
+				event.clientX,
+				event.clientY,
+			);
+		} else if (ownerDocument.caretPositionFromPoint) {
 			// firefox
-			const position = document.caretPositionFromPoint(
+			const position = ownerDocument.caretPositionFromPoint(
 				event.clientX,
 				event.clientY,
 			);
 			if (!position) {
 				return;
 			}
-			range = document.createRange();
+			range = ownerDocument.createRange();
 			range.setStart(position.offsetNode, position.offset);
 			range.setEnd(position.offsetNode, position.offset);
 		} else {
@@ -1433,9 +1625,9 @@ export function Editpal(
 			return;
 		}
 
-		const domSelection = document.getSelection();
-		domSelection?.removeAllRanges();
-		domSelection?.addRange(range);
+		const selection = domSelection();
+		selection?.removeAllRanges();
+		selection?.addRange(range);
 
 		model.history.batch();
 
@@ -1449,13 +1641,16 @@ export function Editpal(
 
 	// Arrow keys doesn't update selection in FireFox
 	function onSelectionStart() {
-		document.addEventListener("selectionchange", onSelectionChange);
+		ref.current?.getRootNode().addEventListener(
+			"selectionchange",
+			onSelectionChange,
+		);
 	}
 
 	function onSelectionChange() {
-		const domSelection = document.getSelection();
+		const selection = domSelection();
 
-		if (!domSelection?.anchorNode || !domSelection.focusNode) {
+		if (!selection?.anchorNode || !selection.focusNode) {
 			return;
 		}
 		// During contenteditable reconciliation, WebKit can briefly collapse the
@@ -1466,18 +1661,67 @@ export function Editpal(
 		// selectionchange events should only replace the model selection once
 		// both endpoints have returned to rendered token content.
 		if (
-			domSelection.anchorNode === ref.current ||
-			domSelection.focusNode === ref.current
+			selection.anchorNode === ref.current ||
+			selection.focusNode === ref.current
 		) {
 			return;
 		}
 
 		select(
-			domSelection.anchorNode,
-			domSelection.focusNode,
-			domSelection.anchorOffset,
-			domSelection.focusOffset,
+			selection.anchorNode,
+			selection.focusNode,
+			selection.anchorOffset,
+			selection.focusOffset,
 		);
+	}
+
+	function selectInputTargetRange(event: InputEvent): boolean {
+		if (!ref.current || typeof event.getTargetRanges !== "function") {
+			return false;
+		}
+
+		let ranges: StaticRange[];
+		try {
+			ranges = event.getTargetRanges();
+		} catch {
+			return false;
+		}
+		if (ranges.length !== 1) {
+			return false;
+		}
+
+		const [range] = ranges;
+		if (
+			range.startContainer === range.endContainer &&
+			range.startOffset === range.endOffset
+		) {
+			return false;
+		}
+
+		const start = resolveEditorPoint(
+			model,
+			ref.current,
+			range.startContainer,
+			range.startOffset,
+		);
+		const end = resolveEditorPoint(
+			model,
+			ref.current,
+			range.endContainer,
+			range.endOffset,
+		);
+		if (!start || !end) {
+			return false;
+		}
+
+		selection.setSelection(
+			start.element.key,
+			start.offset,
+			end.element.key,
+			end.offset,
+		);
+		selection.setFormat(model.getSelectionFormat());
+		return true;
 	}
 
 	function onFocus() {
@@ -1501,7 +1745,10 @@ export function Editpal(
 			...model.selection.first,
 			...model.selection.first,
 		);
-		document.removeEventListener("selectionchange", onSelectionChange);
+		ref.current?.getRootNode().removeEventListener(
+			"selectionchange",
+			onSelectionChange,
+		);
 		setFocus(increment);
 	}
 
@@ -1511,14 +1758,16 @@ export function Editpal(
 			return;
 		}
 		if (config.maxSize !== undefined && file.size > config.maxSize) {
+			const message =
+				`${file.name} exceeds the ${config.maxSize} byte attachment limit.`;
+			announce(message);
 			config.onError?.(
-				new RangeError(
-					`${file.name} exceeds the ${config.maxSize} byte attachment limit`,
-				),
+				new RangeError(message),
 				file,
 			);
 			return;
 		}
+		announce(`Uploading ${file.name}.`);
 		const controller = new AbortController();
 		uploadControllers.current.add(controller);
 		try {
@@ -1536,10 +1785,12 @@ export function Editpal(
 				return;
 			}
 			config.onUploaded?.(uploaded, file);
+			announce(`${file.name} uploaded.`);
 			return uploaded;
 		} catch (error) {
 			if (!controller.signal.aborted) {
 				config.onError?.(error, file);
+				announce(`Upload failed for ${file.name}.`);
 			}
 		} finally {
 			uploadControllers.current.delete(controller);
@@ -1596,10 +1847,43 @@ export function Editpal(
 	function onDrop(event: DragEvent) {
 		preventDefaultAndStop(event);
 
+		const payload = parseEditpalDragPayload(
+			event.dataTransfer?.getData(EDITPAL_DRAG_MIME_TYPE) || "",
+		);
 		onSelect(event);
 		const files = event.dataTransfer?.files;
 		if (files?.length && extensions?.attachments) {
 			void uploadFiles(files);
+			return;
+		}
+
+		if (payload && editable) {
+			const source = dragRef.current;
+			const structuredMarkdown = toMarkdown(payload.fragment);
+			if (
+				!source &&
+				maxLength !== undefined &&
+				markdown.length + structuredMarkdown.length > maxLength
+			) {
+				onLimitExceeded?.(maxLength, model);
+				return;
+			}
+			const changed = source
+				? model.moveFragment(payload.fragment, source.bookmark)
+				: model.insertFragment(payload.fragment);
+			if (source) {
+				// The source and target are this editor. Dragend must not perform
+				// the cross-editor source removal after this local attempt.
+				dragRef.current = undefined;
+			}
+			if (changed) {
+				if (event.dataTransfer) {
+					event.dataTransfer.dropEffect = "move";
+				}
+				setActiveId(undefined);
+			} else if (event.dataTransfer) {
+				event.dataTransfer.dropEffect = "none";
+			}
 			return;
 		}
 
@@ -1608,6 +1892,56 @@ export function Editpal(
 			model.history.batch();
 			insertText(text);
 			model.history.batch();
+		}
+	}
+
+	function onDragStart(event: DragEvent) {
+		if (!editable || !event.dataTransfer) {
+			preventDefaultAndStop(event);
+			return;
+		}
+		const atomicTarget = event.target instanceof Element
+			? event.target.closest<HTMLElement>(
+				"[data-ep-selectable], [data-ep-mention]",
+			)
+			: undefined;
+		const atomicId = atomicTarget?.dataset.ep;
+		if (!atomicId || !model.selectToken(atomicId)) {
+			onSelectionChange();
+		}
+		const fragment = model.selectedFragment();
+		const bookmark = model.selectionBookmark();
+		if (!fragment.length || !bookmark) {
+			preventDefaultAndStop(event);
+			return;
+		}
+
+		const plainText = model.selectedText();
+		event.dataTransfer.effectAllowed = "copyMove";
+		event.dataTransfer.setData(
+			EDITPAL_DRAG_MIME_TYPE,
+			JSON.stringify({ fragment, version: 1 } satisfies EditpalDragPayload),
+		);
+		event.dataTransfer.setData("text/markdown", toMarkdown(fragment));
+		event.dataTransfer.setData("text/plain", plainText);
+		dragRef.current = { bookmark, fragment };
+	}
+
+	function onDragEnd(event: DragEvent) {
+		const drag = dragRef.current;
+		dragRef.current = undefined;
+		if (drag && event.dataTransfer?.dropEffect === "move") {
+			model.removeBookmarkedSelection(drag.bookmark);
+		}
+	}
+
+	function onDragOver(event: DragEvent) {
+		if (
+			editable &&
+			event.dataTransfer?.types.includes(EDITPAL_DRAG_MIME_TYPE)
+		) {
+			event.preventDefault();
+			event.dataTransfer.dropEffect = "move";
 		}
 	}
 
@@ -1638,7 +1972,7 @@ export function Editpal(
 		) {
 			return;
 		}
-		const currentSelection = document.getSelection();
+		const currentSelection = domSelection();
 		if (currentSelection && !currentSelection.isCollapsed) {
 			return;
 		}
@@ -1659,7 +1993,7 @@ export function Editpal(
 			0,
 			Math.min(Math.round(ratio * markerLength), markerLength),
 		);
-		const range = document.createRange();
+		const range = marker.ownerDocument.createRange();
 		range.setStart(textNode, offset);
 		range.collapse(true);
 
@@ -1732,7 +2066,10 @@ export function Editpal(
 			e.removeEventListener("drop", onDrop);
 			e.removeEventListener("click", onTodoClick);
 			e.removeEventListener("click", onMarkdownMarkerClick);
-			document.removeEventListener("selectionchange", onSelectionChange);
+			e.getRootNode().removeEventListener(
+				"selectionchange",
+				onSelectionChange,
+			);
 		};
 	}, [focus, mode]);
 
@@ -1744,27 +2081,27 @@ export function Editpal(
 	}
 
 	function selectionTouchesMarkdownMarker(
-		domSelection = document.getSelection(),
+		selection = domSelection(),
 	): boolean {
 		if (
 			mode !== "markdown" ||
-			!domSelection?.anchorNode ||
-			!domSelection.focusNode ||
+			!selection?.anchorNode ||
+			!selection.focusNode ||
 			!ref.current
 		) {
 			return false;
 		}
 		if (
-			markerElement(domSelection.anchorNode) ||
-			markerElement(domSelection.focusNode)
+			markerElement(selection.anchorNode) ||
+			markerElement(selection.focusNode)
 		) {
 			return true;
 		}
-		if (domSelection.isCollapsed || !domSelection.rangeCount) {
+		if (selection.isCollapsed || !selection.rangeCount) {
 			return false;
 		}
 
-		const range = domSelection.getRangeAt(0);
+		const range = selection.getRangeAt(0);
 		return Array.from(
 			ref.current.querySelectorAll<HTMLElement>("[data-ep-md-marker]"),
 		).some((marker) => {
@@ -1785,28 +2122,28 @@ export function Editpal(
 			maxLength !== undefined &&
 			markdown.length - model.selectedText().length + text.length > maxLength
 		) {
-			onLimitExceeded?.(maxLength, model);
+			announceLimit();
 			return true;
 		}
-		const domSelection = document.getSelection();
+		const selection = domSelection();
 		if (
 			mode !== "markdown" ||
 			/[\r\n]/.test(text) ||
-			!domSelection?.anchorNode ||
-			!domSelection.focusNode ||
+			!selection?.anchorNode ||
+			!selection.focusNode ||
 			!ref.current
 		) {
 			return false;
 		}
 		const anchor = markdownSourcePoint(
 			model,
-			domSelection.anchorNode,
-			domSelection.anchorOffset,
+			selection.anchorNode,
+			selection.anchorOffset,
 		);
 		const focus = markdownSourcePoint(
 			model,
-			domSelection.focusNode,
-			domSelection.focusOffset,
+			selection.focusNode,
+			selection.focusOffset,
 		);
 		if (!anchor || !focus || anchor.block.id !== focus.block.id) {
 			return false;
@@ -1814,17 +2151,17 @@ export function Editpal(
 
 		let start = Math.min(anchor.offset, focus.offset);
 		let end = Math.max(anchor.offset, focus.offset);
-		let activeMarker = markerElement(domSelection.anchorNode) ||
-			markerElement(domSelection.focusNode);
-		if (domSelection.isCollapsed) {
+		let activeMarker = markerElement(selection.anchorNode) ||
+			markerElement(selection.focusNode);
+		if (selection.isCollapsed) {
 			const backward = direction === "backward";
 			const marker = direction
 				? adjacentMarkdownMarker(
-					domSelection.anchorNode,
-					domSelection.anchorOffset,
+					selection.anchorNode,
+					selection.anchorOffset,
 					backward,
 				)
-				: markerElement(domSelection.anchorNode);
+				: markerElement(selection.anchorNode);
 			if (!marker) {
 				return false;
 			}
@@ -1838,7 +2175,7 @@ export function Editpal(
 			} else if (direction === "forward") {
 				end = nextGraphemeBoundary(source, end);
 			}
-		} else if (!selectionTouchesMarkdownMarker(domSelection)) {
+		} else if (!selectionTouchesMarkdownMarker(selection)) {
 			return false;
 		}
 
@@ -1873,24 +2210,24 @@ export function Editpal(
 	}
 
 	function enterSelectedCodeFence(): boolean {
-		const domSelection = document.getSelection();
+		const selection = domSelection();
 		if (
 			mode !== "markdown" ||
-			!domSelection?.isCollapsed ||
-			!domSelection.anchorNode
+			!selection?.isCollapsed ||
+			!selection.anchorNode
 		) {
 			return false;
 		}
 
-		const marker = markerElement(domSelection.anchorNode);
+		const marker = markerElement(selection.anchorNode);
 		const codeFence = marker?.closest<HTMLElement>(
 			"[data-ep-code-fence]",
 		);
 		const side = codeFence?.dataset.epCodeFenceSide;
 		const sourcePoint = markdownSourcePoint(
 			model,
-			domSelection.anchorNode,
-			domSelection.anchorOffset,
+			selection.anchorNode,
+			selection.anchorOffset,
 		);
 		if (
 			!sourcePoint ||
@@ -1945,6 +2282,13 @@ export function Editpal(
 			return;
 		}
 
+		if (event.inputType.startsWith("delete")) {
+			// Mobile keyboards widen the target range while a held delete key
+			// accelerates. Applying only one model grapheme per event makes the
+			// later, less frequent repeat events appear to slow down.
+			selectInputTargetRange(event);
+		}
+
 		switch (event.inputType) {
 			case "insertText":
 			case "insertReplacementText":
@@ -1991,7 +2335,7 @@ export function Editpal(
 			case "historyUndo":
 			case "historyRedo":
 				preventDefaultAndStop(event);
-				action(
+				historyAction(
 					event.inputType === "historyUndo" ? ACTION._Undo : ACTION._Redo,
 				);
 				return;
@@ -2088,9 +2432,17 @@ export function Editpal(
 				replaceAsset,
 			}}
 		>
-			<FloatingToolbar />
+			<FloatingToolbar toolbarRef={floatingToolbarRef} />
 			<SlashDropdown />
 			<MentionDropdown />
+			<div
+				className="e-live-region"
+				role="status"
+				aria-live="polite"
+				aria-atomic="true"
+			>
+				<span key={announcement.id}>{announcement.message}</span>
+			</div>
 
 			{extensions?.attachments &&
 				extensions.attachments.pickerLabel !== false && (
@@ -2141,23 +2493,26 @@ export function Editpal(
 				aria-readonly={readOnly || undefined}
 				aria-disabled={disabled || undefined}
 				aria-required={required || undefined}
+				aria-placeholder={placeholder}
 				data-ep-placeholder={placeholder}
 				data-ep-empty={markdown.length === 0 || undefined}
 				onBeforeInput={onBeforeInput}
-				onDragStart={preventDefaultAndStop}
+				onDragStart={onDragStart}
+				onDragEnd={onDragEnd}
+				onDragOver={onDragOver}
 				onCopy={(e) => {
-					const domSelection = document.getSelection();
+					const selection = domSelection();
 					if (
-						!domSelection ||
-						domSelection.isCollapsed ||
-						!ref.current?.contains(domSelection.anchorNode)
+						!selection ||
+						selection.isCollapsed ||
+						!ref.current?.contains(selection.anchorNode)
 					) {
 						return;
 					}
 
 					preventDefaultAndStop(e);
-					const copied = selectionTouchesMarkdownMarker(domSelection)
-						? domSelection.toString()
+					const copied = selectionTouchesMarkdownMarker(selection)
+						? selection.toString()
 						: model.selectedText();
 					e.clipboardData?.setData("text/markdown", copied);
 					e.clipboardData?.setData(
@@ -2170,18 +2525,18 @@ export function Editpal(
 						preventDefaultAndStop(e);
 						return;
 					}
-					const domSelection = document.getSelection();
+					const selection = domSelection();
 					if (
-						!domSelection ||
-						domSelection.isCollapsed ||
-						!ref.current?.contains(domSelection.anchorNode)
+						!selection ||
+						selection.isCollapsed ||
+						!ref.current?.contains(selection.anchorNode)
 					) {
 						return;
 					}
 
 					preventDefaultAndStop(e);
-					const copied = selectionTouchesMarkdownMarker(domSelection)
-						? domSelection.toString()
+					const copied = selectionTouchesMarkdownMarker(selection)
+						? selection.toString()
 						: model.selectedText();
 					e.clipboardData?.setData("text/markdown", copied);
 					e.clipboardData?.setData(
@@ -2256,6 +2611,24 @@ export function Editpal(
 					}
 
 					if (
+						e.altKey &&
+						!e.ctrlKey &&
+						!e.metaKey &&
+						!e.shiftKey &&
+						e.key === "F10"
+					) {
+						const toolbar = floatingToolbarRef.current;
+						const firstControl = toolbar?.querySelector<HTMLButtonElement>(
+							"button:not([disabled])",
+						);
+						if (firstControl) {
+							preventDefaultAndStop(e);
+							firstControl.focus({ preventScroll: true });
+						}
+						return;
+					}
+
+					if (
 						selectedId &&
 						Array.from(e.key).length === 1 &&
 						(!primaryModifier ||
@@ -2319,12 +2692,14 @@ export function Editpal(
 						}
 						if (key === "z") {
 							preventDefaultAndStop(e);
-							action(e.shiftKey ? ACTION._Redo : ACTION._Undo);
+							historyAction(
+								e.shiftKey ? ACTION._Redo : ACTION._Undo,
+							);
 							return;
 						}
 						if (key === "y") {
 							preventDefaultAndStop(e);
-							action(ACTION._Redo);
+							historyAction(ACTION._Redo);
 							return;
 						}
 						if (key === "b") {
@@ -2353,6 +2728,12 @@ export function Editpal(
 						return;
 					}
 
+					if (indentOnTab && e.key === "Escape") {
+						preventDefaultAndStop(e);
+						ref.current?.blur();
+						return;
+					}
+
 					if (e.key.indexOf("Arrow") === 0) {
 						model.history.batch();
 						if (
@@ -2369,7 +2750,7 @@ export function Editpal(
 						return;
 					}
 
-					if (e.key === "Tab") {
+					if (indentOnTab && e.key === "Tab") {
 						preventDefault(e);
 						action(e.shiftKey ? ACTION._ShiftTab : ACTION._Tab);
 						return;
