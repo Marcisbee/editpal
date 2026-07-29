@@ -2192,6 +2192,20 @@ export function Editpal(
 
 					if (
 						selectedId &&
+						Array.from(e.key).length === 1 &&
+						(!primaryModifier ||
+							(e.ctrlKey && e.altKey && !e.metaKey))
+					) {
+						// WebKit does not emit beforeinput when focus is on a selected
+						// contenteditable=false widget. Use its already layout-resolved
+						// key as a narrow fallback so typing still replaces the widget.
+						preventDefaultAndStop(e);
+						insertText(e.key);
+						return;
+					}
+
+					if (
+						selectedId &&
 						(key === "backspace" || key === "delete") &&
 						!primaryModifier &&
 						!e.altKey
