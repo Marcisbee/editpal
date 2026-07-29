@@ -15,6 +15,19 @@
 	position: relative;
 }
 
+.e-live-region {
+	border: 0;
+	clip: rect(0 0 0 0);
+	clip-path: inset(50%);
+	height: 1px;
+	margin: -1px;
+	overflow: hidden;
+	padding: 0;
+	position: absolute;
+	white-space: nowrap;
+	width: 1px;
+}
+
 [data-ep-main][data-ep-empty]::before {
 	color: color-mix(in srgb, currentColor 45%, transparent);
 	content: attr(data-ep-placeholder);
@@ -129,6 +142,12 @@ p[data-ep],
 	padding: 0 0 0.4em 0;
 	margin: 0;
 	line-height: 1.5em;
+}
+
+[data-ep-list] {
+	list-style: none;
+	margin: 0;
+	padding: 0;
 }
 
 p[data-ep-todo] {

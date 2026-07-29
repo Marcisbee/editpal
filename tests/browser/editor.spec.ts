@@ -36,6 +36,13 @@ test("editor exposes accessible semantics and extension renderers", async ({ pag
 		name: "Demo Markdown document",
 	});
 	await expect(editor).toHaveAttribute("aria-multiline", "true");
+	await expect(editor).toHaveAttribute(
+		"aria-placeholder",
+		"Write some Markdown…",
+	);
+	await expect(editor.locator("h1")).toContainText("Editpal Markdown");
+	await expect(editor.locator("ul > li").first()).toBeVisible();
+	await expect(editor.locator("ol > li").first()).toBeVisible();
 	await expect(page.locator("textarea[name='content']")).toHaveValue(
 		/# Editpal Markdown/,
 	);
@@ -321,8 +328,10 @@ test("typing, history, and task interaction stay model-backed", async ({ page })
 
 	await page.keyboard.press("ControlOrMeta+z");
 	await expect(editor).not.toContainText("Browser history");
+	await expect(page.getByRole("status")).toHaveText("Undo complete.");
 	await page.keyboard.press("ControlOrMeta+Shift+z");
 	await expect(editor).toContainText("Browser history");
+	await expect(page.getByRole("status")).toHaveText("Redo complete.");
 
 	const task = editor.locator("[data-ep-todo-check]").first();
 	const checked = await task.isChecked();
@@ -590,6 +599,15 @@ test("file picker uploads an image attachment", async ({ page }) => {
 		),
 	});
 	await expect(page.locator("[data-ep-attachment='image']")).toBeVisible();
+	await expect(page.getByRole("status")).toHaveText("pixel.png uploaded.");
+});
+
+test("mode changes provide polite feedback", async ({ page }) => {
+	const status = page.getByRole("status");
+	await page.getByRole("button", { name: "Basic" }).click();
+	await expect(status).toHaveText("Basic editing mode.");
+	await page.getByRole("button", { name: "Markdown" }).click();
+	await expect(status).toHaveText("Markdown editing mode.");
 });
 
 test("images and embeds expose contextual controls when selected", async ({ page }) => {
