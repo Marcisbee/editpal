@@ -862,7 +862,9 @@ test("images and embeds expose contextual controls when selected", async ({ page
 	await editor.locator("[data-t]").first().click();
 	await expect(page.locator(".e-fl-toolbar")).toHaveCount(0);
 
-	await editor.locator("[data-ep-link='https://openai.com']").evaluate(
+	const openAiLink = editor.locator("[data-ep-link='https://openai.com']");
+	await openAiLink.scrollIntoViewIfNeeded();
+	await openAiLink.evaluate(
 		(element) => {
 			const node = Array.from(element.childNodes).find((child) =>
 				child.nodeType === Node.TEXT_NODE && child.textContent === "OpenAI"
