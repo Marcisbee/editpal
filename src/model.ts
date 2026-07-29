@@ -1863,47 +1863,6 @@ export class Model extends Exome {
 	}
 
 	private _pushToHistory = (type: number, data?: any) => {
-		const first = this.selection.first.slice() as [string, number];
-		const last = this.selection.last.slice() as [string, number];
-		const tokensString = JSON.stringify(this.tokens);
-		const trace = {
-			undo: () => {
-				this.selection.first = first;
-				this.selection.last = last;
-				this.tokens = JSON.parse(tokensString);
-
-				this.recalculate();
-
-				this._stack.push((editor) => {
-					setCaret(
-						editor,
-						this.findElement(first[0]).id,
-						first[1],
-						this.findElement(last[0]).id,
-						last[1],
-					);
-				});
-			},
-			redo: () => {
-				this.selection.first = first;
-				this.selection.last = last;
-
-				this.recalculate();
-
-				this._stack.push((editor) => {
-					setCaret(
-						editor,
-						this.findElement(first[0]).id,
-						first[1],
-						this.findElement(last[0]).id,
-						last[1],
-					);
-				});
-
-				this.action(type, data);
-			},
-		};
-
 		const batch = type === ACTION._Todo ||
 				(type === ACTION._RemoveSelectable && !data?.text)
 			? undefined
@@ -1912,7 +1871,50 @@ export class Model extends Exome {
 			: type === ACTION._Compose
 			? ACTION._Key
 			: type;
-		this.history.push(trace, batch);
+
+		if (this.history.locked || this.history.continues(batch)) {
+			return;
+		}
+
+		type Snapshot = {
+			tokens: string;
+			first: [string, number];
+			last: [string, number];
+		};
+		const snapshot = (): Snapshot => ({
+			tokens: JSON.stringify(this.tokens),
+			first: this.selection.first.slice() as [string, number],
+			last: this.selection.last.slice() as [string, number],
+		});
+		const before = snapshot();
+		let after: Snapshot | undefined;
+		const restore = (state: Snapshot) => {
+			this.tokens = JSON.parse(state.tokens);
+			this.selection.first = state.first.slice() as [string, number];
+			this.selection.last = state.last.slice() as [string, number];
+			this.recalculate();
+
+			this._stack.push((editor) => {
+				setCaret(
+					editor,
+					this.findElement(state.first[0]).id,
+					state.first[1],
+					this.findElement(state.last[0]).id,
+					state.last[1],
+				);
+			});
+		};
+		const close = () => {
+			after ??= snapshot();
+		};
+		this.history.push({
+			close,
+			undo: () => restore(before),
+			redo: () => {
+				close();
+				restore(after!);
+			},
+		}, batch);
 	};
 
 	private _cut = (

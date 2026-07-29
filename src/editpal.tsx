@@ -1,6 +1,12 @@
 import { useStore } from "exome/preact";
 import { createContext, h } from "preact";
-import type { Context, HTMLAttributes, RefObject, VNode } from "preact";
+import type {
+	ComponentChild,
+	Context,
+	HTMLAttributes,
+	RefObject,
+	VNode,
+} from "preact";
 import {
 	useContext,
 	useEffect,
@@ -207,11 +213,17 @@ function RenderItem(
 
 	if (item.type === "h") {
 		const { size, ...style } = item.props || {};
+		const level = Math.max(1, Math.min(size || 1, 6));
 
-		return (
-			<strong key={item.id} style={style} data-ep-h={size} data-ep={item.id}>
-				<RenderMap items={item.children} />
-			</strong>
+		return h(
+			`h${level}`,
+			{
+				"data-ep": item.id,
+				"data-ep-h": level,
+				key: item.id,
+				style,
+			},
+			<RenderMap items={item.children} />,
 		);
 	}
 
@@ -377,7 +389,7 @@ function RenderMap({ items }: RenderMapProps) {
 	const { activeId, extensions, mode, model } = useContext(EditorContext);
 	let sourceOffset = 0;
 
-	return items.map((item, index) => {
+	const renderedItems = items.map((item, index) => {
 		const previous = items[index - 1];
 		const next = items[index + 1];
 		const markdown = mode === "markdown" && item.type === "t" &&
@@ -492,6 +504,46 @@ function RenderMap({ items }: RenderMapProps) {
 		}
 		return rendered;
 	});
+
+	if (!items.some(isBlockToken)) {
+		return renderedItems;
+	}
+
+	const grouped: ComponentChild[] = [];
+	for (let index = 0; index < items.length; index++) {
+		const item = items[index];
+		if (item.type !== "l") {
+			grouped.push(renderedItems[index]);
+			continue;
+		}
+
+		const type = item.props.type === "ol" ? "ol" : "ul";
+		const listItems: ComponentChild[] = [];
+		while (
+			items[index]?.type === "l" &&
+			(items[index] as BlockToken & { type: "l" }).props.type ===
+				item.props.type &&
+			(items[index] as BlockToken & { type: "l" }).props.indent ===
+				item.props.indent
+		) {
+			listItems.push(renderedItems[index]);
+			index += 1;
+		}
+		index -= 1;
+		grouped.push(
+			h(
+				type,
+				{
+					"data-ep-list": type,
+					key: `list-${item.id}`,
+					start: type === "ol" ? item.props.start : undefined,
+				},
+				listItems,
+			),
+		);
+	}
+
+	return grouped;
 }
 
 // rome-ignore lint/suspicious/noExplicitAny: <explanation>
@@ -1051,11 +1103,23 @@ export function Editpal(
 	const uploadControllers = useRef(new Set<AbortController>());
 	const onChangeRef = useRef(onChange);
 	const committedCompositionRef = useRef<string | null>(null);
+	const previousModeRef = useRef(mode);
 	const [focus, setFocus] = useState(0);
 	const [reload, setReload] = useState(0);
 	const [activeId, setActiveId] = useState<string>();
+	const [announcement, setAnnouncement] = useState({
+		id: 0,
+		message: "",
+	});
 	const editable = !disabled && !readOnly;
 	const markdown = toMarkdown(tokens);
+
+	function announce(message: string) {
+		setAnnouncement((current) => ({
+			id: current.id + 1,
+			message,
+		}));
+	}
 
 	useEffect(() => {
 		onChangeRef.current = onChange;
@@ -1064,6 +1128,15 @@ export function Editpal(
 	useEffect(() => {
 		onChangeRef.current?.(markdown, model);
 	}, [markdown, model]);
+
+	useEffect(() => {
+		if (previousModeRef.current !== mode) {
+			announce(
+				`${mode === "markdown" ? "Markdown" : "Basic"} editing mode.`,
+			);
+			previousModeRef.current = mode;
+		}
+	}, [mode]);
 
 	useEffect(() => {
 		return () => {
@@ -1089,6 +1162,22 @@ export function Editpal(
 		return activeId;
 	}
 
+	function announceLimit() {
+		if (maxLength === undefined) {
+			return;
+		}
+		announce(`Maximum length of ${maxLength} characters reached.`);
+		onLimitExceeded?.(maxLength, model);
+	}
+
+	function historyAction(type: typeof ACTION._Undo | typeof ACTION._Redo) {
+		const available = type === ACTION._Undo ? model.canUndo : model.canRedo;
+		action(type);
+		if (available) {
+			announce(type === ACTION._Undo ? "Undo complete." : "Redo complete.");
+		}
+	}
+
 	function insertText(
 		text: string,
 		type: typeof ACTION._Compose | typeof ACTION._Key = ACTION._Key,
@@ -1097,7 +1186,7 @@ export function Editpal(
 			const selectedLength = model.selectedText().length;
 			const projected = markdown.length - selectedLength + text.length;
 			if (projected > maxLength) {
-				onLimitExceeded?.(maxLength, model);
+				announceLimit();
 				return false;
 			}
 		}
@@ -1541,14 +1630,16 @@ export function Editpal(
 			return;
 		}
 		if (config.maxSize !== undefined && file.size > config.maxSize) {
+			const message =
+				`${file.name} exceeds the ${config.maxSize} byte attachment limit.`;
+			announce(message);
 			config.onError?.(
-				new RangeError(
-					`${file.name} exceeds the ${config.maxSize} byte attachment limit`,
-				),
+				new RangeError(message),
 				file,
 			);
 			return;
 		}
+		announce(`Uploading ${file.name}.`);
 		const controller = new AbortController();
 		uploadControllers.current.add(controller);
 		try {
@@ -1566,10 +1657,12 @@ export function Editpal(
 				return;
 			}
 			config.onUploaded?.(uploaded, file);
+			announce(`${file.name} uploaded.`);
 			return uploaded;
 		} catch (error) {
 			if (!controller.signal.aborted) {
 				config.onError?.(error, file);
+				announce(`Upload failed for ${file.name}.`);
 			}
 		} finally {
 			uploadControllers.current.delete(controller);
@@ -1818,7 +1911,7 @@ export function Editpal(
 			maxLength !== undefined &&
 			markdown.length - model.selectedText().length + text.length > maxLength
 		) {
-			onLimitExceeded?.(maxLength, model);
+			announceLimit();
 			return true;
 		}
 		const selection = domSelection();
@@ -2028,7 +2121,7 @@ export function Editpal(
 			case "historyUndo":
 			case "historyRedo":
 				preventDefaultAndStop(event);
-				action(
+				historyAction(
 					event.inputType === "historyUndo" ? ACTION._Undo : ACTION._Redo,
 				);
 				return;
@@ -2128,6 +2221,14 @@ export function Editpal(
 			<FloatingToolbar />
 			<SlashDropdown />
 			<MentionDropdown />
+			<div
+				className="e-live-region"
+				role="status"
+				aria-live="polite"
+				aria-atomic="true"
+			>
+				<span key={announcement.id}>{announcement.message}</span>
+			</div>
 
 			{extensions?.attachments &&
 				extensions.attachments.pickerLabel !== false && (
@@ -2178,6 +2279,7 @@ export function Editpal(
 				aria-readonly={readOnly || undefined}
 				aria-disabled={disabled || undefined}
 				aria-required={required || undefined}
+				aria-placeholder={placeholder}
 				data-ep-placeholder={placeholder}
 				data-ep-empty={markdown.length === 0 || undefined}
 				onBeforeInput={onBeforeInput}
@@ -2356,12 +2458,14 @@ export function Editpal(
 						}
 						if (key === "z") {
 							preventDefaultAndStop(e);
-							action(e.shiftKey ? ACTION._Redo : ACTION._Undo);
+							historyAction(
+								e.shiftKey ? ACTION._Redo : ACTION._Undo,
+							);
 							return;
 						}
 						if (key === "y") {
 							preventDefaultAndStop(e);
-							action(ACTION._Redo);
+							historyAction(ACTION._Redo);
 							return;
 						}
 						if (key === "b") {
