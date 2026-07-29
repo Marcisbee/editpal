@@ -269,14 +269,7 @@ export function stringSplice(
 export function getEditorSelection(editor: HTMLElement): Selection | null {
 	const root = editor.getRootNode() as Document | ShadowRoot;
 	if ("getSelection" in root && typeof root.getSelection === "function") {
-		const selection = root.getSelection();
-		// WebKit exposes ShadowRoot.getSelection(), but can return an empty
-		// selection while the document selection owns a range inside that root.
-		// Use the document selection in that case so caret restoration works in
-		// shadow-root editors as it does in Chromium and Firefox.
-		if (selection?.focusNode || root === editor.ownerDocument) {
-			return selection;
-		}
+		return root.getSelection();
 	}
 	return editor.ownerDocument.getSelection();
 }

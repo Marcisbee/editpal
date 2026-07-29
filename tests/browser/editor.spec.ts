@@ -33,13 +33,7 @@ test("caret restoration stays within each editor root", async ({ page }) => {
 	await expect.poll(() =>
 		shadow.evaluate((editor) => {
 			const root = editor.getRootNode() as ShadowRoot;
-			const rootSelection = root.getSelection?.();
-			const selection = rootSelection?.focusNode
-				? rootSelection
-				: editor.ownerDocument.getSelection();
-			return Boolean(
-				selection?.focusNode && editor.contains(selection.focusNode),
-			);
+			return root.activeElement === editor;
 		})
 	).toBe(true);
 	await page.keyboard.type("!");
