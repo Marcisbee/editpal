@@ -2,8 +2,6 @@ import { Exome, subscribe } from "exome";
 
 import type { Model } from "./model.ts";
 import type { TextToken } from "./tokens.ts";
-import { getTextNode } from "./utils.ts";
-
 function getTextSlice(text: TextToken, end: number) {
 	const beforeCaret = (text?.text || "").slice(0, Math.max(0, end));
 	return beforeCaret.match(/(?:^|\s)(\S*)$/)?.[1]?.toLowerCase();
@@ -93,33 +91,8 @@ export class Slash extends Exome {
 				return;
 			}
 
-			if (typeof document === "undefined") {
-				return;
-			}
-
-			const text = getTextNode(el.id);
-
-			if (!text) {
-				return;
-			}
-
-			const range = document.createRange();
-			const maxOffset = text.nodeType === Node.TEXT_NODE
-				? text.textContent?.length || 0
-				: text.childNodes.length;
-			range.setStart(text, Math.max(0, Math.min(selection.last[1], maxOffset)));
-			range.collapse(true);
-			let rect = range.getBoundingClientRect();
-			const textElement = text instanceof Element ? text : text.parentElement;
-			if (!rect.height && textElement) {
-				rect = textElement.getBoundingClientRect();
-			}
-			range.detach();
-
 			this.setQuery(
 				query.slice(1),
-				rect.left,
-				rect.top + rect.height,
 				el.key,
 				triggerStart,
 				selection.last[1],
@@ -155,19 +128,27 @@ export class Slash extends Exome {
 
 	public setQuery(
 		query: string,
-		x: number,
-		y: number,
-		triggerKey: string,
-		triggerStart: number,
-		triggerEnd: number,
+		xOrTriggerKey: number | string,
+		yOrTriggerStart: number,
+		triggerKeyOrEnd: number | string,
+		triggerStart?: number,
+		triggerEnd?: number,
 	) {
 		this.query = query;
 		this.isOpen = true;
-		this.x = x;
-		this.y = y;
-		this.triggerKey = triggerKey;
-		this.triggerStart = triggerStart;
-		this.triggerEnd = triggerEnd;
+		if (typeof xOrTriggerKey === "number") {
+			this.x = xOrTriggerKey;
+			this.y = yOrTriggerStart;
+			this.triggerKey = triggerKeyOrEnd as string;
+			this.triggerStart = triggerStart;
+			this.triggerEnd = triggerEnd;
+			return;
+		}
+		this.x = undefined;
+		this.y = undefined;
+		this.triggerKey = xOrTriggerKey;
+		this.triggerStart = yOrTriggerStart;
+		this.triggerEnd = triggerKeyOrEnd as number;
 	}
 
 	public setSearchQuery(query: string) {

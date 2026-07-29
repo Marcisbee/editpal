@@ -69,7 +69,10 @@ async function serve(mode: Exclude<Mode, "build">): Promise<void> {
 	const preview = mode === "preview";
 	const buildContext = await context({
 		...(preview ? productionOptions : sharedOptions),
-		entryPoints: ["src/main.tsx"],
+		entryPoints: {
+			main: "src/main.tsx",
+			"root-fixture": "tests/browser/root-fixture.tsx",
+		},
 		mangleProps: preview ? /^_/ : undefined,
 		mangleQuoted: preview,
 		outdir: "www",

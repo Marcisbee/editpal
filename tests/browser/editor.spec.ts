@@ -4,6 +4,64 @@ test.beforeEach(async ({ page }) => {
 	await page.goto("/");
 });
 
+test("caret restoration stays within each editor root", async ({ page }) => {
+	await page.goto("/root-fixture.html");
+
+	await page.getByRole("button", {
+		name: "Select Second scoped editor",
+	}).click();
+	const second = page.getByRole("textbox", {
+		name: "Second scoped editor",
+	});
+	await expect.poll(() =>
+		second.evaluate((editor) => {
+			const selection = editor.ownerDocument.getSelection();
+			return Boolean(
+				selection?.focusNode && editor.contains(selection.focusNode),
+			);
+		})
+	).toBe(true);
+	await page.keyboard.type("!");
+	await expect(second).toContainText("Second editor!");
+
+	const shadow = page.getByRole("textbox", {
+		name: "Shadow scoped editor",
+	});
+	await page.getByRole("button", {
+		name: "Select Shadow scoped editor",
+	}).click();
+	await expect.poll(() =>
+		shadow.evaluate((editor) => {
+			const root = editor.getRootNode() as ShadowRoot;
+			const selection = root.getSelection?.() ??
+				editor.ownerDocument.getSelection();
+			return Boolean(
+				selection?.focusNode && editor.contains(selection.focusNode),
+			);
+		})
+	).toBe(true);
+	await page.keyboard.type("!");
+	await expect(shadow).toContainText("Shadow editor!");
+
+	const frame = page.frameLocator("iframe");
+	const iframeEditor = frame.getByRole("textbox", {
+		name: "Iframe scoped editor",
+	});
+	await frame.getByRole("button", {
+		name: "Select Iframe scoped editor",
+	}).click();
+	await expect.poll(() =>
+		iframeEditor.evaluate((editor) => {
+			const selection = editor.ownerDocument.getSelection();
+			return Boolean(
+				selection?.focusNode && editor.contains(selection.focusNode),
+			);
+		})
+	).toBe(true);
+	await page.keyboard.type("!");
+	await expect(iframeEditor).toContainText("Iframe editor!");
+});
+
 async function placeCaretAtTextEnd(
 	editor: Locator,
 	text: string,
@@ -36,6 +94,13 @@ test("editor exposes accessible semantics and extension renderers", async ({ pag
 		name: "Demo Markdown document",
 	});
 	await expect(editor).toHaveAttribute("aria-multiline", "true");
+	await expect(editor).toHaveAttribute(
+		"aria-placeholder",
+		"Write some Markdown…",
+	);
+	await expect(editor.locator("h1")).toContainText("Editpal Markdown");
+	await expect(editor.locator("ul > li").first()).toBeVisible();
+	await expect(editor.locator("ol > li").first()).toBeVisible();
 	await expect(page.locator("textarea[name='content']")).toHaveValue(
 		/# Editpal Markdown/,
 	);
@@ -45,6 +110,53 @@ test("editor exposes accessible semantics and extension renderers", async ({ pag
 	await expect(page.locator("[data-ep-line-embed]")).toContainText(
 		"Twitter / X embed demo",
 	);
+});
+
+test("Tab follows focus order and the floating toolbar supports keyboard navigation", async ({ page }) => {
+	const editor = page.getByRole("textbox", {
+		name: "Demo Markdown document",
+	});
+	const source = page.locator("textarea[name='content']");
+	const initial = await source.inputValue();
+
+	await editor.focus();
+	await page.keyboard.press("Tab");
+	await expect(editor).not.toBeFocused();
+	await expect(source).toHaveValue(initial);
+
+	await editor.evaluate((element) => {
+		const heading = element.querySelector("[data-ep-h] [data-t]");
+		const node = heading?.firstChild;
+		if (!node || node.nodeType !== Node.TEXT_NODE) {
+			throw new Error("Could not find heading text");
+		}
+		(element as HTMLElement).focus();
+		const range = document.createRange();
+		range.setStart(node, 0);
+		range.setEnd(node, Math.min(7, node.textContent?.length || 0));
+		const selection = document.getSelection();
+		selection?.removeAllRanges();
+		selection?.addRange(range);
+		document.dispatchEvent(new Event("selectionchange"));
+	});
+
+	const toolbar = page.getByRole("toolbar", { name: "Text formatting" });
+	await expect(toolbar).toBeVisible();
+	await page.keyboard.press("Alt+F10");
+	const bold = toolbar.getByRole("button", { name: "Bold" });
+	const italic = toolbar.getByRole("button", { name: "Italic" });
+	await expect(bold).toBeFocused();
+	await expect(bold).toHaveAttribute("aria-pressed", "false");
+	await expect(bold).toHaveAttribute("tabindex", "0");
+	await expect(italic).toHaveAttribute("tabindex", "-1");
+
+	await page.keyboard.press("ArrowRight");
+	await expect(italic).toBeFocused();
+	await expect(italic).toHaveAttribute("tabindex", "0");
+	await expect(bold).toHaveAttribute("tabindex", "-1");
+
+	await page.keyboard.press("Escape");
+	await expect(editor).toBeFocused();
 });
 
 test("native keyboard text is inserted from beforeinput, not keydown", async ({ page }) => {
@@ -458,8 +570,10 @@ test("typing, history, and task interaction stay model-backed", async ({ page })
 
 	await page.keyboard.press("ControlOrMeta+z");
 	await expect(editor).not.toContainText("Browser history");
+	await expect(page.getByRole("status")).toHaveText("Undo complete.");
 	await page.keyboard.press("ControlOrMeta+Shift+z");
 	await expect(editor).toContainText("Browser history");
+	await expect(page.getByRole("status")).toHaveText("Redo complete.");
 
 	const task = editor.locator("[data-ep-todo-check]").first();
 	const checked = await task.isChecked();
@@ -727,6 +841,15 @@ test("file picker uploads an image attachment", async ({ page }) => {
 		),
 	});
 	await expect(page.locator("[data-ep-attachment='image']")).toBeVisible();
+	await expect(page.getByRole("status")).toHaveText("pixel.png uploaded.");
+});
+
+test("mode changes provide polite feedback", async ({ page }) => {
+	const status = page.getByRole("status");
+	await page.getByRole("button", { name: "Basic" }).click();
+	await expect(status).toHaveText("Basic editing mode.");
+	await page.getByRole("button", { name: "Markdown" }).click();
+	await expect(status).toHaveText("Markdown editing mode.");
 });
 
 test("images and embeds expose contextual controls when selected", async ({ page }) => {

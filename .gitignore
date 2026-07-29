@@ -85,6 +85,8 @@ typings/
 dist
 www/main.css
 www/main.js
+www/root-fixture.css
+www/root-fixture.js
 
 # Gatsby files
 .cache/

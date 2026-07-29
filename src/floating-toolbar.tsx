@@ -2,6 +2,7 @@ import { Fragment, h } from "preact";
 import { createPortal } from "preact/compat";
 import { useStore } from "exome/preact";
 import { useContext, useEffect, useMemo, useRef, useState } from "preact/hooks";
+import type { RefObject } from "preact";
 
 import { EditorContext, preventDefaultAndStop } from "./editpal.tsx";
 import { ACTION } from "./model.ts";
@@ -9,6 +10,7 @@ import { toMarkdown } from "./markdown-parser.ts";
 import { Toolbar } from "./toolbar.tsx";
 import type { AnyToken, InlineToken } from "./tokens.ts";
 import { isBlockToken } from "./tokens.ts";
+import { getEditorSelection } from "./utils.ts";
 
 function linkedToken(token: AnyToken | undefined): InlineToken | undefined {
 	if (!token) {
@@ -225,7 +227,24 @@ function AssetToolbar(
 	);
 }
 
-export function FloatingToolbar() {
+function toolbarButtons(toolbar: HTMLElement): HTMLButtonElement[] {
+	return Array.from(
+		toolbar.querySelectorAll<HTMLButtonElement>("button:not([disabled])"),
+	);
+}
+
+function setRovingButton(
+	toolbar: HTMLElement,
+	active: HTMLButtonElement | undefined,
+) {
+	for (const button of toolbarButtons(toolbar)) {
+		button.tabIndex = button === active ? 0 : -1;
+	}
+}
+
+export function FloatingToolbar(
+	{ toolbarRef }: { toolbarRef: RefObject<HTMLDivElement> },
+) {
 	const { activeId, editable, editor, extensions, model } = useContext(
 		EditorContext,
 	);
@@ -258,7 +277,6 @@ export function FloatingToolbar() {
 				!/\s/.test(beforeCaret.slice(index + config.trigger.length));
 		}),
 	);
-
 	const rect = useMemo(() => {
 		if (activeId && editor.current) {
 			const element = Array.from(
@@ -270,7 +288,9 @@ export function FloatingToolbar() {
 				return element.getBoundingClientRect();
 			}
 		}
-		const selection = globalThis.getSelection();
+		const selection = editor.current
+			? getEditorSelection(editor.current)
+			: null;
 		if (!selection?.rangeCount) {
 			return null;
 		}
@@ -280,18 +300,35 @@ export function FloatingToolbar() {
 			return null;
 		}
 	}, [activeId, editor, first.join(":"), last.join(":")]);
+	const visible = editable && Boolean(rect) && (focus || Boolean(activeId)) &&
+		!model.slash.isOpen && !mentionQueryOpen && !selectionTouchesCode &&
+		(Boolean(activeId) || !collapsed);
 
-	if (
-		!editable || !rect || (!focus && !activeId) || model.slash.isOpen ||
-		mentionQueryOpen || selectionTouchesCode
-	) {
-		return null;
-	}
-	if (!activeId && collapsed) {
+	useEffect(() => {
+		const toolbar = toolbarRef.current;
+		if (!visible || !toolbar) {
+			return;
+		}
+
+		const syncRovingButton = () => {
+			const buttons = toolbarButtons(toolbar);
+			const current = buttons.find((button) => button.tabIndex === 0) ||
+				buttons[0];
+			setRovingButton(toolbar, current);
+		};
+		syncRovingButton();
+
+		const observer = new MutationObserver(syncRovingButton);
+		observer.observe(toolbar, { childList: true, subtree: true });
+		return () => observer.disconnect();
+	}, [toolbarRef, visible, active?.id, link?.id, asset?.id]);
+
+	if (!visible || !rect) {
 		return null;
 	}
 	const placeBelow = rect.top - y < 90;
-	const viewportWidth = globalThis.innerWidth || 0;
+	const viewportWidth = editor.current?.ownerDocument.defaultView?.innerWidth ||
+		0;
 	const center = rect.left + rect.width / 2 - x;
 	const left = viewportWidth
 		? Math.max(170, Math.min(center, viewportWidth - 170))
@@ -299,9 +336,55 @@ export function FloatingToolbar() {
 
 	const output = (
 		<div
+			ref={toolbarRef}
 			className="e-fl-toolbar"
+			role="toolbar"
+			aria-label={asset
+				? "Asset controls"
+				: link
+				? "Link and text formatting"
+				: "Text formatting"}
 			data-ep-toolbar-below={placeBelow || undefined}
 			onMouseDown={(event) => event.stopPropagation()}
+			onFocus={(event) => {
+				if (event.target instanceof HTMLButtonElement) {
+					setRovingButton(event.currentTarget, event.target);
+				}
+			}}
+			onKeyDownCapture={(event) => {
+				if (event.key === "Escape") {
+					event.preventDefault();
+					editor.current?.focus({ preventScroll: true });
+					return;
+				}
+				if (!(event.target instanceof HTMLButtonElement)) {
+					return;
+				}
+				const buttons = toolbarButtons(event.currentTarget);
+				const current = buttons.indexOf(event.target);
+				if (current < 0) {
+					return;
+				}
+				let next: number | undefined;
+				if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+					next = (current + 1) % buttons.length;
+				} else if (
+					event.key === "ArrowLeft" || event.key === "ArrowUp"
+				) {
+					next = (current - 1 + buttons.length) % buttons.length;
+				} else if (event.key === "Home") {
+					next = 0;
+				} else if (event.key === "End") {
+					next = buttons.length - 1;
+				}
+				if (next === undefined) {
+					return;
+				}
+				event.preventDefault();
+				event.stopPropagation();
+				setRovingButton(event.currentTarget, buttons[next]);
+				buttons[next]?.focus({ preventScroll: true });
+			}}
 			style={{
 				left,
 				top: (placeBelow ? rect.bottom : rect.top) - y,

@@ -327,7 +327,7 @@ export class Model extends Exome {
 	public _idToKey: Record<string, string> = {};
 	public _elements: Record<string, AnyToken> = {};
 	public _isComposing = false;
-	public _stack: Array<() => void> = [];
+	public _stack: Array<(editor: HTMLElement) => void> = [];
 
 	constructor(
 		tokens: TokenRoot = [createBlockToken("p", {}, [createTextToken()])],
@@ -1845,8 +1845,8 @@ export class Model extends Exome {
 						tokenId: caretText.id,
 					});
 					this.selection.setFormat(outsideFormat);
-					this._stack.push(() =>
-						setMarkdownBoundaryCaret(caretText.id, "after")
+					this._stack.push((editor) =>
+						setMarkdownBoundaryCaret(editor, caretText.id, "after")
 					);
 				}
 			}
@@ -1912,7 +1912,7 @@ export class Model extends Exome {
 		const blockId = caretBlock.id;
 		const textId = caretText.id;
 		this.select(caretText, textOffset);
-		this._stack.push(() => {
+		this._stack.push((editor) => {
 			const currentTextKey = this._idToKey[textId];
 			const currentText = currentTextKey
 				? this.findElement(currentTextKey)
@@ -1927,7 +1927,7 @@ export class Model extends Exome {
 				);
 				this.selection.setFormat(this.getSelectionFormat());
 			}
-			setCodeFenceCaret(blockId, side, markerOffset);
+			setCodeFenceCaret(editor, blockId, side, markerOffset);
 		});
 	}
 
@@ -2231,45 +2231,6 @@ export class Model extends Exome {
 	}
 
 	private _pushToHistory = (type: number, data?: any) => {
-		const first = this.selection.first.slice() as [string, number];
-		const last = this.selection.last.slice() as [string, number];
-		const tokensString = JSON.stringify(this.tokens);
-		const trace = {
-			undo: () => {
-				this.selection.first = first;
-				this.selection.last = last;
-				this.tokens = JSON.parse(tokensString);
-
-				this.recalculate();
-
-				this._stack.push(() => {
-					setCaret(
-						this.findElement(first[0]).id,
-						first[1],
-						this.findElement(last[0]).id,
-						last[1],
-					);
-				});
-			},
-			redo: () => {
-				this.selection.first = first;
-				this.selection.last = last;
-
-				this.recalculate();
-
-				this._stack.push(() => {
-					setCaret(
-						this.findElement(first[0]).id,
-						first[1],
-						this.findElement(last[0]).id,
-						last[1],
-					);
-				});
-
-				this.action(type, data);
-			},
-		};
-
 		const batch = type === ACTION._Todo ||
 				(type === ACTION._RemoveSelectable && !data?.text)
 			? undefined
@@ -2278,7 +2239,50 @@ export class Model extends Exome {
 			: type === ACTION._Compose
 			? ACTION._Key
 			: type;
-		this.history.push(trace, batch);
+
+		if (this.history.locked || this.history.continues(batch)) {
+			return;
+		}
+
+		type Snapshot = {
+			tokens: string;
+			first: [string, number];
+			last: [string, number];
+		};
+		const snapshot = (): Snapshot => ({
+			tokens: JSON.stringify(this.tokens),
+			first: this.selection.first.slice() as [string, number],
+			last: this.selection.last.slice() as [string, number],
+		});
+		const before = snapshot();
+		let after: Snapshot | undefined;
+		const restore = (state: Snapshot) => {
+			this.tokens = JSON.parse(state.tokens);
+			this.selection.first = state.first.slice() as [string, number];
+			this.selection.last = state.last.slice() as [string, number];
+			this.recalculate();
+
+			this._stack.push((editor) => {
+				setCaret(
+					editor,
+					this.findElement(state.first[0]).id,
+					state.first[1],
+					this.findElement(state.last[0]).id,
+					state.last[1],
+				);
+			});
+		};
+		const close = () => {
+			after ??= snapshot();
+		};
+		this.history.push({
+			close,
+			undo: () => restore(before),
+			redo: () => {
+				close();
+				restore(after!);
+			},
+		}, batch);
 	};
 
 	private _cut = (
@@ -2759,8 +2763,8 @@ export class Model extends Exome {
 					Math.min(caret.offset, caretElement.text.length),
 				);
 			}
-			this._stack.push(() =>
-				setInlineMarkdownCaret(blockId, caretSourceOffset)
+			this._stack.push((editor) =>
+				setInlineMarkdownCaret(editor, blockId, caretSourceOffset)
 			);
 			return;
 		}
@@ -3615,8 +3619,8 @@ export class Model extends Exome {
 		// );
 
 		// this._selectSilent(first, firstOffset);
-		this._stack.push(() =>
-			setCaret(first.id, firstOffset, last.id, lastOffset)
+		this._stack.push((editor) =>
+			setCaret(editor, first.id, firstOffset, last.id, lastOffset)
 		);
 
 		this.update();
