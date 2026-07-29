@@ -47,7 +47,45 @@ test("editor exposes accessible semantics and extension renderers", async ({ pag
 	);
 });
 
-test("a delayed Safari dead-key composition commits once inside punctuation", async ({ page }) => {
+test("native keyboard text is inserted from beforeinput, not keydown", async ({ page }) => {
+	await page.getByRole("button", { name: "Basic" }).click();
+	const editor = page.getByRole("textbox", {
+		name: "Demo Markdown document",
+	});
+	const source = page.locator("textarea[name='content']");
+	await placeCaretAtTextEnd(editor, "Type @ to try");
+	const initial = await source.inputValue();
+
+	const keydownPrevented = await editor.evaluate((element) => {
+		const event = new KeyboardEvent("keydown", {
+			bubbles: true,
+			cancelable: true,
+			key: "ß",
+		});
+		element.dispatchEvent(event);
+		return event.defaultPrevented;
+	});
+	expect(keydownPrevented).toBe(false);
+	await expect(source).toHaveValue(initial);
+
+	const beforeInputPrevented = await editor.evaluate((element) => {
+		const event = new InputEvent("beforeinput", {
+			bubbles: true,
+			cancelable: true,
+			data: "ß",
+			inputType: "insertText",
+		});
+		element.dispatchEvent(event);
+		return event.defaultPrevented;
+	});
+	expect(beforeInputPrevented).toBe(true);
+	await expect.poll(async () => (await source.inputValue()).length).toBe(
+		initial.length + 1,
+	);
+	expect((await source.inputValue()).match(/ß/g)).toHaveLength(1);
+});
+
+test("a native dead-key composition commits once inside punctuation", async ({ page }) => {
 	await page.getByRole("button", { name: "Basic" }).click();
 	const editor = page.getByRole("textbox", {
 		name: "Demo Markdown document",
@@ -78,10 +116,22 @@ test("a delayed Safari dead-key composition commits once inside punctuation", as
 				key: "ā",
 			}),
 		);
+	});
+	await expect(source).toHaveValue(/test ""/);
+
+	await editor.evaluate((element) => {
 		element.dispatchEvent(
 			new CompositionEvent("compositionend", {
 				bubbles: true,
 				data: "ā",
+			}),
+		);
+		element.dispatchEvent(
+			new InputEvent("beforeinput", {
+				bubbles: true,
+				cancelable: true,
+				data: "ā",
+				inputType: "insertFromComposition",
 			}),
 		);
 	});

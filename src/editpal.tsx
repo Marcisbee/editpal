@@ -1048,8 +1048,7 @@ export function Editpal(
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const uploadControllers = useRef(new Set<AbortController>());
 	const onChangeRef = useRef(onChange);
-	const deadKeyCompositionRef = useRef(false);
-	const forcedCompositionRef = useRef(false);
+	const committedCompositionRef = useRef<string | null>(null);
 	const [focus, setFocus] = useState(0);
 	const [reload, setReload] = useState(0);
 	const [activeId, setActiveId] = useState<string>();
@@ -1618,26 +1617,15 @@ export function Editpal(
 		// is delivered. Capture the visible caret before selection syncing is
 		// suspended for the temporary composition DOM.
 		onSelectionChange();
-		deadKeyCompositionRef.current = false;
-		forcedCompositionRef.current = false;
+		committedCompositionRef.current = null;
 		model._isComposing = true;
-	}
-
-	function onCompositionUpdate(e: CompositionEvent) {
-		if (
-			["'", '"', "`", "´", "^", "~", "¨", "ˇ", "¸"].includes(e.data)
-		) {
-			deadKeyCompositionRef.current = true;
-		}
 	}
 
 	function onCompositionEnd(e: CompositionEvent) {
 		const fn = () => {
 			model._isComposing = false;
-			deadKeyCompositionRef.current = false;
-			if (forcedCompositionRef.current) {
-				forcedCompositionRef.current = false;
-			} else if (e.data) {
+			committedCompositionRef.current = e.data;
+			if (e.data) {
 				insertText(e.data, ACTION._Compose);
 			}
 			setReload(increment);
@@ -1655,25 +1643,6 @@ export function Editpal(
 		setFocus(increment);
 	}
 
-	function onCompositionKeyUp(e: KeyboardEvent) {
-		if (
-			!model._isComposing ||
-			!deadKeyCompositionRef.current ||
-			Array.from(e.key).length !== 1
-		) {
-			return;
-		}
-
-		// Safari can leave a dead-key composition open inside punctuation even
-		// after reporting the resolved character (for example Latvian ' + a).
-		// Commit that resolved key before the next keystroke can replace it.
-		model._isComposing = false;
-		forcedCompositionRef.current = true;
-		insertText(e.key, ACTION._Compose);
-		setReload(increment);
-		setFocus(increment);
-	}
-
 	useLayoutEffect(() => {
 		if (!ref.current) {
 			return;
@@ -1682,9 +1651,7 @@ export function Editpal(
 		const e = ref.current;
 
 		e.addEventListener("compositionstart", onCompositionStart);
-		e.addEventListener("compositionupdate", onCompositionUpdate);
 		e.addEventListener("compositionend", onCompositionEnd);
-		e.addEventListener("keyup", onCompositionKeyUp);
 		e.addEventListener("focus", onFocus);
 		e.addEventListener("selectstart", onSelectionStart, { once: true });
 		e.addEventListener("mousedown", onSelect, true);
@@ -1695,9 +1662,7 @@ export function Editpal(
 
 		return () => {
 			e.removeEventListener("compositionstart", onCompositionStart);
-			e.removeEventListener("compositionupdate", onCompositionUpdate);
 			e.removeEventListener("compositionend", onCompositionEnd);
-			e.removeEventListener("keyup", onCompositionKeyUp);
 			e.removeEventListener("focus", onFocus);
 			e.removeEventListener("selectstart", onSelectionStart);
 			e.removeEventListener("mousedown", onSelect, true);
@@ -1885,6 +1850,17 @@ export function Editpal(
 		if (event.isComposing || model._isComposing) {
 			return;
 		}
+		if (
+			event.inputType === "insertFromComposition" &&
+			committedCompositionRef.current !== null
+		) {
+			// Some engines report the composition commit again after
+			// compositionend. The model already accepted that native commit.
+			committedCompositionRef.current = null;
+			preventDefaultAndStop(event);
+			return;
+		}
+		committedCompositionRef.current = null;
 		// A selected atomic element can have a browser caret immediately beside
 		// its contenteditable=false DOM. Preserve the explicit model selection;
 		// otherwise reconcile from the visible native caret.
@@ -2194,6 +2170,11 @@ export function Editpal(
 					if (!editable) {
 						return;
 					}
+					// Character interpretation belongs to the active keyboard layout.
+					// During composition, leave every key to the browser and IME.
+					if (e.isComposing || model._isComposing) {
+						return;
+					}
 					// Native selection events can be deferred (notably in Firefox).
 					// Reconcile the model with the caret the user can actually see
 					// before applying any keyboard command.
@@ -2309,19 +2290,6 @@ export function Editpal(
 						return;
 					}
 
-					// Let the browser display its temporary IME/dead-key composition.
-					if (model._isComposing) {
-						return;
-					}
-
-					if (Array.from(e.key).length === 1) {
-						preventDefaultAndStop(e);
-						if (!editSelectedMarkdown(e.key)) {
-							insertText(e.key);
-						}
-						return;
-					}
-
 					if (e.key === "Tab") {
 						preventDefault(e);
 						action(e.shiftKey ? ACTION._ShiftTab : ACTION._Tab);
@@ -2348,8 +2316,10 @@ export function Editpal(
 						return;
 					}
 
-					// Navigation, escape, function keys, and browser shortcuts do not
-					// mutate the editor and should retain their native behavior.
+					// Printable text is handled by beforeinput, where the browser
+					// provides layout-aware text after dead-key and IME processing.
+					// Navigation, escape, function keys, and browser shortcuts retain
+					// their native behavior.
 				}}
 				data-ep-main
 				data-ep-mode={mode}
