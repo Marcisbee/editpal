@@ -85,6 +85,143 @@ test("native keyboard text is inserted from beforeinput, not keydown", async ({ 
 	expect((await source.inputValue()).match(/ß/g)).toHaveLength(1);
 });
 
+test("drag and drop uses structured Editpal data and undoes atomically", async ({ page }) => {
+	await page.getByRole("button", { name: "Basic" }).click();
+	const editor = page.getByRole("textbox", {
+		name: "Demo Markdown document",
+	});
+	const source = page.locator("textarea[name='content']");
+	const initial = await source.inputValue();
+
+	const payload = await editor.evaluate((element) => {
+		const findText = (value: string) => {
+			const walker = document.createTreeWalker(
+				element,
+				NodeFilter.SHOW_TEXT,
+			);
+			while (walker.nextNode()) {
+				const node = walker.currentNode as Text;
+				if (node.data.includes(value)) {
+					return node;
+				}
+			}
+			throw new Error(`Could not find ${value}`);
+		};
+		const dragged = findText("bold");
+		const start = dragged.data.indexOf("bold");
+		const selection = document.getSelection();
+		const range = document.createRange();
+		range.setStart(dragged, start);
+		range.setEnd(dragged, start + 4);
+		selection?.removeAllRanges();
+		selection?.addRange(range);
+		document.dispatchEvent(new Event("selectionchange"));
+
+		const data = new DataTransfer();
+		element.dispatchEvent(
+			new DragEvent("dragstart", {
+				bubbles: true,
+				cancelable: true,
+				dataTransfer: data,
+			}),
+		);
+		const structured = data.getData("application/x-editpal-drag");
+		if (!structured) {
+			throw new Error(
+				`Missing structured drag data (${Array.from(data.types).join(", ")})`,
+			);
+		}
+
+		const target = findText("Type @ to try");
+		const targetRange = document.createRange();
+		targetRange.setStart(target, target.data.length);
+		targetRange.collapse(true);
+		const rect = targetRange.getBoundingClientRect();
+		element.dispatchEvent(
+			new DragEvent("drop", {
+				bubbles: true,
+				cancelable: true,
+				clientX: rect.right,
+				clientY: rect.top + Math.max(1, rect.height / 2),
+				dataTransfer: data,
+			}),
+		);
+		return {
+			plain: data.getData("text/plain"),
+			structured: JSON.parse(structured),
+		};
+	});
+
+	expect(payload.plain).toBe("bold");
+	expect(payload.structured.version).toBe(1);
+	expect(payload.structured.fragment[0].children[0].props.fontWeight).toBe(
+		"bold",
+	);
+	await expect(source).not.toHaveValue(initial);
+	await expect(source).not.toHaveValue(/Write \*\*bold\*\*/);
+	await expect(source).toHaveValue(/Type @ to try[^\n]*\*\*bold\*\*/);
+
+	await editor.focus();
+	await page.keyboard.press("ControlOrMeta+z");
+	await expect(source).toHaveValue(initial);
+
+	const image = editor.locator("[data-ep-img]").last();
+	await expect(image).toHaveAttribute("draggable", "true");
+	const imagePayload = await image.evaluate((element) => {
+		const data = new DataTransfer();
+		element.dispatchEvent(
+			new DragEvent("dragstart", {
+				bubbles: true,
+				cancelable: true,
+				dataTransfer: data,
+			}),
+		);
+		const payload = data.getData("application/x-editpal-drag");
+		element.dispatchEvent(
+			new DragEvent("dragend", {
+				bubbles: true,
+				dataTransfer: data,
+			}),
+		);
+		return JSON.parse(payload);
+	});
+	expect(
+		imagePayload.fragment[0].children.some(
+			(child: { type: string }) => child.type === "img",
+		),
+	).toBe(true);
+	const lineEmbed = editor.locator("[data-ep-line-embed]");
+	await expect(lineEmbed).toHaveAttribute(
+		"draggable",
+		"true",
+	);
+	const embedPayload = await lineEmbed.evaluate((element) => {
+		const data = new DataTransfer();
+		element.dispatchEvent(
+			new DragEvent("dragstart", {
+				bubbles: true,
+				cancelable: true,
+				dataTransfer: data,
+			}),
+		);
+		const payload = data.getData("application/x-editpal-drag");
+		element.dispatchEvent(
+			new DragEvent("dragend", {
+				bubbles: true,
+				dataTransfer: data,
+			}),
+		);
+		return JSON.parse(payload);
+	});
+	expect(
+		embedPayload.fragment[0].children.some(
+			(child: { props?: { link?: string } }) =>
+				child.props?.link ===
+					"https://twitter.com/openai/status/123456789",
+		),
+	).toBe(true);
+});
+
 test("a native dead-key composition commits once inside punctuation", async ({ page }) => {
 	await page.getByRole("button", { name: "Basic" }).click();
 	const editor = page.getByRole("textbox", {

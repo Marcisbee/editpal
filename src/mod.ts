@@ -13,10 +13,10 @@
  * @module
  */
 
-export { Editpal, stylesheetUrl } from "./editpal.tsx";
+export { Editpal, EDITPAL_DRAG_MIME_TYPE, stylesheetUrl } from "./editpal.tsx";
 export type { EditpalMode, EditpalProps } from "./editpal.tsx";
 export { Model } from "./model.ts";
-export type { UpdateAssetData } from "./model.ts";
+export type { ModelSelectionBookmark, UpdateAssetData } from "./model.ts";
 export { MarkdownPreview } from "./preview.tsx";
 export type { MarkdownPreviewProps } from "./preview.tsx";
 export {

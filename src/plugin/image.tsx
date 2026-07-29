@@ -7,7 +7,7 @@ import type { ImgToken } from "../tokens.ts";
 
 export function RenderImage(item: ImgToken & { k: string }) {
 	const { id, src, k } = item;
-	const { activeId, model } = useContext(EditorContext);
+	const { activeId, editable, model } = useContext(EditorContext);
 	const {
 		first: [first],
 		last: [last],
@@ -18,6 +18,7 @@ export function RenderImage(item: ImgToken & { k: string }) {
 			data-ep={id}
 			data-ep-img
 			data-ep-selectable="image"
+			draggable={editable}
 			data-ep-s={activeId === id || [
 						...model.keysBetween(first, last),
 						...model.keysBetween(last, first),
@@ -26,7 +27,7 @@ export function RenderImage(item: ImgToken & { k: string }) {
 		>
 			<br />
 			<span contentEditable={false}>
-				<img src={src} alt={item.props.alt} draggable={false} />
+				<img src={src} alt={item.props.alt} draggable={editable} />
 			</span>
 		</span>
 	);

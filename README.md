@@ -166,6 +166,9 @@ Pasting a URL over selected text turns that text into a labeled link; pasting a
 URL at a caret inserts an editable `[url](url)` Markdown link. Typing a URL does
 not promote it into a special editor item. Pasted images use the attachment
 upload pipeline and leave the caret on the following line so typing can continue.
+Drag and drop adds `application/x-editpal-drag` alongside Markdown and plain-text
+fallbacks. Editpal-to-Editpal drops retain formatting, mentions, assets, and
+embeds as structured tokens, and a move is restored by one undo.
 
 ### Inline integrations
 

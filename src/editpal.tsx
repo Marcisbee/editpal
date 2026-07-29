@@ -9,9 +9,16 @@ import {
 	useState,
 } from "preact/hooks";
 
-import type { AnyToken, BlockToken, InlineToken, TextToken } from "./tokens.ts";
+import type {
+	AnyToken,
+	BlockToken,
+	InlineToken,
+	TextToken,
+	TokenRoot,
+} from "./tokens.ts";
 import { isBlockToken } from "./tokens.ts";
 import { ACTION, Model as EditorModel } from "./model.ts";
+import type { ModelSelectionBookmark } from "./model.ts";
 import type { MarkdownBoundary } from "./selection.ts";
 import { RenderImage } from "./plugin/image.tsx";
 import { RenderAttachment } from "./plugin/attachment.tsx";
@@ -36,6 +43,70 @@ import { MentionDropdown } from "./mention-dropdown.tsx";
 
 export const Model = EditorModel;
 export type { UpdateAssetData } from "./model.ts";
+export const EDITPAL_DRAG_MIME_TYPE = "application/x-editpal-drag";
+
+interface EditpalDragPayload {
+	fragment: TokenRoot;
+	version: 1;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function parseEditpalDragPayload(
+	value: string,
+): EditpalDragPayload | undefined {
+	if (!value) {
+		return;
+	}
+	try {
+		const payload = JSON.parse(value) as Partial<EditpalDragPayload>;
+		if (
+			payload.version !== 1 ||
+			!Array.isArray(payload.fragment) ||
+			!payload.fragment.every((block) =>
+				isRecord(block) &&
+				["code", "h", "hr", "l", "p", "quote", "todo"].includes(
+					String(block.type),
+				) &&
+				isRecord(block.props) &&
+				Array.isArray(block.children) &&
+				block.children.length > 0 &&
+				block.children.every((child) => {
+					if (
+						!isRecord(child) ||
+						!["attachment", "img", "t", "url"].includes(
+							String(child.type),
+						) ||
+						!isRecord(child.props)
+					) {
+						return false;
+					}
+					if (child.type === "t") {
+						return typeof child.text === "string";
+					}
+					if (typeof child.src !== "string") {
+						return false;
+					}
+					return child.type !== "attachment" ||
+						(
+							["file", "image", "video"].includes(
+								String(child.props.kind),
+							) &&
+							typeof child.props.name === "string"
+						);
+				})
+			)
+		) {
+			return;
+		}
+		return payload as EditpalDragPayload;
+	} catch {
+		return;
+	}
+}
+
 /**
  * URL of the stylesheet matching the installed package version.
  *
@@ -82,7 +153,7 @@ function RenderText(
 		sourceStart?: number;
 	},
 ) {
-	const { activeId, extensions, model } = useContext(EditorContext);
+	const { activeId, editable, extensions, model } = useContext(EditorContext);
 	if (item.props?.url) {
 		return <RenderUrl {...item} key={item.id} />;
 	}
@@ -104,6 +175,7 @@ function RenderText(
 					data-ep-inline-integration={integration.definition.id}
 					data-ep-selectable="inline-embed"
 					data-ep-s={activeId === item.id || undefined}
+					draggable={editable}
 					aria-label={integration.definition.ariaLabel?.(context)}
 					onClick={preventSelectableLinkActivation}
 				>
@@ -148,6 +220,7 @@ function RenderText(
 			data-ep-source-end={sourceEnd}
 			data-ep-source-start={sourceStart}
 			data-t={text ? true : "empty"}
+			draggable={mention ? editable : undefined}
 		>
 			{markdownBefore?.map(({ key, marker, sourceEnd, sourceStart }) => (
 				<span
@@ -373,7 +446,9 @@ function RenderMap({ items }: RenderMapProps) {
 		return null;
 	}
 
-	const { activeId, extensions, mode, model } = useContext(EditorContext);
+	const { activeId, editable, extensions, mode, model } = useContext(
+		EditorContext,
+	);
 	let sourceOffset = 0;
 
 	return items.map((item, index) => {
@@ -482,6 +557,7 @@ function RenderMap({ items }: RenderMapProps) {
 						data-ep-line-embed={embed.id}
 						data-ep-selectable="line-embed"
 						data-ep-s={activeId === item.id || undefined}
+						draggable={editable}
 						onClick={preventSelectableLinkActivation}
 					>
 						{embed.render({ block: item, match, model })}
@@ -1050,6 +1126,12 @@ export function Editpal(
 	const uploadControllers = useRef(new Set<AbortController>());
 	const onChangeRef = useRef(onChange);
 	const committedCompositionRef = useRef<string | null>(null);
+	const dragRef = useRef<
+		{
+			bookmark: ModelSelectionBookmark;
+			fragment: TokenRoot;
+		} | undefined
+	>();
 	const [focus, setFocus] = useState(0);
 	const [reload, setReload] = useState(0);
 	const [activeId, setActiveId] = useState<string>();
@@ -1601,10 +1683,43 @@ export function Editpal(
 	function onDrop(event: DragEvent) {
 		preventDefaultAndStop(event);
 
+		const payload = parseEditpalDragPayload(
+			event.dataTransfer?.getData(EDITPAL_DRAG_MIME_TYPE) || "",
+		);
 		onSelect(event);
 		const files = event.dataTransfer?.files;
 		if (files?.length && extensions?.attachments) {
 			void uploadFiles(files);
+			return;
+		}
+
+		if (payload && editable) {
+			const source = dragRef.current;
+			const structuredMarkdown = toMarkdown(payload.fragment);
+			if (
+				!source &&
+				maxLength !== undefined &&
+				markdown.length + structuredMarkdown.length > maxLength
+			) {
+				onLimitExceeded?.(maxLength, model);
+				return;
+			}
+			const changed = source
+				? model.moveFragment(payload.fragment, source.bookmark)
+				: model.insertFragment(payload.fragment);
+			if (source) {
+				// The source and target are this editor. Dragend must not perform
+				// the cross-editor source removal after this local attempt.
+				dragRef.current = undefined;
+			}
+			if (changed) {
+				if (event.dataTransfer) {
+					event.dataTransfer.dropEffect = "move";
+				}
+				setActiveId(undefined);
+			} else if (event.dataTransfer) {
+				event.dataTransfer.dropEffect = "none";
+			}
 			return;
 		}
 
@@ -1613,6 +1728,56 @@ export function Editpal(
 			model.history.batch();
 			insertText(text);
 			model.history.batch();
+		}
+	}
+
+	function onDragStart(event: DragEvent) {
+		if (!editable || !event.dataTransfer) {
+			preventDefaultAndStop(event);
+			return;
+		}
+		const atomicTarget = event.target instanceof Element
+			? event.target.closest<HTMLElement>(
+				"[data-ep-selectable], [data-ep-mention]",
+			)
+			: undefined;
+		const atomicId = atomicTarget?.dataset.ep;
+		if (!atomicId || !model.selectToken(atomicId)) {
+			onSelectionChange();
+		}
+		const fragment = model.selectedFragment();
+		const bookmark = model.selectionBookmark();
+		if (!fragment.length || !bookmark) {
+			preventDefaultAndStop(event);
+			return;
+		}
+
+		const plainText = model.selectedText();
+		event.dataTransfer.effectAllowed = "copyMove";
+		event.dataTransfer.setData(
+			EDITPAL_DRAG_MIME_TYPE,
+			JSON.stringify({ fragment, version: 1 } satisfies EditpalDragPayload),
+		);
+		event.dataTransfer.setData("text/markdown", toMarkdown(fragment));
+		event.dataTransfer.setData("text/plain", plainText);
+		dragRef.current = { bookmark, fragment };
+	}
+
+	function onDragEnd(event: DragEvent) {
+		const drag = dragRef.current;
+		dragRef.current = undefined;
+		if (drag && event.dataTransfer?.dropEffect === "move") {
+			model.removeBookmarkedSelection(drag.bookmark);
+		}
+	}
+
+	function onDragOver(event: DragEvent) {
+		if (
+			editable &&
+			event.dataTransfer?.types.includes(EDITPAL_DRAG_MIME_TYPE)
+		) {
+			event.preventDefault();
+			event.dataTransfer.dropEffect = "move";
 		}
 	}
 
@@ -2153,7 +2318,9 @@ export function Editpal(
 				data-ep-placeholder={placeholder}
 				data-ep-empty={markdown.length === 0 || undefined}
 				onBeforeInput={onBeforeInput}
-				onDragStart={preventDefaultAndStop}
+				onDragStart={onDragStart}
+				onDragEnd={onDragEnd}
+				onDragOver={onDragOver}
 				onCopy={(e) => {
 					const domSelection = document.getSelection();
 					if (
