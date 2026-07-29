@@ -551,8 +551,8 @@ export class Model extends Exome {
 		});
 	}
 
-	/** Put an unformatted caret immediately after an inline item. */
-	public placeCaretAfter(id: string) {
+	/** Put a caret immediately after an inline item. */
+	public placeCaretAfter(id: string, boundaryProps: Record<string, any> = {}) {
 		const key = this._idToKey[id];
 		const token = key ? this.findElement(key) : undefined;
 		const parent = token && !isBlockToken(token)
@@ -569,7 +569,7 @@ export class Model extends Exome {
 			next.props.link ||
 			next.props.url
 		) {
-			next = createTextToken({ typingBoundary: true });
+			next = createTextToken({ ...boundaryProps, typingBoundary: true });
 			parent.children.splice(index + 1, 0, next);
 			this.recalculate();
 		}
@@ -577,7 +577,7 @@ export class Model extends Exome {
 	}
 
 	/** Put a caret immediately before an inline item without entering it. */
-	public placeCaretBefore(id: string) {
+	public placeCaretBefore(id: string, boundaryProps: Record<string, any> = {}) {
 		const key = this._idToKey[id];
 		const token = key ? this.findElement(key) : undefined;
 		const parent = token && !isBlockToken(token)
@@ -594,7 +594,7 @@ export class Model extends Exome {
 			previous.props.link ||
 			previous.props.url
 		) {
-			previous = createTextToken({ typingBoundary: true });
+			previous = createTextToken({ ...boundaryProps, typingBoundary: true });
 			parent.children.splice(index, 0, previous);
 			this.recalculate();
 		}

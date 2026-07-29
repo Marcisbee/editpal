@@ -973,6 +973,49 @@ function markdownBoundaryAtPoint(
 	};
 }
 
+function markdownBoundaryAtSelectionEdge(
+	model: EditorModel,
+	side: "before" | "after",
+): MarkdownBoundary | undefined {
+	const [firstKey, firstOffset] = model.selection.first;
+	const [lastKey, lastOffset] = model.selection.last;
+	const current = firstKey === lastKey && firstOffset === lastOffset
+		? model.findElement(firstKey)
+		: undefined;
+	const parent = current?.type === "t" ? model.parent(current.key) : undefined;
+	if (!current || current.type !== "t" || !parent) {
+		return;
+	}
+	if (
+		(side === "after" && firstOffset !== current.text.length) ||
+		(side === "before" && firstOffset !== 0)
+	) {
+		return;
+	}
+
+	const index = parent.children.indexOf(current);
+	const previous = parent.children[index - 1];
+	const next = parent.children[index + 1];
+	const markdown = inlineMarkdownAffixes(
+		previous?.type === "t" && !previous.props.url ? previous.props : undefined,
+		current.props,
+		next?.type === "t" && !next.props.url ? next.props : undefined,
+	);
+	const markers = side === "after" ? markdown.after : markdown.before;
+	if (!markers.length) {
+		return;
+	}
+
+	const format = { ...current.props };
+	for (const { key } of markers) {
+		delete format[key];
+		if (key === "code") {
+			delete format.codeMarker;
+		}
+	}
+	return { format, side, tokenId: current.id };
+}
+
 function markerElement(node: Node | undefined): HTMLElement | undefined {
 	const element = node instanceof HTMLElement ? node : node?.parentElement;
 	return element?.closest<HTMLElement>("[data-ep-md-marker]") || undefined;
@@ -2419,6 +2462,34 @@ export function Editpal(
 		return true;
 	}
 
+	function moveAcrossMarkdownBoundary(direction: "left" | "right"): boolean {
+		const currentSelection = domSelection();
+		const side = direction === "right" ? "after" : "before";
+		const domBoundary = currentSelection?.isCollapsed &&
+				currentSelection.focusNode
+			? markdownBoundaryAtPoint(
+				model,
+				currentSelection.focusNode,
+				currentSelection.focusOffset,
+			)
+			: undefined;
+		const boundary = [
+			model.selection.markdownBoundary,
+			domBoundary,
+			markdownBoundaryAtSelectionEdge(model, side),
+		].find((candidate) => candidate?.side === side);
+		if (!boundary) {
+			return false;
+		}
+
+		if (direction === "right") {
+			model.placeCaretAfter(boundary.tokenId, boundary.format);
+		} else {
+			model.placeCaretBefore(boundary.tokenId, boundary.format);
+		}
+		return true;
+	}
+
 	return (
 		<EditorContext.Provider
 			value={{
@@ -2741,8 +2812,13 @@ export function Editpal(
 							!e.altKey &&
 							!e.shiftKey &&
 							(e.key === "ArrowLeft" || e.key === "ArrowRight") &&
-							moveAcrossMention(
-								e.key === "ArrowLeft" ? "left" : "right",
+							(
+								moveAcrossMarkdownBoundary(
+									e.key === "ArrowLeft" ? "left" : "right",
+								) ||
+								moveAcrossMention(
+									e.key === "ArrowLeft" ? "left" : "right",
+								)
 							)
 						) {
 							preventDefaultAndStop(e);
