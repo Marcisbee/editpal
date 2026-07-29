@@ -506,6 +506,51 @@ test("mobile beforeinput removes an empty slash command trigger", async ({ page 
 	await expect(source).toHaveValue(before);
 });
 
+test("mobile held delete honors an accelerated beforeinput range", async ({ page }) => {
+	await page.getByRole("button", { name: "Basic" }).click();
+	const editor = page.getByRole("textbox", {
+		name: "Demo Markdown document",
+	});
+	const source = page.locator("textarea[name='content']");
+	const initial = await source.inputValue();
+	const deleted = "video, or file.";
+
+	await editor.getByText("Type @ to try the customizable mention API", {
+		exact: false,
+	}).evaluate((element, deletedText) => {
+		const node = element.firstChild;
+		if (!node || !node.textContent?.endsWith(deletedText)) {
+			throw new Error("Could not find the held-delete target");
+		}
+
+		const target = document.createRange();
+		target.setStart(node, node.textContent.length - deletedText.length);
+		target.setEnd(node, node.textContent.length);
+
+		(element.closest("[contenteditable='true']") as HTMLElement).focus();
+		const selection = document.getSelection();
+		selection?.removeAllRanges();
+		const caret = target.cloneRange();
+		caret.collapse(false);
+		selection?.addRange(caret);
+		document.dispatchEvent(new Event("selectionchange"));
+
+		const event = new InputEvent("beforeinput", {
+			bubbles: true,
+			cancelable: true,
+			inputType: "deleteContentBackward",
+		});
+		Object.defineProperty(event, "getTargetRanges", {
+			value: () => [target],
+		});
+		element.dispatchEvent(event);
+	}, deleted);
+
+	await expect(source).toHaveValue(initial.replace(deleted, ""));
+	await page.keyboard.press("ControlOrMeta+z");
+	await expect(source).toHaveValue(initial);
+});
+
 test("slash option navigation stays inside a viewport-clamped popup", async ({ page }) => {
 	const { search } = await openEmptySlashCommand(page);
 	const baseline = await page.evaluate(() => window.scrollY);

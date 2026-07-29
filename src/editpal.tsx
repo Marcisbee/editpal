@@ -1436,6 +1436,55 @@ export function Editpal(
 		);
 	}
 
+	function selectInputTargetRange(event: InputEvent): boolean {
+		if (!ref.current || typeof event.getTargetRanges !== "function") {
+			return false;
+		}
+
+		let ranges: StaticRange[];
+		try {
+			ranges = event.getTargetRanges();
+		} catch {
+			return false;
+		}
+		if (ranges.length !== 1) {
+			return false;
+		}
+
+		const [range] = ranges;
+		if (
+			range.startContainer === range.endContainer &&
+			range.startOffset === range.endOffset
+		) {
+			return false;
+		}
+
+		const start = resolveEditorPoint(
+			model,
+			ref.current,
+			range.startContainer,
+			range.startOffset,
+		);
+		const end = resolveEditorPoint(
+			model,
+			ref.current,
+			range.endContainer,
+			range.endOffset,
+		);
+		if (!start || !end) {
+			return false;
+		}
+
+		selection.setSelection(
+			start.element.key,
+			start.offset,
+			end.element.key,
+			end.offset,
+		);
+		selection.setFormat(model.getSelectionFormat());
+		return true;
+	}
+
 	function onFocus() {
 		if (model.slash.isOpen) {
 			model.slash.dismiss();
@@ -1896,6 +1945,13 @@ export function Editpal(
 		) {
 			preventDefaultAndStop(event);
 			return;
+		}
+
+		if (event.inputType.startsWith("delete")) {
+			// Mobile keyboards widen the target range while a held delete key
+			// accelerates. Applying only one model grapheme per event makes the
+			// later, less frequent repeat events appear to slow down.
+			selectInputTargetRange(event);
 		}
 
 		switch (event.inputType) {
