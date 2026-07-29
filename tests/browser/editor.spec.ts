@@ -47,7 +47,45 @@ test("editor exposes accessible semantics and extension renderers", async ({ pag
 	);
 });
 
-test("a delayed Safari dead-key composition commits once inside punctuation", async ({ page }) => {
+test("native keyboard text is inserted from beforeinput, not keydown", async ({ page }) => {
+	await page.getByRole("button", { name: "Basic" }).click();
+	const editor = page.getByRole("textbox", {
+		name: "Demo Markdown document",
+	});
+	const source = page.locator("textarea[name='content']");
+	await placeCaretAtTextEnd(editor, "Type @ to try");
+	const initial = await source.inputValue();
+
+	const keydownPrevented = await editor.evaluate((element) => {
+		const event = new KeyboardEvent("keydown", {
+			bubbles: true,
+			cancelable: true,
+			key: "ß",
+		});
+		element.dispatchEvent(event);
+		return event.defaultPrevented;
+	});
+	expect(keydownPrevented).toBe(false);
+	await expect(source).toHaveValue(initial);
+
+	const beforeInputPrevented = await editor.evaluate((element) => {
+		const event = new InputEvent("beforeinput", {
+			bubbles: true,
+			cancelable: true,
+			data: "ß",
+			inputType: "insertText",
+		});
+		element.dispatchEvent(event);
+		return event.defaultPrevented;
+	});
+	expect(beforeInputPrevented).toBe(true);
+	await expect.poll(async () => (await source.inputValue()).length).toBe(
+		initial.length + 1,
+	);
+	expect((await source.inputValue()).match(/ß/g)).toHaveLength(1);
+});
+
+test("a native dead-key composition commits once inside punctuation", async ({ page }) => {
 	await page.getByRole("button", { name: "Basic" }).click();
 	const editor = page.getByRole("textbox", {
 		name: "Demo Markdown document",
@@ -78,10 +116,22 @@ test("a delayed Safari dead-key composition commits once inside punctuation", as
 				key: "ā",
 			}),
 		);
+	});
+	await expect(source).toHaveValue(/test ""/);
+
+	await editor.evaluate((element) => {
 		element.dispatchEvent(
 			new CompositionEvent("compositionend", {
 				bubbles: true,
 				data: "ā",
+			}),
+		);
+		element.dispatchEvent(
+			new InputEvent("beforeinput", {
+				bubbles: true,
+				cancelable: true,
+				data: "ā",
+				inputType: "insertFromComposition",
 			}),
 		);
 	});
@@ -609,7 +659,31 @@ test("inline integrations and line embeds delete atomically with history", async
 	const restoredIntegration = editor.locator(
 		"[data-ep-inline-integration='github-repository']",
 	);
-	await restoredIntegration.click();
+	const integrationBox = await restoredIntegration.boundingBox();
+	expect(integrationBox).not.toBeNull();
+	await restoredIntegration.click({
+		position: {
+			x: 1,
+			y: integrationBox!.height / 2,
+		},
+	});
+	await expect.poll(async () =>
+		restoredIntegration.evaluate((element) => {
+			const selection = document.getSelection();
+			if (!selection?.isCollapsed || !selection.rangeCount) {
+				return false;
+			}
+			const caret = selection.getRangeAt(0).getBoundingClientRect();
+			const integration = element.getBoundingClientRect();
+			return caret.height > 0 && caret.left <= integration.left + 1;
+		})
+	).toBe(true);
+	await restoredIntegration.click({
+		position: {
+			x: Math.max(1, integrationBox!.width - 1),
+			y: integrationBox!.height / 2,
+		},
+	});
 	await page.keyboard.type("replacement");
 	await expect(restoredIntegration).toHaveCount(0);
 	await expect(source).toHaveValue(/\nreplacement\n/);
@@ -618,6 +692,18 @@ test("inline integrations and line embeds delete atomically with history", async
 		"[data-ep-inline-integration='github-repository']",
 	);
 	await expect(finalIntegration).toBeVisible();
+	await expect.poll(async () =>
+		finalIntegration.evaluate((element) => {
+			const selection = document.getSelection();
+			if (!selection?.isCollapsed || !selection.rangeCount) {
+				return false;
+			}
+			const caret = selection.getRangeAt(0).getBoundingClientRect();
+			const integration = element.getBoundingClientRect();
+			return caret.height > 0 &&
+				caret.left >= integration.right - 1;
+		})
+	).toBe(true);
 	await finalIntegration.click();
 	await page.getByLabel("Link URL").focus();
 	await page.keyboard.press("Escape");
