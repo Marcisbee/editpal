@@ -2328,6 +2328,17 @@ export function Editpal(
 		}
 
 		if (
+			event.inputType === "insertText" ||
+			event.inputType === "insertReplacementText"
+		) {
+			// Autocorrect, text replacements, and punctuation substitutions can
+			// replace a range even though the visible selection is a collapsed
+			// caret. Preserve the browser-provided range before applying its
+			// replacement text to the model-owned document.
+			selectInputTargetRange(event);
+		}
+
+		if (
 			(event.inputType === "deleteContentBackward" ||
 				event.inputType === "deleteContentForward") &&
 			editSelectedMarkdown(
@@ -2570,6 +2581,10 @@ export function Editpal(
 					undefined}
 				style={style || editorProps?.style}
 				contentEditable={editable}
+				autoCapitalize={editorProps?.autoCapitalize ?? "sentences"}
+				autoCorrect={editorProps?.autoCorrect ?? "on"}
+				inputMode={editorProps?.inputMode ?? "text"}
+				spellcheck={editorProps?.spellcheck ?? true}
 				tabIndex={disabled ? -1 : 0}
 				role="textbox"
 				aria-label={ariaLabel || editorProps?.["aria-label"] ||
