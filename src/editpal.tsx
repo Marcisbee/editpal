@@ -62,6 +62,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+function usesWebKitSelectionModel(editor: HTMLElement): boolean {
+	const userAgent = editor.ownerDocument.defaultView?.navigator.userAgent || "";
+	return /AppleWebKit\//.test(userAgent) &&
+		!/(?:Chrome|Chromium|Edg|OPR)\//.test(userAgent);
+}
+
 function parseEditpalDragPayload(
 	value: string,
 ): EditpalDragPayload | undefined {
@@ -1268,6 +1274,8 @@ export function Editpal(
 	const uploadControllers = useRef(new Set<AbortController>());
 	const onChangeRef = useRef(onChange);
 	const committedCompositionRef = useRef<string | null>(null);
+	const restoringSelectionRef = useRef(false);
+	const selectionRestoreFrameRef = useRef<number>();
 	const dragRef = useRef<
 		{
 			bookmark: ModelSelectionBookmark;
@@ -1284,6 +1292,7 @@ export function Editpal(
 	});
 	const editable = !disabled && !readOnly;
 	const markdown = toMarkdown(tokens);
+	const renderedMarkdownRef = useRef(markdown);
 
 	function announce(message: string) {
 		setAnnouncement((current) => ({
@@ -1311,6 +1320,10 @@ export function Editpal(
 
 	useEffect(() => {
 		return () => {
+			const view = ref.current?.ownerDocument.defaultView;
+			if (view && selectionRestoreFrameRef.current !== undefined) {
+				view.cancelAnimationFrame(selectionRestoreFrameRef.current);
+			}
 			for (const controller of uploadControllers.current) {
 				controller.abort();
 			}
@@ -1320,10 +1333,42 @@ export function Editpal(
 
 	useLayoutEffect(() => {
 		const editor = ref.current;
-		if (editor) {
-			_stack.splice(0).pop()?.(editor);
+		const restoreSelection = _stack.splice(0).pop();
+		if (editor && restoreSelection) {
+			const view = editor.ownerDocument.defaultView;
+			const contentChanged = renderedMarkdownRef.current !== markdown;
+			renderedMarkdownRef.current = markdown;
+			if (view && selectionRestoreFrameRef.current !== undefined) {
+				view.cancelAnimationFrame(selectionRestoreFrameRef.current);
+			}
+			const guardReconciliation = contentChanged &&
+				usesWebKitSelectionModel(editor);
+			restoringSelectionRef.current = guardReconciliation;
+			restoreSelection(editor);
+			if (view && guardReconciliation) {
+				selectionRestoreFrameRef.current = view.requestAnimationFrame(() => {
+					selectionRestoreFrameRef.current = view.requestAnimationFrame(() => {
+						selectionRestoreFrameRef.current = undefined;
+						restoringSelectionRef.current = false;
+					});
+				});
+			} else {
+				selectionRestoreFrameRef.current = undefined;
+				restoringSelectionRef.current = false;
+			}
+		} else {
+			renderedMarkdownRef.current = markdown;
 		}
 	});
+
+	function finishSelectionRestore() {
+		const view = ref.current?.ownerDocument.defaultView;
+		if (view && selectionRestoreFrameRef.current !== undefined) {
+			view.cancelAnimationFrame(selectionRestoreFrameRef.current);
+		}
+		selectionRestoreFrameRef.current = undefined;
+		restoringSelectionRef.current = false;
+	}
 
 	function domSelection(): Selection | null {
 		return ref.current ? getEditorSelection(ref.current) : null;
@@ -1551,6 +1596,9 @@ export function Editpal(
 	}
 
 	function onSelect(event: MouseEvent) {
+		// Pointer placement is explicit user intent and supersedes any guarded
+		// selection notifications left by the previous model reconciliation.
+		finishSelectionRestore();
 		// ref.current?.focus();
 
 		if (
@@ -1695,6 +1743,18 @@ export function Editpal(
 
 		if (!selection?.anchorNode || !selection.focusNode) {
 			return;
+		}
+		if (restoringSelectionRef.current) {
+			if (selection.isCollapsed) {
+				// WebKit can queue another collapsed selection inside the first
+				// rendered token (or beside a leading contenteditable=false mention)
+				// after Editpal has already restored the model caret. Do not let that
+				// reconciliation artifact replace the authoritative model selection.
+				return;
+			}
+			// A range cannot be the collapsed WebKit reconciliation artifact and
+			// represents a newer selection that should supersede the guard.
+			finishSelectionRestore();
 		}
 		// During contenteditable reconciliation, WebKit can briefly collapse the
 		// native selection onto the editor root at offset zero. Treating that
@@ -2694,6 +2754,20 @@ export function Editpal(
 					// During composition, leave every key to the browser and IME.
 					if (e.isComposing || model._isComposing) {
 						return;
+					}
+					if (
+						restoringSelectionRef.current &&
+						(
+							e.key.startsWith("Arrow") ||
+							e.key === "Home" ||
+							e.key === "End" ||
+							e.key === "PageUp" ||
+							e.key === "PageDown"
+						)
+					) {
+						// Native keyboard navigation is explicit user intent. Its
+						// next selectionchange must be observed normally.
+						finishSelectionRestore();
 					}
 					// Native selection events can be deferred (notably in Firefox).
 					// Reconcile the model with the caret the user can actually see

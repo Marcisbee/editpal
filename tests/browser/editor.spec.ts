@@ -977,6 +977,124 @@ test("transient WebKit root selections do not reset the typing caret", async ({ 
 	);
 });
 
+test("WebKit reconciliation selections do not replace the restored caret", async ({
+	page,
+}, testInfo) => {
+	test.skip(
+		!["webkit", "mobile-safari"].includes(testInfo.project.name),
+		"WebKit-specific reconciliation regression",
+	);
+	const editor = page.getByRole("textbox", {
+		name: "Demo Markdown document",
+	});
+	await placeCaretAtTextEnd(editor, "Preview-ready Markdown");
+	await editor.evaluate(async (element) => {
+		const editor = element as HTMLElement;
+		const observer = new MutationObserver(() => {
+			observer.disconnect();
+			const firstText = document.createTreeWalker(
+				editor,
+				NodeFilter.SHOW_TEXT,
+			).nextNode();
+			if (!firstText) {
+				throw new Error("Could not find the reconciliation selection target");
+			}
+			const transient = document.createRange();
+			transient.setStart(firstText, 0);
+			transient.collapse(true);
+			const selection = document.getSelection();
+			selection?.removeAllRanges();
+			selection?.addRange(transient);
+			document.dispatchEvent(new Event("selectionchange"));
+		});
+		observer.observe(editor, { characterData: true, subtree: true });
+
+		const type = (data: string) =>
+			editor.dispatchEvent(
+				new InputEvent("beforeinput", {
+					bubbles: true,
+					cancelable: true,
+					data,
+					inputType: "insertText",
+				}),
+			);
+		type("A");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		type("B");
+	});
+
+	await expect(editor).toContainText(
+		'const message = "Preview-ready Markdown";AB',
+	);
+});
+
+test("WebKit reconciliation beside a leading mention preserves later typing", async ({
+	page,
+}, testInfo) => {
+	test.skip(
+		!["webkit", "mobile-safari"].includes(testInfo.project.name),
+		"WebKit-specific reconciliation regression",
+	);
+	const editor = page.getByRole("textbox", {
+		name: "Demo Markdown document",
+	});
+	const source = page.locator("textarea[name='content']");
+	await editor.focus();
+	await page.keyboard.press("ControlOrMeta+a");
+	await editor.evaluate((element) => {
+		element.dispatchEvent(
+			new InputEvent("beforeinput", {
+				bubbles: true,
+				cancelable: true,
+				data: "",
+				inputType: "insertText",
+			}),
+		);
+	});
+	await page.keyboard.type("@mar");
+	await page.getByRole("option", { name: /marcis/i }).click();
+	await page.keyboard.type(" tail");
+	await placeCaretAtTextEnd(editor, " tail");
+
+	await editor.evaluate(async (element) => {
+		const editor = element as HTMLElement;
+		const observer = new MutationObserver(() => {
+			observer.disconnect();
+			const mention = editor.querySelector<HTMLElement>("[data-ep-mention]");
+			const parent = mention?.parentNode;
+			if (!mention || !parent) {
+				throw new Error("Could not find the leading mention");
+			}
+			const transient = document.createRange();
+			transient.setStart(
+				parent,
+				Array.from(parent.childNodes).indexOf(mention) + 1,
+			);
+			transient.collapse(true);
+			const selection = document.getSelection();
+			selection?.removeAllRanges();
+			selection?.addRange(transient);
+			document.dispatchEvent(new Event("selectionchange"));
+		});
+		observer.observe(editor, { characterData: true, subtree: true });
+
+		const type = (data: string) =>
+			editor.dispatchEvent(
+				new InputEvent("beforeinput", {
+					bubbles: true,
+					cancelable: true,
+					data,
+					inputType: "insertText",
+				}),
+			);
+		type("A");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		type("B");
+	});
+
+	await expect(source).toHaveValue("@marcis tailAB");
+});
+
 test("typing restores only the editor caret without moving the page", async ({ page }) => {
 	const editor = page.getByRole("textbox", {
 		name: "Demo Markdown document",
