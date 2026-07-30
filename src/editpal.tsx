@@ -68,6 +68,41 @@ function usesWebKitSelectionModel(editor: HTMLElement): boolean {
 		!/(?:Chrome|Chromium|Edg|OPR)\//.test(userAgent);
 }
 
+function isWebKitReconciliationSelection(
+	editor: HTMLElement,
+	selection: Selection,
+): boolean {
+	if (
+		!selection.isCollapsed ||
+		selection.anchorNode !== selection.focusNode ||
+		!selection.anchorNode
+	) {
+		return false;
+	}
+
+	const node = selection.anchorNode;
+	const offset = selection.anchorOffset;
+	try {
+		const preceding = editor.ownerDocument.createRange();
+		preceding.setStart(editor, 0);
+		preceding.setEnd(node, offset);
+		if (!preceding.toString()) {
+			return true;
+		}
+	} catch {
+		return false;
+	}
+
+	if (!(node instanceof Element)) {
+		return false;
+	}
+	const precedingChildren = Array.from(node.childNodes).slice(0, offset);
+	const mention = precedingChildren.at(-1);
+	return mention instanceof HTMLElement &&
+		mention.matches("[data-ep-mention]") &&
+		precedingChildren.slice(0, -1).every((child) => !child.textContent);
+}
+
 function parseEditpalDragPayload(
 	value: string,
 ): EditpalDragPayload | undefined {
@@ -1745,15 +1780,18 @@ export function Editpal(
 			return;
 		}
 		if (restoringSelectionRef.current) {
-			if (selection.isCollapsed) {
+			if (
+				ref.current &&
+				isWebKitReconciliationSelection(ref.current, selection)
+			) {
 				// WebKit can queue another collapsed selection inside the first
 				// rendered token (or beside a leading contenteditable=false mention)
 				// after Editpal has already restored the model caret. Do not let that
 				// reconciliation artifact replace the authoritative model selection.
 				return;
 			}
-			// A range cannot be the collapsed WebKit reconciliation artifact and
-			// represents a newer selection that should supersede the guard.
+			// Any other range or collapsed caret represents a newer selection that
+			// should supersede the narrowly targeted reconciliation guard.
 			finishSelectionRestore();
 		}
 		// During contenteditable reconciliation, WebKit can briefly collapse the
