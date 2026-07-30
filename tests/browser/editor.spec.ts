@@ -90,6 +90,10 @@ test("editor exposes accessible semantics and extension renderers", async ({ pag
 		name: "Demo Markdown document",
 	});
 	await expect(editor).toHaveAttribute("aria-multiline", "true");
+	await expect(editor).toHaveAttribute("autocapitalize", "sentences");
+	await expect(editor).toHaveAttribute("autocorrect", "on");
+	await expect(editor).toHaveAttribute("inputmode", "text");
+	await expect(editor).toHaveAttribute("spellcheck", "true");
 	await expect(editor).toHaveAttribute(
 		"aria-placeholder",
 		"Write some Markdown…",
@@ -191,6 +195,73 @@ test("native keyboard text is inserted from beforeinput, not keydown", async ({ 
 		initial.length + 1,
 	);
 	expect((await source.inputValue()).match(/ß/g)).toHaveLength(1);
+});
+
+test("native text replacements honor the browser target range", async ({ page }) => {
+	await page.getByRole("button", { name: "Basic" }).click();
+	const editor = page.getByRole("textbox", {
+		name: "Demo Markdown document",
+	});
+	const source = page.locator("textarea[name='content']");
+
+	const replace = async (
+		needle: string,
+		replacement: string,
+		inputType: "insertText" | "insertReplacementText",
+	) => {
+		await editor.evaluate(
+			(element, { inputType, needle, replacement }) => {
+				const walker = document.createTreeWalker(
+					element,
+					NodeFilter.SHOW_TEXT,
+				);
+				let node: Text | undefined;
+				while (walker.nextNode()) {
+					const candidate = walker.currentNode as Text;
+					if (candidate.data.includes(needle)) {
+						node = candidate;
+						break;
+					}
+				}
+				if (!node) {
+					throw new Error(`Could not find replacement target ${needle}`);
+				}
+
+				const start = node.data.indexOf(needle);
+				const target = document.createRange();
+				target.setStart(node, start);
+				target.setEnd(node, start + needle.length);
+				(element as HTMLElement).focus();
+				const selection = document.getSelection();
+				selection?.removeAllRanges();
+				const caret = target.cloneRange();
+				caret.collapse(false);
+				selection?.addRange(caret);
+				document.dispatchEvent(new Event("selectionchange"));
+
+				const event = new InputEvent("beforeinput", {
+					bubbles: true,
+					cancelable: true,
+					data: replacement,
+					inputType,
+				});
+				Object.defineProperty(event, "getTargetRanges", {
+					value: () => [target],
+				});
+				element.dispatchEvent(event);
+			},
+			{ inputType, needle, replacement },
+		);
+	};
+
+	await replace("Type @", "Write @", "insertReplacementText");
+	await expect(source).toHaveValue(/Write @ to try/);
+	await page.keyboard.press("ControlOrMeta+z");
+	await expect(source).toHaveValue(/Type @ to try/);
+	await replace("Type @", "Draft @", "insertText");
+	await expect(source).toHaveValue(/Draft @ to try/);
+	await page.keyboard.press("ControlOrMeta+z");
+	await expect(source).toHaveValue(/Type @ to try/);
 });
 
 test("ArrowRight leaves manually typed inline Markdown formatting", async ({ page }) => {
