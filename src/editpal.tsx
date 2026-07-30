@@ -2314,6 +2314,20 @@ export function Editpal(
 		}
 
 		if (
+			event.inputType === "insertText" &&
+			event.data === "\u200B" &&
+			/android/i.test(
+				ref.current?.ownerDocument.defaultView?.navigator.userAgent || "",
+			)
+		) {
+			// Android can emit a zero-width-space insertion while the user is
+			// adjusting a native text selection. It is selection UI state, not
+			// document input, and accepting it can replace the selected text.
+			preventDefaultAndStop(event);
+			return;
+		}
+
+		if (
 			(event.inputType === "deleteContentBackward" ||
 				event.inputType === "deleteContentForward") &&
 			editSelectedMarkdown(
@@ -2807,6 +2821,25 @@ export function Editpal(
 
 					if (e.key.indexOf("Arrow") === 0) {
 						model.history.batch();
+						const [firstKey, firstOffset] = model.selection.first;
+						const [lastKey, lastOffset] = model.selection.last;
+						const firstBlock = model.tokens[0];
+						const firstToken = firstBlock?.children[0];
+						if (
+							e.key === "ArrowUp" &&
+							firstKey === lastKey &&
+							firstOffset === lastOffset &&
+							firstOffset === 0 &&
+							firstToken?.key === firstKey
+						) {
+							// A second ArrowUp from a block cursor before a leading
+							// decorator can otherwise move the native selection into
+							// surrounding page chrome. Keep both selections at the
+							// document boundary.
+							preventDefaultAndStop(e);
+							setCaret(ref.current!, firstToken.id, 0);
+							return;
+						}
 						if (
 							!primaryModifier &&
 							!e.altKey &&

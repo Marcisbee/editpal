@@ -425,6 +425,268 @@ test("a native dead-key composition commits once inside punctuation", async ({ p
 	await expect(source).toHaveValue(/test "āx"/);
 });
 
+test("Safari link clicks preserve the selected integration toolbar", async ({
+	page,
+}, testInfo) => {
+	test.skip(
+		!["webkit", "mobile-safari"].includes(testInfo.project.name),
+		"Safari-specific link selection regression",
+	);
+	const editor = page.getByRole("textbox", {
+		name: "Demo Markdown document",
+	});
+	const integration = editor.locator(
+		"[data-ep-inline-integration='github-repository']",
+	);
+	const toolbar = page.locator("[data-ep-context-toolbar='link']");
+
+	await integration.locator("a").click();
+	await expect(toolbar.getByLabel("Link URL")).toHaveValue(
+		"https://github.com/Marcisbee/editpal",
+	);
+	await integration.evaluate((element) => {
+		const editor = element.closest("[contenteditable='true']");
+		if (!editor) {
+			throw new Error("Could not find the integration editor");
+		}
+		const range = document.createRange();
+		range.setStart(editor, 0);
+		range.collapse(true);
+		const selection = document.getSelection();
+		selection?.removeAllRanges();
+		selection?.addRange(range);
+		document.dispatchEvent(new Event("selectionchange"));
+	});
+
+	await expect(toolbar).toBeVisible();
+	await expect(toolbar.getByLabel("Link URL")).toHaveValue(
+		"https://github.com/Marcisbee/editpal",
+	);
+	await expect(page).toHaveURL("/");
+});
+
+test("ArrowUp stays inside the editor before a leading decorator", async ({ page }) => {
+	await page.getByRole("button", { name: "Basic" }).click();
+	const editor = page.getByRole("textbox", {
+		name: "Demo Markdown document",
+	});
+	const source = page.locator("textarea[name='content']");
+	const markdown = "![Leading decorator](https://example.com/leading.png)";
+
+	await editor.focus();
+	await page.keyboard.press("ControlOrMeta+a");
+	await editor.evaluate((element, value) => {
+		const data = new DataTransfer();
+		data.setData("text/plain", value);
+		const paste = new Event("paste", { bubbles: true, cancelable: true });
+		Object.defineProperty(paste, "clipboardData", { value: data });
+		element.dispatchEvent(paste);
+	}, markdown);
+	await expect(source).toHaveValue(markdown);
+
+	const decorator = editor.locator("[data-ep-img]");
+	const box = await decorator.boundingBox();
+	expect(box).not.toBeNull();
+	await decorator.click({
+		position: { x: 1, y: Math.max(1, box!.height / 2) },
+	});
+	await page.keyboard.press("ArrowUp");
+	await page.keyboard.press("ArrowUp");
+
+	await expect.poll(() =>
+		editor.evaluate((element) => {
+			const selection = document.getSelection();
+			return Boolean(
+				selection?.isCollapsed &&
+					selection.anchorNode &&
+					element.contains(selection.anchorNode),
+			);
+		})
+	).toBe(true);
+	await expect(source).toHaveValue(markdown);
+});
+
+test(
+	"Android selection ignores a synthetic zero-width-space insertion",
+	async ({
+		page,
+	}, testInfo) => {
+		test.skip(
+			testInfo.project.name !== "mobile-chrome",
+			"Android-specific native selection regression",
+		);
+		await page.getByRole("button", { name: "Basic" }).click();
+		const editor = page.getByRole("textbox", {
+			name: "Demo Markdown document",
+		});
+		const source = page.locator("textarea[name='content']");
+		const initial = await source.inputValue();
+
+		const result = await editor.evaluate((element) => {
+			const walker = document.createTreeWalker(
+				element,
+				NodeFilter.SHOW_TEXT,
+			);
+			let node: Text | undefined;
+			while (walker.nextNode()) {
+				const candidate = walker.currentNode as Text;
+				if (candidate.data === "bold") {
+					node = candidate;
+					break;
+				}
+			}
+			if (!node) {
+				throw new Error("Could not find the Android selection target");
+			}
+			(element as HTMLElement).focus();
+			const range = document.createRange();
+			range.selectNodeContents(node);
+			const selection = document.getSelection();
+			selection?.removeAllRanges();
+			selection?.addRange(range);
+			document.dispatchEvent(new Event("selectionchange"));
+
+			const input = new InputEvent("beforeinput", {
+				bubbles: true,
+				cancelable: true,
+				data: "\u200B",
+				inputType: "insertText",
+			});
+			element.dispatchEvent(input);
+			return {
+				prevented: input.defaultPrevented,
+				selected: document.getSelection()?.toString(),
+			};
+		});
+
+		expect(result).toEqual({ prevented: true, selected: "bold" });
+		await expect(source).toHaveValue(initial);
+		await expect(source).not.toHaveValue(/\u200B/);
+	},
+);
+
+test(
+	"mobile clipboard beforeinput preserves multiline blocks on repeated paste",
+	async ({
+		page,
+	}, testInfo) => {
+		test.skip(
+			!["mobile-chrome", "mobile-safari"].includes(testInfo.project.name),
+			"Mobile clipboard regression",
+		);
+		await page.getByRole("button", { name: "Basic" }).click();
+		const editor = page.getByRole("textbox", {
+			name: "Demo Markdown document",
+		});
+		const source = page.locator("textarea[name='content']");
+		const pasted = [
+			"## Mobile clipboard",
+			"First pasted paragraph",
+			"Second pasted paragraph",
+		].join("\n");
+		const pasteFromClipboardSuggestion = async () => {
+			return await editor.evaluate((element, text) => {
+				const transfer = new DataTransfer();
+				transfer.setData("text/plain", text);
+				const event = new InputEvent("beforeinput", {
+					bubbles: true,
+					cancelable: true,
+					inputType: "insertFromPaste",
+				});
+				Object.defineProperty(event, "dataTransfer", { value: transfer });
+				element.dispatchEvent(event);
+				return event.defaultPrevented;
+			}, pasted);
+		};
+
+		for (let attempt = 0; attempt < 2; attempt++) {
+			await editor.focus();
+			await page.keyboard.press("ControlOrMeta+a");
+			expect(await pasteFromClipboardSuggestion()).toBe(true);
+			await expect(source).toHaveValue(pasted);
+			await expect(editor.locator("[data-ep-h='2']")).toHaveCount(1);
+			await expect(editor.locator("p[data-ep]")).toHaveCount(2);
+		}
+	},
+);
+
+test("iOS dictation commits the complete composition exactly once", async ({
+	page,
+}, testInfo) => {
+	test.skip(
+		testInfo.project.name !== "mobile-safari",
+		"iOS-specific dictation regression",
+	);
+	await page.getByRole("button", { name: "Basic" }).click();
+	const editor = page.getByRole("textbox", {
+		name: "Demo Markdown document",
+	});
+	const source = page.locator("textarea[name='content']");
+	const dictated =
+		"Dictation keeps every spoken word. The second sentence also remains.";
+
+	await editor.focus();
+	await page.keyboard.press("ControlOrMeta+a");
+	await editor.evaluate((element) => {
+		element.dispatchEvent(
+			new InputEvent("beforeinput", {
+				bubbles: true,
+				cancelable: true,
+				data: "",
+				inputType: "insertText",
+			}),
+		);
+	});
+	await expect(source).toHaveValue("");
+	await editor.evaluate((element, value) => {
+		element.dispatchEvent(
+			new CompositionEvent("compositionstart", {
+				bubbles: true,
+				data: "",
+			}),
+		);
+		for (
+			const update of [
+				"Dictation keeps every spoken word.",
+				value,
+			]
+		) {
+			element.dispatchEvent(
+				new CompositionEvent("compositionupdate", {
+					bubbles: true,
+					data: update,
+				}),
+			);
+			element.dispatchEvent(
+				new InputEvent("beforeinput", {
+					bubbles: true,
+					cancelable: true,
+					data: update,
+					inputType: "insertCompositionText",
+					isComposing: true,
+				}),
+			);
+		}
+		element.dispatchEvent(
+			new CompositionEvent("compositionend", {
+				bubbles: true,
+				data: value,
+			}),
+		);
+		const duplicate = new InputEvent("beforeinput", {
+			bubbles: true,
+			cancelable: true,
+			data: value,
+			inputType: "insertFromComposition",
+		});
+		element.dispatchEvent(duplicate);
+	}, dictated);
+
+	await expect(source).toHaveValue(dictated);
+	await page.keyboard.type("!");
+	await expect(source).toHaveValue(`${dictated}!`);
+});
+
 test("async mention suggestions insert a structured mention", async ({ page }) => {
 	const editor = page.getByRole("textbox", {
 		name: "Demo Markdown document",
