@@ -1028,6 +1028,59 @@ test("WebKit reconciliation selections do not replace the restored caret", async
 	);
 });
 
+test("delayed WebKit reconciliation selections do not replace the restored caret", async ({
+	page,
+}, testInfo) => {
+	test.skip(
+		!["webkit", "mobile-safari"].includes(testInfo.project.name),
+		"WebKit-specific reconciliation regression",
+	);
+	const editor = page.getByRole("textbox", {
+		name: "Demo Markdown document",
+	});
+	await placeCaretAtTextEnd(editor, "Preview-ready Markdown");
+	await editor.evaluate(async (element) => {
+		const editor = element as HTMLElement;
+		const observer = new MutationObserver(() => {
+			observer.disconnect();
+			setTimeout(() => {
+				const firstText = document.createTreeWalker(
+					editor,
+					NodeFilter.SHOW_TEXT,
+				).nextNode();
+				if (!firstText) {
+					throw new Error("Could not find the reconciliation selection target");
+				}
+				const transient = document.createRange();
+				transient.setStart(firstText, 0);
+				transient.collapse(true);
+				const selection = document.getSelection();
+				selection?.removeAllRanges();
+				selection?.addRange(transient);
+				document.dispatchEvent(new Event("selectionchange"));
+			}, 100);
+		});
+		observer.observe(editor, { characterData: true, subtree: true });
+
+		const type = (data: string) =>
+			editor.dispatchEvent(
+				new InputEvent("beforeinput", {
+					bubbles: true,
+					cancelable: true,
+					data,
+					inputType: "insertText",
+				}),
+			);
+		type("A");
+		await new Promise((resolve) => setTimeout(resolve, 150));
+		type("B");
+	});
+
+	await expect(editor).toContainText(
+		'const message = "Preview-ready Markdown";AB',
+	);
+});
+
 test("WebKit reconciliation beside a leading mention preserves later typing", async ({
 	page,
 }, testInfo) => {

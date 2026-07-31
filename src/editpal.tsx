@@ -1310,7 +1310,6 @@ export function Editpal(
 	const onChangeRef = useRef(onChange);
 	const committedCompositionRef = useRef<string | null>(null);
 	const restoringSelectionRef = useRef(false);
-	const selectionRestoreFrameRef = useRef<number>();
 	const dragRef = useRef<
 		{
 			bookmark: ModelSelectionBookmark;
@@ -1355,10 +1354,6 @@ export function Editpal(
 
 	useEffect(() => {
 		return () => {
-			const view = ref.current?.ownerDocument.defaultView;
-			if (view && selectionRestoreFrameRef.current !== undefined) {
-				view.cancelAnimationFrame(selectionRestoreFrameRef.current);
-			}
 			for (const controller of uploadControllers.current) {
 				controller.abort();
 			}
@@ -1370,38 +1365,18 @@ export function Editpal(
 		const editor = ref.current;
 		const restoreSelection = _stack.splice(0).pop();
 		if (editor && restoreSelection) {
-			const view = editor.ownerDocument.defaultView;
 			const contentChanged = renderedMarkdownRef.current !== markdown;
 			renderedMarkdownRef.current = markdown;
-			if (view && selectionRestoreFrameRef.current !== undefined) {
-				view.cancelAnimationFrame(selectionRestoreFrameRef.current);
-			}
 			const guardReconciliation = contentChanged &&
 				usesWebKitSelectionModel(editor);
 			restoringSelectionRef.current = guardReconciliation;
 			restoreSelection(editor);
-			if (view && guardReconciliation) {
-				selectionRestoreFrameRef.current = view.requestAnimationFrame(() => {
-					selectionRestoreFrameRef.current = view.requestAnimationFrame(() => {
-						selectionRestoreFrameRef.current = undefined;
-						restoringSelectionRef.current = false;
-					});
-				});
-			} else {
-				selectionRestoreFrameRef.current = undefined;
-				restoringSelectionRef.current = false;
-			}
 		} else {
 			renderedMarkdownRef.current = markdown;
 		}
 	});
 
 	function finishSelectionRestore() {
-		const view = ref.current?.ownerDocument.defaultView;
-		if (view && selectionRestoreFrameRef.current !== undefined) {
-			view.cancelAnimationFrame(selectionRestoreFrameRef.current);
-		}
-		selectionRestoreFrameRef.current = undefined;
 		restoringSelectionRef.current = false;
 	}
 
@@ -1773,6 +1748,38 @@ export function Editpal(
 		);
 	}
 
+	function domSelectionMatchesModel(selection: Selection): boolean {
+		if (!ref.current || !selection.anchorNode || !selection.focusNode) {
+			return false;
+		}
+		const anchor = resolveEditorPoint(
+			model,
+			ref.current,
+			selection.anchorNode,
+			selection.anchorOffset,
+		);
+		const focus = resolveEditorPoint(
+			model,
+			ref.current,
+			selection.focusNode,
+			selection.focusOffset,
+		);
+		if (!anchor || !focus) {
+			return false;
+		}
+		const [firstKey, firstOffset] = model.selection.first;
+		const [lastKey, lastOffset] = model.selection.last;
+		const matches = (
+			first: EditorPoint,
+			last: EditorPoint,
+		) =>
+			first.element.key === firstKey &&
+			first.offset === firstOffset &&
+			last.element.key === lastKey &&
+			last.offset === lastOffset;
+		return matches(anchor, focus) || matches(focus, anchor);
+	}
+
 	function onSelectionChange() {
 		const selection = domSelection();
 
@@ -1788,6 +1795,12 @@ export function Editpal(
 				// rendered token (or beside a leading contenteditable=false mention)
 				// after Editpal has already restored the model caret. Do not let that
 				// reconciliation artifact replace the authoritative model selection.
+				return;
+			}
+			if (domSelectionMatchesModel(selection)) {
+				// The selectionchange caused by Editpal restoring its own model
+				// range is expected. Keep guarding until a different selection or
+				// the next real input supersedes this reconciliation cycle.
 				return;
 			}
 			// Any other range or collapsed caret represents a newer selection that
@@ -2154,6 +2167,7 @@ export function Editpal(
 		// is delivered. Capture the visible caret before selection syncing is
 		// suspended for the temporary composition DOM.
 		onSelectionChange();
+		finishSelectionRestore();
 		committedCompositionRef.current = null;
 		model._isComposing = true;
 	}
@@ -2410,6 +2424,11 @@ export function Editpal(
 		if (!activeSelectableId()) {
 			onSelectionChange();
 		}
+		// Keep the narrowly targeted WebKit guard alive between model renders:
+		// Safari may deliver its reconciliation selection long after two paint
+		// frames. This input now owns the authoritative model caret, and its
+		// resulting render will establish a fresh guard if content changes.
+		finishSelectionRestore();
 
 		if (
 			event.inputType === "insertText" &&
